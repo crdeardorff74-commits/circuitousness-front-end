@@ -1,0 +1,786 @@
+/*
+ * Circuitousness - Styles
+ *
+ * Universal rule: all sizing for layout, typography, spacing, and components
+ * must use relative units (rem, em, %, vw, vh, dvh, clamp(), min(), max()).
+ * 1-2px is allowed only for hairline borders, outlines, and box-shadow offsets.
+ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+body {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    background-color: #0a0a2e;
+    background-position: center center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    color: #fff;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#app {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+#maze {
+    display: block;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+#hintBtn {
+    position: absolute;
+    top: 1.2rem;
+    right: 1.2rem;
+    padding: 0.6rem 1.4rem;
+    background: rgba(40, 30, 50, 0.7);
+    color: rgba(255, 215, 0, 0.85);
+    border: 1px solid rgba(255, 215, 0, 0.4);
+    border-radius: 0.4rem;
+    font-family: inherit;
+    font-size: clamp(0.9rem, 1.6vw, 1.2rem);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+#hintBtn:hover {
+    background: rgba(60, 40, 70, 0.9);
+    border-color: rgba(255, 215, 0, 0.75);
+    color: #FFD700;
+}
+
+#hintBtn:active {
+    transform: translateY(1px);
+}
+
+#winBanner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.9);
+    padding: 1.2rem 2.4rem;
+    background: rgba(20, 24, 40, 0.92);
+    border: 1px solid rgba(255, 215, 0, 0.6);
+    border-radius: 0.6rem;
+    color: #FFD700;
+    font-size: clamp(1.2rem, 4vw, 2.4rem);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-shadow: 0 0 1.2rem rgba(255, 215, 0, 0.6);
+    box-shadow: 0 1.2rem 4rem rgba(0, 0, 0, 0.6),
+                0 0 4rem rgba(255, 215, 0, 0.25);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    cursor: pointer;
+    user-select: none;
+}
+
+#winBanner.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+}
+
+#buildingBanner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.9);
+    padding: 1.2rem 2.4rem;
+    background: rgba(20, 24, 40, 0.92);
+    border: 1px solid rgba(200, 210, 230, 0.4);
+    border-radius: 0.6rem;
+    color: #c8d2e6;
+    font-size: clamp(1rem, 3vw, 1.6rem);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    box-shadow: 0 1.2rem 4rem rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    user-select: none;
+}
+
+#buildingBanner.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+/* Brief instructional toast shown the first time the player long-presses
+   a tile to lock it. Sits below the win/building banners (top: 70%) so
+   it doesn't compete visually if another banner is showing. */
+#lockToast {
+    position: absolute;
+    top: 70%;
+    left: 50%;
+    transform: translate(-50%, -50%) translateY(0.6rem);
+    padding: 0.8rem 1.6rem;
+    background: rgba(20, 24, 40, 0.92);
+    border: 1px solid rgba(200, 210, 230, 0.4);
+    border-radius: 0.5rem;
+    color: #e6ecf8;
+    font-size: clamp(0.9rem, 2.4vw, 1.2rem);
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    box-shadow: 0 0.8rem 3rem rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    user-select: none;
+    text-align: center;
+    max-width: 80vw;
+}
+
+#lockToast.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) translateY(0);
+}
+
+/* ============================================================
+   MARATHON GAME MODE
+   ============================================================ */
+
+/* Mode gating: ?debug=true → mode-debug, else → mode-game.
+   Shows the UI relevant to each mode and hides the rest. */
+html.mode-game #debugSliders { display: none !important; }
+html.mode-debug #menu,
+html.mode-debug #hud,
+html.mode-debug #gameOver,
+html.mode-debug #leaderboard { display: none !important; }
+
+/* Default-hidden Marathon panels in game mode — shown by JS via .visible */
+html.mode-game #hud,
+html.mode-game #menu,
+html.mode-game #gameOver,
+html.mode-game #leaderboard { display: none; }
+html.mode-game #hud.visible,
+html.mode-game #menu.visible,
+html.mode-game #gameOver.visible,
+html.mode-game #leaderboard.visible { display: flex; }
+
+/* In game mode, hide the win banner — Marathon advances automatically */
+html.mode-game #winBanner { display: none !important; }
+
+/* Solve transition — between-puzzles message. JS toggles `.visible` on solve;
+   it stays up until the player clicks. Click handler is on the popup itself
+   AND on the canvas (via game.js handlePointer), so a tap anywhere advances. */
+#solveTransition {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.9);
+    z-index: 28;
+    padding: 1.2rem 2.4rem;
+    background: rgba(20, 24, 40, 0.92);
+    border: 1px solid rgba(255, 215, 0, 0.6);
+    border-radius: 0.6rem;
+    text-align: center;
+    box-shadow: 0 1.2rem 4rem rgba(0, 0, 0, 0.6),
+                0 0 4rem rgba(255, 215, 0, 0.25);
+    pointer-events: none;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s ease, transform 0.25s ease;
+    user-select: none;
+}
+#solveTransition.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+}
+#solveContinue {
+    margin-top: 0.8rem;
+    font-size: clamp(0.85rem, 1.8vw, 1.05rem);
+    color: rgba(255, 215, 0, 0.7);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 600;
+    animation: solveContinuePulse 1.4s ease-in-out infinite;
+}
+@keyframes solveContinuePulse {
+    0%, 100% { opacity: 0.55; }
+    50%      { opacity: 1; }
+}
+#solveHeadline {
+    font-size: clamp(1.4rem, 4vw, 2.4rem);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #FFD700;
+    text-shadow: 0 0 1.2rem rgba(255, 215, 0, 0.55);
+    margin-bottom: 0.4rem;
+}
+#solveBanked {
+    font-size: clamp(0.95rem, 2.4vw, 1.3rem);
+    font-weight: 500;
+    color: rgba(230, 240, 255, 0.92);
+}
+html.mode-debug #solveTransition { display: none !important; }
+
+/* In game mode, the HUD owns the top edge — drop the Hint button to the
+   bottom-right to keep it out of the timer/score row. */
+html.mode-game #hintBtn {
+    top: auto;
+    bottom: 1.2rem;
+}
+
+/* ----- Main menu ----- */
+#menu {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.4rem;
+    padding: clamp(1rem, 4vw, 3rem);
+    background: rgba(8, 10, 28, 0.78);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    overflow: auto;
+}
+/* Title frame — small viewfinder-style corner brackets. Tighter padding
+   pulls them in close to the text; slightly thicker borders give them more
+   visual presence at small sizes. */
+.titleFrame {
+    position: relative;
+    padding: 0 0.06em;
+    margin-bottom: 0.6rem;
+    line-height: 1;
+    font-size: clamp(2rem, 6vw, 3.6rem);
+}
+.titleFrame .bracket {
+    position: absolute;
+    width: 0.22em;
+    height: 0.22em;
+    border-color: #ffffff;
+    border-style: solid;
+    border-width: 0;
+    pointer-events: none;
+}
+.titleFrame .bracket-tl { top: 0; left: 0;  border-top-width: 0.095em; border-left-width:  0.095em; }
+.titleFrame .bracket-tr { top: 0; right: 0; border-top-width: 0.095em; border-right-width: 0.095em; }
+.titleFrame .bracket-bl { bottom: 0; left: 0;  border-bottom-width: 0.095em; border-left-width:  0.095em; }
+.titleFrame .bracket-br { bottom: 0; right: 0; border-bottom-width: 0.095em; border-right-width: 0.095em; }
+
+#menu h1 {
+    /* Reverted to the original heavy system-sans stack. Universally available,
+       no network dependency, matches the rest of the UI's font baseline. */
+    font-family: 'Helvetica Neue', 'Arial Black', Impact, sans-serif;
+    font-weight: 900;
+    font-stretch: condensed;
+    font-size: 1em;             /* inherits .titleFrame's clamped size */
+    letter-spacing: 0.02em;
+    color: #ffffff;
+    text-shadow: 0 0.15rem 0.6rem rgba(0, 0, 0, 0.55);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+/* Skinny-letter trick: scaleX visually compresses the glyphs but leaves
+   each span's LAYOUT box at natural width, so siblings (maze-O, brackets
+   via titleFrame) sit too far apart. Wrap in inline-block + apply a
+   negative margin equal to (1 - scaleX) × naturalWidth / 2 on each side
+   to pull the layout box in to match the visible width.
+   The natural width depends on character count, so titleInitial (1 char)
+   and titleWord (6 chars) get different values — tune by hand if you
+   change font, weight, or character count. */
+#menuTitle {
+	position: relative;
+	left: -0.07em;
+}
+#menuTitle .titleInitial {
+    /* The leading C is bumped slightly larger than the rest. */
+    font-size: 1.18em;
+    line-height: 1;
+    display: inline-block;
+    transform: scaleX(0.78);
+    transform-origin: center;
+    margin: 0 -0.0em;
+}
+#menuTitle .titleWord {
+    display: inline-block;
+    transform: scaleX(0.78);
+    transform-origin: center;
+    margin: 0 -0.58em;
+}
+#menuTitle .titleMazeO {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.14em;
+    height: 1.14em;
+    margin: 0 0.09em;
+    vertical-align: middle;
+	position: relative;
+	top: 0.015em;
+	left: 0.045em;
+}
+#menuTitle .titleMazeO canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    filter: drop-shadow(0 0.05em 0.2em rgba(0, 0, 0, 0.55));
+}
+#menu .menuSubtitle {
+    color: rgba(220, 230, 250, 0.75);
+    font-size: clamp(0.95rem, 2vw, 1.1rem);
+    text-align: center;
+    max-width: 32rem;
+    margin-bottom: 0.8rem;
+}
+.menuSection {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 1rem 1.2rem;
+    background: rgba(20, 24, 50, 0.55);
+    border: 1px solid rgba(150, 170, 220, 0.18);
+    border-radius: 0.6rem;
+    min-width: clamp(18rem, 60vw, 32rem);
+}
+.menuSection h2 {
+    font-size: clamp(1rem, 2.4vw, 1.3rem);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(230, 240, 255, 0.85);
+    margin-bottom: 0.2rem;
+}
+.menuModeRow {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+}
+.menuModeBtn {
+    flex: 1 1 auto;
+    min-width: 6.5rem;
+    padding: 0.6rem 0.7rem;
+    background: rgba(40, 60, 100, 0.7);
+    color: rgba(220, 240, 255, 0.95);
+    border: 1px solid rgba(120, 180, 240, 0.45);
+    border-radius: 0.4rem;
+    font-family: inherit;
+    font-size: clamp(0.9rem, 1.8vw, 1.05rem);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+    /* Stack thumbnail above the path-count label. */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+}
+.menuModeBtn .modeThumb {
+    /* Square preview pulled from the GitHub release (see THUMBNAIL_URL_BASE).
+       Sized in clamp() so it scales to viewport without overpowering the text. */
+    width: clamp(5.4rem, 14.4vw, 9rem);
+    height: clamp(5.4rem, 14.4vw, 9rem);
+    object-fit: cover;
+    border-radius: 0.3rem;
+    background: rgba(0, 0, 0, 0.25);    /* fallback while loading / on error */
+    display: block;
+}
+.menuModeBtn:hover {
+    background: rgba(60, 90, 140, 0.9);
+    border-color: rgba(160, 210, 255, 0.7);
+}
+.menuModeBtn:active { transform: translateY(1px); }
+
+#menuLeaderboardBtn {
+    margin-top: 0.4rem;
+    padding: 0.65rem 1.6rem;
+    background: rgba(40, 30, 50, 0.7);
+    color: rgba(255, 215, 0, 0.85);
+    border: 1px solid rgba(255, 215, 0, 0.4);
+    border-radius: 0.4rem;
+    font-family: inherit;
+    font-size: clamp(0.9rem, 1.8vw, 1.1rem);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+#menuLeaderboardBtn:hover {
+    background: rgba(60, 40, 70, 0.9);
+    border-color: rgba(255, 215, 0, 0.75);
+    color: #FFD700;
+}
+
+/* ----- In-game HUD ----- */
+#hud {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 25;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    padding: 0.6rem 1rem;
+    background: linear-gradient(to bottom, rgba(8, 10, 28, 0.78), rgba(8, 10, 28, 0));
+    color: #e6ecf8;
+    user-select: none;
+    pointer-events: none; /* don't block clicks on the maze underneath */
+}
+#hud > * { pointer-events: auto; }
+#hud > div {
+    font-size: clamp(0.85rem, 2vw, 1.1rem);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    padding: 0.35rem 0.7rem;
+    background: rgba(20, 24, 50, 0.7);
+    border: 1px solid rgba(150, 170, 220, 0.25);
+    border-radius: 0.4rem;
+}
+#hudTimer {
+    color: #FFD700;
+    font-variant-numeric: tabular-nums;
+    min-width: 4.5rem;
+    text-align: center;
+    position: relative; /* anchor for the floating penalty indicator */
+}
+#hudTimer.urgent {
+    color: #ff6060;
+    border-color: rgba(255, 96, 96, 0.5);
+    background: rgba(60, 10, 10, 0.8);
+}
+/* Hint penalty: brief shake + red flash so the player can't miss that
+   their timer just got chopped. The animation overrides the static styles
+   for its duration; .urgent state (if active) takes back over after. */
+#hudTimer.penalty {
+    animation: timerPenaltyFlash 0.7s ease-out, timerPenaltyShake 0.5s ease-in-out;
+}
+@keyframes timerPenaltyFlash {
+    0%, 30% {
+        background: rgba(190, 30, 30, 0.95);
+        color: #ffffff;
+        border-color: rgba(255, 120, 120, 0.95);
+        box-shadow: 0 0 1.4rem rgba(255, 90, 90, 0.7);
+    }
+    100% {
+        background: rgba(20, 24, 50, 0.7);
+        color: #FFD700;
+        border-color: rgba(150, 170, 220, 0.25);
+        box-shadow: none;
+    }
+}
+@keyframes timerPenaltyShake {
+    0%, 100% { transform: translateX(0); }
+    20%      { transform: translateX(-0.4rem); }
+    40%      { transform: translateX(0.4rem); }
+    60%      { transform: translateX(-0.25rem); }
+    80%      { transform: translateX(0.25rem); }
+}
+/* Floating "−Xs" indicator that pops below the timer and rises up. Anchored
+   below (not above) the timer because the timer sits at the very top of the
+   viewport — "above" puts the text behind the menubar where the player can't
+   read it. Pure CSS animation; JS removes the element on `animationend`. */
+.timerPenaltyFloat {
+    position: absolute;
+    left: 50%;
+    top: 100%;                     /* hugs the timer's bottom edge */
+    margin-top: 0.3rem;            /* small gap so it doesn't crowd the timer */
+    transform: translateX(-50%);
+    color: #ff8080;
+    font-weight: 700;
+    font-size: clamp(0.95rem, 2vw, 1.15rem);
+    text-shadow: 0 0 0.4rem rgba(255, 80, 80, 0.7);
+    pointer-events: none;
+    white-space: nowrap;
+    animation: timerPenaltyFloatUp 1.1s ease-out forwards;
+}
+@keyframes timerPenaltyFloatUp {
+    0%   { opacity: 0; transform: translateX(-50%) translateY(0.6rem); }
+    20%  { opacity: 1; transform: translateX(-50%) translateY(0.2rem); }
+    80%  { opacity: 1; transform: translateX(-50%) translateY(-0.4rem); }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-0.8rem); }
+}
+#hudQuitBtn {
+    padding: 0.4rem 0.9rem;
+    background: rgba(40, 30, 50, 0.7);
+    color: rgba(220, 200, 230, 0.85);
+    border: 1px solid rgba(200, 180, 220, 0.3);
+    border-radius: 0.4rem;
+    font-family: inherit;
+    font-size: clamp(0.8rem, 1.6vw, 0.95rem);
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+#hudQuitBtn:hover {
+    background: rgba(70, 40, 70, 0.9);
+    border-color: rgba(220, 200, 230, 0.6);
+}
+
+/* ----- Game over screen ----- */
+#gameOver {
+    position: absolute;
+    inset: 0;
+    z-index: 35;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.8rem;
+    padding: clamp(1rem, 4vw, 3rem);
+    background: rgba(8, 10, 28, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+#gameOver h2 {
+    font-size: clamp(1.6rem, 5vw, 2.6rem);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #FFD700;
+    text-shadow: 0 0 1.2rem rgba(255, 215, 0, 0.45);
+    margin-bottom: 0.6rem;
+}
+#gameOver p {
+    font-size: clamp(1rem, 2.4vw, 1.3rem);
+    color: rgba(230, 240, 255, 0.9);
+    text-align: center;
+}
+#gameOverRank {
+    color: rgba(255, 215, 0, 0.85);
+    font-weight: 600;
+}
+.gameOverNameRow {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.6rem;
+    align-items: center;
+}
+#gameOverName {
+    padding: 0.55rem 0.9rem;
+    background: rgba(20, 24, 50, 0.85);
+    color: #fff;
+    border: 1px solid rgba(150, 170, 220, 0.4);
+    border-radius: 0.4rem;
+    font-family: inherit;
+    font-size: clamp(0.95rem, 2vw, 1.1rem);
+    width: 12rem;
+    max-width: 60vw;
+}
+#gameOverName:focus {
+    outline: none;
+    border-color: rgba(255, 215, 0, 0.7);
+}
+#gameOverSaveBtn,
+#gameOverMenuBtn {
+    padding: 0.6rem 1.4rem;
+    background: rgba(40, 60, 100, 0.7);
+    color: rgba(220, 240, 255, 0.95);
+    border: 1px solid rgba(120, 180, 240, 0.45);
+    border-radius: 0.4rem;
+    font-family: inherit;
+    font-size: clamp(0.9rem, 1.8vw, 1.05rem);
+    font-weight: 500;
+    cursor: pointer;
+}
+#gameOverMenuBtn { margin-top: 0.4rem; }
+#gameOverSaveBtn:hover,
+#gameOverMenuBtn:hover {
+    background: rgba(60, 90, 140, 0.9);
+    border-color: rgba(160, 210, 255, 0.7);
+}
+#gameOverSaveBtn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* ----- Leaderboard view ----- */
+#leaderboard {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 1rem;
+    padding: clamp(1rem, 4vw, 3rem);
+    background: rgba(8, 10, 28, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    overflow: auto;
+}
+#leaderboard h2 {
+    font-size: clamp(1.4rem, 4.5vw, 2.2rem);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #FFD700;
+    margin-top: 1rem;
+}
+#leaderboardSelect {
+    padding: 0.55rem 1rem;
+    background: rgba(20, 24, 50, 0.85);
+    color: #fff;
+    border: 1px solid rgba(150, 170, 220, 0.4);
+    border-radius: 0.4rem;
+    font-family: inherit;
+    font-size: clamp(0.9rem, 1.8vw, 1.05rem);
+    cursor: pointer;
+}
+#leaderboardEntries {
+    list-style: none;
+    width: clamp(20rem, 70vw, 36rem);
+    background: rgba(20, 24, 50, 0.55);
+    border: 1px solid rgba(150, 170, 220, 0.18);
+    border-radius: 0.6rem;
+    padding: 0.6rem 0.8rem;
+}
+#leaderboardEntries li {
+    display: grid;
+    grid-template-columns: 2rem 1fr auto auto;
+    gap: 0.8rem;
+    padding: 0.4rem 0.4rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: clamp(0.9rem, 1.8vw, 1.05rem);
+    color: rgba(230, 240, 255, 0.92);
+    font-variant-numeric: tabular-nums;
+}
+#leaderboardEntries li:last-child { border-bottom: none; }
+#leaderboardEntries li .lbRank { color: rgba(255, 215, 0, 0.85); font-weight: 600; }
+#leaderboardEntries li .lbName { font-weight: 600; }
+#leaderboardEntries li .lbSolved { color: rgba(180, 220, 180, 0.95); }
+#leaderboardEntries li .lbTime { color: rgba(200, 210, 230, 0.7); font-size: 0.92em; }
+#leaderboardEmpty {
+    color: rgba(200, 210, 230, 0.7);
+    font-style: italic;
+}
+#leaderboardCloseBtn {
+    padding: 0.6rem 1.4rem;
+    background: rgba(40, 30, 50, 0.7);
+    color: rgba(255, 215, 0, 0.85);
+    border: 1px solid rgba(255, 215, 0, 0.4);
+    border-radius: 0.4rem;
+    font-family: inherit;
+    font-size: clamp(0.9rem, 1.8vw, 1.05rem);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    margin-top: 0.4rem;
+}
+#leaderboardCloseBtn:hover {
+    background: rgba(60, 40, 70, 0.9);
+    border-color: rgba(255, 215, 0, 0.75);
+    color: #FFD700;
+}
+
+/* DEBUG SLIDERS — temporary tuning panel; delete this whole block, the
+   matching #debugSliders markup in index.html, and the wiring <script>
+   when the tile color and path opacity are finalized. */
+#debugSliders {
+    position: fixed;
+    top: 1.2rem;
+    left: 1.2rem;
+    z-index: 50;
+    padding: 0.8rem 1rem;
+    background: rgba(20, 24, 40, 0.78);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 0.5rem;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 0.85rem;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    user-select: none;
+}
+#debugSliders strong {
+    display: block;
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    margin-bottom: 0.6rem;
+}
+#debugSliders label {
+    display: block;
+    margin-bottom: 0.5rem;
+}
+#debugSliders label:last-child {
+    margin-bottom: 0;
+}
+#debugSliders input[type="range"] {
+    display: block;
+    width: 12rem;
+    margin-top: 0.25rem;
+}
+#debugSliders label.check {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+#debugSliders label.check input[type="checkbox"] {
+    margin: 0;
+}
+#preGenStatus {
+    margin-top: 0.6rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    font-size: 0.72rem;
+    font-family: monospace;
+    opacity: 0.75;
+}
+#debugSliders input[type="color"] {
+    display: block;
+    width: 4rem;
+    height: 1.8rem;
+    margin-top: 0.25rem;
+    padding: 0;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.25rem;
+    cursor: pointer;
+}
+#debugSliders #replayBtn {
+    display: block;
+    width: 100%;
+    margin-top: 0.6rem;
+    padding: 0.5rem;
+    background: rgba(40, 60, 100, 0.8);
+    color: rgba(220, 240, 255, 0.95);
+    border: 1px solid rgba(120, 180, 240, 0.5);
+    border-radius: 0.3rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+#debugSliders #replayBtn[hidden] { display: none; }
+#debugSliders #replayBtn:hover {
+    background: rgba(60, 90, 140, 0.9);
+}
+#debugSliders #replayBtn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}

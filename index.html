@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title data-i18n="app.title">Circuitousness</title>
+
+    <!-- iOS Standalone Mode (Add to Home Screen) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <!-- Android/Chrome PWA -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0a0a2e">
+    <link rel="icon" href="favicon.ico">
+
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- URL param gate: ?debug=true enables the existing free-form puzzle UI
+         (sliders, manual progression). Default is Marathon game mode. Set on
+         <html> before stylesheet kicks in so there's no debug-flash. -->
+    <script>
+    (function () {
+        var debug = (new URLSearchParams(window.location.search)).get('debug') === 'true';
+        document.documentElement.classList.add(debug ? 'mode-debug' : 'mode-game');
+    })();
+    </script>
+
+    <main id="app">
+        <canvas id="maze"></canvas>
+        <button id="hintBtn" type="button" data-i18n="hint.button">Hint</button>
+        <div id="winBanner" data-i18n="game.youWon">You connected the path!</div>
+        <div id="buildingBanner">Building puzzle&hellip;</div>
+        <div id="lockToast" data-i18n="lock.firstHint">Tile locked — press and hold again to unlock</div>
+
+        <!-- Solve transition (game mode only) — between-puzzles message.
+             Player taps anywhere (popup or canvas) to advance. -->
+        <div id="solveTransition">
+            <div id="solveHeadline"></div>
+            <div id="solveBanked"></div>
+            <div id="solveContinue" data-i18n="marathon.clickToContinue">Tap to continue</div>
+        </div>
+
+        <!-- Marathon HUD (game mode only) -->
+        <div id="hud">
+            <div id="hudType"></div>
+            <div id="hudLevel"></div>
+            <div id="hudTimer"><span class="hudTimerVal"></span></div>
+            <div id="hudScore"></div>
+            <button id="hudQuitBtn" type="button" data-i18n="marathon.quit">Quit</button>
+        </div>
+
+        <!-- Marathon main menu (game mode only) -->
+        <div id="menu">
+            <!-- Bold condensed all-caps wordmark in a viewfinder-style frame.
+                 The O is a small canvas painted by TitleRenderer.draw() — same
+                 color constants and beveled-tile drawing primitives as the
+                 in-game render, so it reads as a genuine snippet of a puzzle. -->
+            <div class="titleFrame">
+                <span class="bracket bracket-tl"></span>
+                <span class="bracket bracket-tr"></span>
+                <span class="bracket bracket-bl"></span>
+                <span class="bracket bracket-br"></span>
+                <h1 id="menuTitle">
+                    <span class="titleInitial">C</span><span class="titleWord">IRCUIT</span><span class="titleMazeO" aria-label="O"><canvas id="titleOCanvas" width="160" height="160"></canvas></span><span class="titleWord">USNESS</span>
+                </h1>
+            </div>
+            <p class="menuSubtitle" data-i18n="marathon.subtitle">Solve as many puzzles as you can before time runs out</p>
+            <div class="menuSection">
+                <h2 data-i18n="marathon.regularTiles">Singular tiles</h2>
+                <div class="menuModeRow">
+                    <button class="menuModeBtn" data-mode="s1"><img class="modeThumb" alt=""><span data-i18n="marathon.path1">1 path</span></button>
+                    <button class="menuModeBtn" data-mode="s2"><img class="modeThumb" alt=""><span data-i18n="marathon.path2">2 paths</span></button>
+                    <button class="menuModeBtn" data-mode="s3"><img class="modeThumb" alt=""><span data-i18n="marathon.path3">3 paths</span></button>
+                    <button class="menuModeBtn" data-mode="s4"><img class="modeThumb" alt=""><span data-i18n="marathon.path4">4 paths</span></button>
+                </div>
+            </div>
+            <div class="menuSection">
+                <h2 data-i18n="marathon.quadTiles">Quad tiles</h2>
+                <div class="menuModeRow">
+                    <button class="menuModeBtn" data-mode="q1"><img class="modeThumb" alt=""><span data-i18n="marathon.path1">1 path</span></button>
+                    <button class="menuModeBtn" data-mode="q2"><img class="modeThumb" alt=""><span data-i18n="marathon.path2">2 paths</span></button>
+                    <button class="menuModeBtn" data-mode="q3"><img class="modeThumb" alt=""><span data-i18n="marathon.path3">3 paths</span></button>
+                    <button class="menuModeBtn" data-mode="q4"><img class="modeThumb" alt=""><span data-i18n="marathon.path4">4 paths</span></button>
+                </div>
+            </div>
+            <button id="menuLeaderboardBtn" type="button" data-i18n="marathon.leaderboards">Leaderboards</button>
+        </div>
+
+        <!-- Game over screen (game mode only) -->
+        <div id="gameOver">
+            <h2 data-i18n="marathon.timesUp">Time's up!</h2>
+            <p id="gameOverScore"></p>
+            <p id="gameOverTime"></p>
+            <p id="gameOverRank"></p>
+            <div class="gameOverNameRow">
+                <input id="gameOverName" type="text" maxlength="16" data-i18n-attr="placeholder:marathon.namePlaceholder" placeholder="Your name">
+                <button id="gameOverSaveBtn" type="button" data-i18n="marathon.save">Save</button>
+            </div>
+            <button id="gameOverMenuBtn" type="button" data-i18n="marathon.backToMenu">Back to menu</button>
+        </div>
+
+        <!-- Leaderboard view (game mode only) -->
+        <div id="leaderboard">
+            <h2 data-i18n="marathon.leaderboards">Leaderboards</h2>
+            <select id="leaderboardSelect"></select>
+            <ol id="leaderboardEntries"></ol>
+            <p id="leaderboardEmpty" data-i18n="marathon.boardEmpty" hidden>No scores yet — be the first!</p>
+            <button id="leaderboardCloseBtn" type="button" data-i18n="marathon.close">Close</button>
+        </div>
+    </main>
+
+    <!-- DEBUG SLIDERS — temporary tuning panel; remove this block, the matching
+         CSS in styles.css, and the wiring <script> below when done. -->
+    <div id="debugSliders">
+        <strong>Debug</strong>
+        <label>Tile color (<span id="tileColorVal">#153050</span>)
+            <input type="color" id="tileColorPicker" value="#153050">
+        </label>
+        <label>Path color (<span id="pathColorVal">#ff2424</span>)
+            <input type="color" id="pathColorPicker" value="#ff2424">
+        </label>
+        <label>Path opacity (<span id="opacityVal">0.14</span>)
+            <input type="range" id="opacitySlider" min="0" max="100" value="14">
+        </label>
+        <label>Path width (<span id="widthVal">0.18</span>)
+            <input type="range" id="widthSlider" min="5" max="45" value="18">
+        </label>
+        <label>Bevel thickness (<span id="bevelVal">0.07</span>)
+            <input type="range" id="bevelSlider" min="1" max="20" value="7">
+        </label>
+        <label>Tile face opacity (<span id="faceAlphaVal">0.74</span>)
+            <input type="range" id="faceAlphaSlider" min="0" max="100" value="74">
+        </label>
+        <label>Lit green outer (<span id="litGreenLoVal">#2d672d</span>)
+            <input type="color" id="litGreenLoPicker" value="#2d672d">
+        </label>
+        <label>Lit green inner (<span id="litGreenHiVal">#c8fec8</span>)
+            <input type="color" id="litGreenHiPicker" value="#c8fec8">
+        </label>
+        <label>Lit gold outer (<span id="litGoldLoVal">#7b5b0a</span>)
+            <input type="color" id="litGoldLoPicker" value="#7b5b0a">
+        </label>
+        <label>Lit gold inner (<span id="litGoldHiVal">#feee9f</span>)
+            <input type="color" id="litGoldHiPicker" value="#feee9f">
+        </label>
+        <label>Lock face color (<span id="lockFaceVal">#ffffff</span>)
+            <input type="color" id="lockFacePicker" value="#ffffff">
+        </label>
+        <label>Grid width (<span id="gridWVal">4</span>)
+            <input type="range" id="gridWSlider" min="4" max="15" value="4">
+        </label>
+        <label>Grid height (<span id="gridHVal">4</span>)
+            <input type="range" id="gridHSlider" min="4" max="15" value="4">
+        </label>
+        <label>Paths (<span id="pathCountVal">1</span>)
+            <input type="range" id="pathCountSlider" min="1" max="4" value="1">
+        </label>
+        <label class="check">
+            <input type="checkbox" id="quadModeCheck"> Quad Tiles
+        </label>
+        <label class="check">
+            <input type="checkbox" id="animateRotCheck" checked> Animate Rotations
+        </label>
+        <label class="check">
+            <input type="checkbox" id="completeCircuitsCheck" checked> Complete circuits
+        </label>
+        <button type="button" id="replayBtn" hidden>Replay solve</button>
+        <div id="preGenStatus">Next: idle</div>
+    </div>
+
+    <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
+    <script>var PAGE_VERSION = '0.19';</script>
+    <!-- DEV: cache-bust script srcs so iterative edits are picked up without manual hard-reload.
+         Remove the inline loader and restore plain <script src="..."> tags before /release. -->
+    <script>
+    (function() {
+        var t = Date.now();
+        var srcs = ['config.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','maze.js','render.js','title-renderer.js','marathon.js','game.js'];
+        for (var i = 0; i < srcs.length; i++) {
+            document.write('<script src="' + srcs[i] + '?t=' + t + '"><\/script>');
+        }
+    })();
+    </script>
+
+    <!-- DEBUG SLIDERS — wiring (remove with the markup above and the CSS block in styles.css) -->
+    <script>
+    (function() {
+        function bindSlider(sliderId, valueId, format, callback) {
+            var s = document.getElementById(sliderId);
+            var l = document.getElementById(valueId);
+            s.addEventListener('input', function() {
+                var v = parseInt(s.value, 10);
+                l.textContent = format(v);
+                callback(v);
+            });
+        }
+        function bindPicker(pickerId, valueId, callback) {
+            var p = document.getElementById(pickerId);
+            var l = valueId ? document.getElementById(valueId) : null;
+            p.addEventListener('input', function() {
+                if (l) l.textContent = p.value;
+                callback(p.value);
+            });
+        }
+
+        bindPicker('tileColorPicker', 'tileColorVal', Render.setTileColor);
+        bindPicker('pathColorPicker', 'pathColorVal', Render.setPathColor);
+        bindSlider('opacitySlider',   'opacityVal',  function(v) { return (v / 100).toFixed(2); },
+                   function(v) { Render.setPathOpacity(v / 100); });
+        bindSlider('widthSlider',     'widthVal',    function(v) { return (v / 100).toFixed(2); },
+                   function(v) { Render.setPathWidth(v / 100); });
+        bindSlider('bevelSlider',     'bevelVal',    function(v) { return (v / 100).toFixed(2); },
+                   function(v) { Render.setBevelThickness(v / 100); });
+        bindSlider('faceAlphaSlider', 'faceAlphaVal', function(v) { return (v / 100).toFixed(2); },
+                   function(v) { Render.setTileFaceAlpha(v / 100); });
+        bindPicker('litGreenLoPicker', 'litGreenLoVal', Render.setLitGreenLo);
+        bindPicker('litGreenHiPicker', 'litGreenHiVal', Render.setLitGreenHi);
+        bindPicker('litGoldLoPicker',  'litGoldLoVal',  Render.setLitGoldLo);
+        bindPicker('litGoldHiPicker',  'litGoldHiVal',  Render.setLitGoldHi);
+        bindPicker('lockFacePicker',   'lockFaceVal',   Render.setLockFaceColor);
+
+        // Grid dimensions — both sliders route through Game.newPuzzle so
+        // they share the building-banner pipeline AND the pre-gen worker
+        // pre-build mechanism. The slider DOM is the source of truth for
+        // user-requested dimensions; game.js syncs slider values back to
+        // current Maze dims after auto-progression so they stay in sync.
+        var pendingSize = null;
+        function readSize() {
+            // Slider value = LOGICAL (quad count when in quad mode). Convert
+            // to PHYSICAL sub-tile dims for Game.newPuzzle.
+            var mul = (window.Game && Game.quadMode) ? 2 : 1;
+            return {
+                r: parseInt(document.getElementById('gridHSlider').value, 10) * mul,
+                c: parseInt(document.getElementById('gridWSlider').value, 10) * mul
+            };
+        }
+        async function rebuildGrid() {
+            if (!window.Game) { setTimeout(rebuildGrid, 50); return; } // wait for game.js to bind Game
+            if (Game.newPuzzle.busy) { pendingSize = readSize(); return; }
+            Game.newPuzzle.busy = true;
+            var size = readSize();
+            await Game.newPuzzle(size.r, size.c);
+            Game.newPuzzle.busy = false;
+            if (pendingSize) {
+                var p = pendingSize; pendingSize = null;
+                if (p.r !== Maze.ROWS || p.c !== Maze.COLS) rebuildGrid();
+            }
+        }
+        bindSlider('gridWSlider', 'gridWVal', function(v) { return v.toString(); }, rebuildGrid);
+        bindSlider('gridHSlider', 'gridHVal', function(v) { return v.toString(); }, rebuildGrid);
+
+        // Path-count slider: 1, 2, or 3 paths. Routes through Game so the
+        // worker is told too and the pre-gen cache is invalidated.
+        bindSlider('pathCountSlider', 'pathCountVal', function(v) { return v.toString(); },
+                   function(v) { if (window.Game && Game.setPathCount) Game.setPathCount(v); });
+
+        // Quad Tiles checkbox — generates the maze at 2× dims, displays
+        // each 2×2 sub-tile group as one rotating "tile". Routes through
+        // Game so the worker is told and the pre-gen cache is invalidated.
+        var quadCheck = document.getElementById('quadModeCheck');
+        if (quadCheck) {
+            quadCheck.addEventListener('change', function() {
+                if (window.Game && Game.setQuadMode) Game.setQuadMode(quadCheck.checked);
+            });
+        }
+
+        // Animate Rotations checkbox — pure render-side; tiles spin smoothly
+        // to their new orientation instead of snapping. Maze state still
+        // mutates instantly on click, so doesn't affect generation/pre-gen.
+        var animCheck = document.getElementById('animateRotCheck');
+        if (animCheck) {
+            animCheck.addEventListener('change', function() {
+                if (Render && Render.setAnimateRotations) Render.setAnimateRotations(animCheck.checked);
+            });
+        }
+
+        // Complete circuits checkbox — when off, entry/exit paths just
+        // stretch straight out to the canvas edge instead of wrapping
+        // around the perimeter to close the loop.
+        var ccCheck = document.getElementById('completeCircuitsCheck');
+        if (ccCheck) {
+            ccCheck.addEventListener('change', function() {
+                if (Render && Render.setCompleteCircuits) Render.setCompleteCircuits(ccCheck.checked);
+            });
+        }
+    })();
+    </script>
+
+    <script>
+    if ('serviceWorker' in navigator) {
+        let updateHandled = false;
+
+        function handleUpdate(version) {
+            if (updateHandled) return;
+            updateHandled = true;
+            console.log('PWA: New version available' + (version ? ' (v' + version + ')' : ''));
+
+            // Auto-refresh once per session if user hasn't started anything yet.
+            // Guard with sessionStorage to prevent infinite reload loops when
+            // stale-while-revalidate keeps serving the old PAGE_VERSION.
+            // PROJECT_SLUG comes from config.js (loaded above).
+            var refreshKey = PROJECT_SLUG + '_sw_refreshed';
+            if (sessionStorage.getItem(refreshKey)) {
+                console.log('PWA: Already refreshed this session, skipping');
+                return;
+            }
+            sessionStorage.setItem(refreshKey, '1');
+            setTimeout(function() { window.location.reload(); }, 1000);
+        }
+
+        navigator.serviceWorker.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'SW_UPDATED') {
+                handleUpdate(event.data.version);
+            }
+            if (event.data && event.data.type === 'SW_VERSION') {
+                console.log('PWA: SW reports v' + event.data.version + ', page is v' + PAGE_VERSION);
+                if (event.data.version !== PAGE_VERSION) {
+                    handleUpdate(event.data.version);
+                }
+            }
+        });
+
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+            handleUpdate();
+        });
+
+        navigator.serviceWorker.register('/sw.js')
+            .then(function(reg) {
+                console.log('PWA: Service worker registered (page v' + PAGE_VERSION + ')');
+                reg.addEventListener('updatefound', function() {
+                    var nw = reg.installing;
+                    if (nw) {
+                        nw.addEventListener('statechange', function() {
+                            if (nw.state === 'activated') handleUpdate();
+                        });
+                    }
+                });
+                if (navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.controller.postMessage({ type: 'GET_VERSION' });
+                }
+            })
+            .catch(function(err) { console.log('PWA: SW registration failed:', err); });
+    }
+    </script>
+</body>
+</html>
