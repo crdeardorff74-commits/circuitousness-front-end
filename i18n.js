@@ -71,7 +71,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  'Puzzle {n} solved!',
             'marathon.solveBankedFull':'+{b}s banked · next puzzle: {t}',
             'marathon.solveBankedZero':'Time cap reached · next puzzle: {t}',
-            'marathon.clickToContinue':'Tap to continue'
+            'marathon.clickToContinue':'Tap to continue',
+            'marathon.watch':          'Watch',
+            'marathon.stopReplay':     'Stop replay',
+            'marathon.replayingHeader':'Replay: {name} · puzzle {n}/{total}',
+            'settings.title':          'Settings',
+            'settings.music':          'Music',
+            'settings.sfx':            'Sound effects',
+            'settings.close':          'Close'
         },
         es: {
             'app.title':       PROJECT_NAME,
@@ -109,7 +116,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  '¡Puzzle {n} resuelto!',
             'marathon.solveBankedFull':'+{b}s acumulados · próximo puzzle: {t}',
             'marathon.solveBankedZero':'Límite alcanzado · próximo puzzle: {t}',
-            'marathon.clickToContinue':'Toca para continuar'
+            'marathon.clickToContinue':'Toca para continuar',
+            'marathon.watch':          'Ver',
+            'marathon.stopReplay':     'Detener reproducción',
+            'marathon.replayingHeader':'Reproducción: {name} · puzzle {n}/{total}',
+            'settings.title':          'Ajustes',
+            'settings.music':          'Música',
+            'settings.sfx':            'Efectos de sonido',
+            'settings.close':          'Cerrar'
         },
         fr: {
             'app.title':       PROJECT_NAME,
@@ -147,7 +161,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  'Puzzle {n} résolu !',
             'marathon.solveBankedFull':'+{b}s engrangés · prochain puzzle : {t}',
             'marathon.solveBankedZero':'Plafond atteint · prochain puzzle : {t}',
-            'marathon.clickToContinue':'Appuyez pour continuer'
+            'marathon.clickToContinue':'Appuyez pour continuer',
+            'marathon.watch':          'Regarder',
+            'marathon.stopReplay':     'Arrêter la lecture',
+            'marathon.replayingHeader':'Lecture : {name} · puzzle {n}/{total}',
+            'settings.title':          'Paramètres',
+            'settings.music':          'Musique',
+            'settings.sfx':            'Effets sonores',
+            'settings.close':          'Fermer'
         },
         de: {
             'app.title':       PROJECT_NAME,
@@ -185,7 +206,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  'Rätsel {n} gelöst!',
             'marathon.solveBankedFull':'+{b}s gespart · nächstes Rätsel: {t}',
             'marathon.solveBankedZero':'Zeitgrenze erreicht · nächstes Rätsel: {t}',
-            'marathon.clickToContinue':'Tippen zum Fortfahren'
+            'marathon.clickToContinue':'Tippen zum Fortfahren',
+            'marathon.watch':          'Ansehen',
+            'marathon.stopReplay':     'Wiedergabe stoppen',
+            'marathon.replayingHeader':'Wiedergabe: {name} · Rätsel {n}/{total}',
+            'settings.title':          'Einstellungen',
+            'settings.music':          'Musik',
+            'settings.sfx':            'Soundeffekte',
+            'settings.close':          'Schließen'
         },
         pt: {
             'app.title':       PROJECT_NAME,
@@ -223,7 +251,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  'Puzzle {n} resolvido!',
             'marathon.solveBankedFull':'+{b}s acumulados · próximo puzzle: {t}',
             'marathon.solveBankedZero':'Limite atingido · próximo puzzle: {t}',
-            'marathon.clickToContinue':'Toque para continuar'
+            'marathon.clickToContinue':'Toque para continuar',
+            'marathon.watch':          'Assistir',
+            'marathon.stopReplay':     'Parar reprodução',
+            'marathon.replayingHeader':'Reprodução: {name} · puzzle {n}/{total}',
+            'settings.title':          'Configurações',
+            'settings.music':          'Música',
+            'settings.sfx':            'Efeitos sonoros',
+            'settings.close':          'Fechar'
         },
         ja: {
             'app.title':       PROJECT_NAME,
@@ -261,7 +296,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  'パズル{n}クリア!',
             'marathon.solveBankedFull':'+{b}秒貯金 · 次のパズル: {t}',
             'marathon.solveBankedZero':'上限到達 · 次のパズル: {t}',
-            'marathon.clickToContinue':'タップして続行'
+            'marathon.clickToContinue':'タップして続行',
+            'marathon.watch':          '視聴',
+            'marathon.stopReplay':     '再生停止',
+            'marathon.replayingHeader':'再生: {name} · パズル{n}/{total}',
+            'settings.title':          '設定',
+            'settings.music':          '音楽',
+            'settings.sfx':            '効果音',
+            'settings.close':          '閉じる'
         },
         ko: {
             'app.title':       PROJECT_NAME,
@@ -299,7 +341,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  '퍼즐 {n} 해결!',
             'marathon.solveBankedFull':'+{b}초 적립 · 다음 퍼즐: {t}',
             'marathon.solveBankedZero':'시간 상한 도달 · 다음 퍼즐: {t}',
-            'marathon.clickToContinue':'계속하려면 탭'
+            'marathon.clickToContinue':'계속하려면 탭',
+            'marathon.watch':          '보기',
+            'marathon.stopReplay':     '재생 중지',
+            'marathon.replayingHeader':'재생: {name} · 퍼즐 {n}/{total}',
+            'settings.title':          '설정',
+            'settings.music':          '음악',
+            'settings.sfx':            '효과음',
+            'settings.close':          '닫기'
         },
         zh: {
             'app.title':       PROJECT_NAME,
@@ -337,7 +386,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  '谜题 {n} 已解决!',
             'marathon.solveBankedFull':'+{b}秒奖励 · 下一题: {t}',
             'marathon.solveBankedZero':'已达上限 · 下一题: {t}',
-            'marathon.clickToContinue':'点击继续'
+            'marathon.clickToContinue':'点击继续',
+            'marathon.watch':          '观看',
+            'marathon.stopReplay':     '停止回放',
+            'marathon.replayingHeader':'回放: {name} · 谜题 {n}/{total}',
+            'settings.title':          '设置',
+            'settings.music':          '音乐',
+            'settings.sfx':            '音效',
+            'settings.close':          '关闭'
         },
         ru: {
             'app.title':       PROJECT_NAME,
@@ -375,7 +431,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  'Головоломка {n} решена!',
             'marathon.solveBankedFull':'+{b}с накоплено · след. головоломка: {t}',
             'marathon.solveBankedZero':'Достигнут лимит · след. головоломка: {t}',
-            'marathon.clickToContinue':'Нажмите для продолжения'
+            'marathon.clickToContinue':'Нажмите для продолжения',
+            'marathon.watch':          'Смотреть',
+            'marathon.stopReplay':     'Остановить воспроизведение',
+            'marathon.replayingHeader':'Воспроизведение: {name} · головоломка {n}/{total}',
+            'settings.title':          'Настройки',
+            'settings.music':          'Музыка',
+            'settings.sfx':            'Звуковые эффекты',
+            'settings.close':          'Закрыть'
         },
         it: {
             'app.title':       PROJECT_NAME,
@@ -413,7 +476,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  'Puzzle {n} risolto!',
             'marathon.solveBankedFull':'+{b}s accumulati · prossimo puzzle: {t}',
             'marathon.solveBankedZero':'Limite raggiunto · prossimo puzzle: {t}',
-            'marathon.clickToContinue':'Tocca per continuare'
+            'marathon.clickToContinue':'Tocca per continuare',
+            'marathon.watch':          'Guarda',
+            'marathon.stopReplay':     'Ferma riproduzione',
+            'marathon.replayingHeader':'Riproduzione: {name} · puzzle {n}/{total}',
+            'settings.title':          'Impostazioni',
+            'settings.music':          'Musica',
+            'settings.sfx':            'Effetti sonori',
+            'settings.close':          'Chiudi'
         },
         nl: {
             'app.title':       PROJECT_NAME,
@@ -451,7 +521,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  'Puzzel {n} opgelost!',
             'marathon.solveBankedFull':'+{b}s opgespaard · volgende puzzel: {t}',
             'marathon.solveBankedZero':'Tijdslimiet bereikt · volgende puzzel: {t}',
-            'marathon.clickToContinue':'Tik om door te gaan'
+            'marathon.clickToContinue':'Tik om door te gaan',
+            'marathon.watch':          'Bekijk',
+            'marathon.stopReplay':     'Stop weergave',
+            'marathon.replayingHeader':'Weergave: {name} · puzzel {n}/{total}',
+            'settings.title':          'Instellingen',
+            'settings.music':          'Muziek',
+            'settings.sfx':            'Geluidseffecten',
+            'settings.close':          'Sluiten'
         },
         pl: {
             'app.title':       PROJECT_NAME,
@@ -489,7 +566,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  'Łamigłówka {n} rozwiązana!',
             'marathon.solveBankedFull':'+{b}s zaoszczędzone · następna łamigłówka: {t}',
             'marathon.solveBankedZero':'Limit osiągnięty · następna łamigłówka: {t}',
-            'marathon.clickToContinue':'Dotknij, aby kontynuować'
+            'marathon.clickToContinue':'Dotknij, aby kontynuować',
+            'marathon.watch':          'Oglądaj',
+            'marathon.stopReplay':     'Zatrzymaj odtwarzanie',
+            'marathon.replayingHeader':'Odtwarzanie: {name} · łamigłówka {n}/{total}',
+            'settings.title':          'Ustawienia',
+            'settings.music':          'Muzyka',
+            'settings.sfx':            'Efekty dźwiękowe',
+            'settings.close':          'Zamknij'
         },
         tr: {
             'app.title':       PROJECT_NAME,
@@ -527,7 +611,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  'Bulmaca {n} çözüldü!',
             'marathon.solveBankedFull':'+{b}sn biriktirildi · sonraki bulmaca: {t}',
             'marathon.solveBankedZero':'Süre üst sınırı · sonraki bulmaca: {t}',
-            'marathon.clickToContinue':'Devam etmek için dokun'
+            'marathon.clickToContinue':'Devam etmek için dokun',
+            'marathon.watch':          'İzle',
+            'marathon.stopReplay':     'Yeniden oynatmayı durdur',
+            'marathon.replayingHeader':'Yeniden oynatma: {name} · bulmaca {n}/{total}',
+            'settings.title':          'Ayarlar',
+            'settings.music':          'Müzik',
+            'settings.sfx':            'Ses efektleri',
+            'settings.close':          'Kapat'
         },
         ar: {
             'app.title':       PROJECT_NAME,
@@ -565,7 +656,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  'تم حل اللغز {n}!',
             'marathon.solveBankedFull':'+{b} ث محفوظة · اللغز التالي: {t}',
             'marathon.solveBankedZero':'تم الوصول للحد الأقصى · اللغز التالي: {t}',
-            'marathon.clickToContinue':'اضغط للمتابعة'
+            'marathon.clickToContinue':'اضغط للمتابعة',
+            'marathon.watch':          'شاهد',
+            'marathon.stopReplay':     'إيقاف إعادة التشغيل',
+            'marathon.replayingHeader':'إعادة التشغيل: {name} · لغز {n}/{total}',
+            'settings.title':          'الإعدادات',
+            'settings.music':          'موسيقى',
+            'settings.sfx':            'مؤثرات صوتية',
+            'settings.close':          'إغلاق'
         },
         hi: {
             'app.title':       PROJECT_NAME,
@@ -603,7 +701,14 @@ const I18n = (() => {
             'marathon.solveHeadline':  'पहेली {n} हल हुई!',
             'marathon.solveBankedFull':'+{b}s जोड़े · अगली पहेली: {t}',
             'marathon.solveBankedZero':'समय सीमा पूरी · अगली पहेली: {t}',
-            'marathon.clickToContinue':'जारी रखने के लिए टैप करें'
+            'marathon.clickToContinue':'जारी रखने के लिए टैप करें',
+            'marathon.watch':          'देखें',
+            'marathon.stopReplay':     'पुनः चलाना रोकें',
+            'marathon.replayingHeader':'पुनः चलाना: {name} · पहेली {n}/{total}',
+            'settings.title':          'सेटिंग्स',
+            'settings.music':          'संगीत',
+            'settings.sfx':            'ध्वनि प्रभाव',
+            'settings.close':          'बंद करें'
         }
     };
 

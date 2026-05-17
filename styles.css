@@ -171,17 +171,20 @@ html.mode-game #debugSliders { display: none !important; }
 html.mode-debug #menu,
 html.mode-debug #hud,
 html.mode-debug #gameOver,
-html.mode-debug #leaderboard { display: none !important; }
+html.mode-debug #leaderboard,
+html.mode-debug #replayHud { display: none !important; }
 
 /* Default-hidden Marathon panels in game mode — shown by JS via .visible */
 html.mode-game #hud,
 html.mode-game #menu,
 html.mode-game #gameOver,
-html.mode-game #leaderboard { display: none; }
+html.mode-game #leaderboard,
+html.mode-game #replayHud { display: none; }
 html.mode-game #hud.visible,
 html.mode-game #menu.visible,
 html.mode-game #gameOver.visible,
 html.mode-game #leaderboard.visible { display: flex; }
+html.mode-game #replayHud.visible { display: flex; }
 
 /* In game mode, hide the win banner — Marathon advances automatically */
 html.mode-game #winBanner { display: none !important; }
@@ -241,12 +244,9 @@ html.mode-game #winBanner { display: none !important; }
 }
 html.mode-debug #solveTransition { display: none !important; }
 
-/* In game mode, the HUD owns the top edge — drop the Hint button to the
-   bottom-right to keep it out of the timer/score row. */
-html.mode-game #hintBtn {
-    top: auto;
-    bottom: 1.2rem;
-}
+/* Game mode owns its own hint button inside the HUD (#hudHintBtn) — hide
+   the standalone debug-mode hintBtn so they don't both appear. */
+html.mode-game #hintBtn { display: none; }
 
 /* ----- Main menu ----- */
 #menu {
@@ -436,6 +436,133 @@ html.mode-game #hintBtn {
     color: #FFD700;
 }
 
+/* ----- Settings (menu-only) -----
+   Triggered by the gear button anchored in the menu's top-right. Mirrors
+   TANTЯO's settings overlay visual language: dark-blue gradient popup,
+   slate toggles, click-outside-to-close. Intentionally NOT available
+   during gameplay — closing it would effectively pause the timer and
+   defeat the leaderboard's timing guarantees. */
+#settingsBtn {
+    position: absolute;
+    top: clamp(0.6rem, 1.8vw, 1.2rem);
+    right: clamp(0.6rem, 1.8vw, 1.2rem);
+    width: 2.6rem;
+    height: 2.6rem;
+    padding: 0;
+    background: rgba(40, 30, 50, 0.7);
+    color: rgba(255, 215, 0, 0.85);
+    border: 1px solid rgba(255, 215, 0, 0.4);
+    border-radius: 50%;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+    z-index: 31;
+}
+#settingsBtn:hover {
+    background: rgba(60, 40, 70, 0.9);
+    border-color: rgba(255, 215, 0, 0.75);
+    color: #FFD700;
+    transform: rotate(45deg);
+}
+
+#settingsOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgba(0, 0, 0, 0.6);
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+#settingsOverlay.visible { display: flex; }
+
+#settingsPopup {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.6rem;
+    padding: 1.4rem 1.6rem;
+    width: clamp(18rem, 80vw, 26rem);
+    color: #ccc;
+    box-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+#settingsPopup h2 {
+    margin: 0 0 0.3rem 0;
+    color: rgba(255, 215, 0, 0.9);
+    font-size: clamp(1.1rem, 2.4vw, 1.4rem);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-align: center;
+}
+.settingsRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 0.3rem;
+}
+.settingsRow label {
+    color: #ddd;
+    font-size: clamp(0.9rem, 1.8vw, 1rem);
+    cursor: pointer;
+}
+.toggleSwitch {
+    width: 2.4rem;
+    height: 1.3rem;
+    background: #3a3a4a;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    padding: 0;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease;
+}
+.toggleSwitch[aria-checked="true"] {
+    background: #3d7dd4;
+    border-color: rgba(110, 160, 230, 0.6);
+}
+.toggleKnob {
+    position: absolute;
+    top: 50%;
+    left: 0.15rem;
+    width: 1rem;
+    height: 1rem;
+    background: #fff;
+    border-radius: 50%;
+    transform: translateY(-50%);
+    transition: left 0.18s ease;
+}
+.toggleSwitch[aria-checked="true"] .toggleKnob {
+    left: calc(100% - 1rem - 0.15rem);
+}
+#settingsCloseBtn {
+    margin-top: 0.4rem;
+    padding: 0.5rem 1.2rem;
+    background: #3d7dd4;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 0.4rem;
+    font-family: inherit;
+    font-size: clamp(0.85rem, 1.7vw, 1rem);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    align-self: center;
+    transition: background 0.15s ease;
+}
+#settingsCloseBtn:hover { background: #4a8de4; }
+
+/* In debug mode the menu is hidden, and there's no concept of gameplay
+   sessions, so the settings popup is meaningless — keep it out of the way. */
+html.mode-debug #settingsBtn,
+html.mode-debug #settingsOverlay { display: none !important; }
+
 /* ----- In-game HUD ----- */
 #hud {
     position: absolute;
@@ -467,7 +594,32 @@ html.mode-game #hintBtn {
     font-variant-numeric: tabular-nums;
     min-width: 4.5rem;
     text-align: center;
-    position: relative; /* anchor for the floating penalty indicator */
+    /* Inner items (timer + hudLevel + hudHintBtn) are all absolutely
+       positioned so their distance from center is fixed and symmetric,
+       regardless of the surrounding items' widths. Flex space-between on
+       the remaining two items (hudType, hudQuitBtn) keeps the outer edges
+       at the left/right of the HUD. Timer still serves as the positioning
+       context for the floating "−Xs" penalty indicator below it. */
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+/* Symmetric inner items: hudLevel sits 10rem to the left of center (right
+   edge anchored), hudHintBtn the same distance to the right (left edge
+   anchored). Leaves ~7rem of breathing room around the timer's ~3rem
+   half-width on each side. */
+#hudLevel {
+    position: absolute;
+    right: calc(50% + 10rem);
+    top: 50%;
+    transform: translateY(-50%);
+}
+#hudHintBtn {
+    position: absolute;
+    left: calc(50% + 10rem);
+    top: 50%;
+    transform: translateY(-50%);
 }
 #hudTimer.urgent {
     color: #ff6060;
@@ -494,12 +646,16 @@ html.mode-game #hintBtn {
         box-shadow: none;
     }
 }
+/* The shake combines its X offset with the centering translate(-50%, -50%)
+   on #hudTimer — without bundling the centering in, the animation's
+   transform overrides the static one and the timer jumps to (50%, 50%)
+   of the HUD with its top-left corner anchored instead of its center. */
 @keyframes timerPenaltyShake {
-    0%, 100% { transform: translateX(0); }
-    20%      { transform: translateX(-0.4rem); }
-    40%      { transform: translateX(0.4rem); }
-    60%      { transform: translateX(-0.25rem); }
-    80%      { transform: translateX(0.25rem); }
+    0%, 100% { transform: translate(-50%, -50%); }
+    20%      { transform: translate(calc(-50% - 0.4rem),  -50%); }
+    40%      { transform: translate(calc(-50% + 0.4rem),  -50%); }
+    60%      { transform: translate(calc(-50% - 0.25rem), -50%); }
+    80%      { transform: translate(calc(-50% + 0.25rem), -50%); }
 }
 /* Floating "−Xs" indicator that pops below the timer and rises up. Anchored
    below (not above) the timer because the timer sits at the very top of the
@@ -525,18 +681,57 @@ html.mode-game #hintBtn {
     80%  { opacity: 1; transform: translateX(-50%) translateY(-0.4rem); }
     100% { opacity: 0; transform: translateX(-50%) translateY(-0.8rem); }
 }
+/* hudSettingsBtn + hudQuitBtn are the only items left in the flex flow on
+   the right side of the HUD (hudLevel/Timer/HintBtn are absolutely
+   positioned). margin-right: auto on hudType eats all the leftover space
+   so these two pack tight together at the right edge with just the HUD's
+   `gap` between them — keeps the settings button "just to the left of
+   QUIT" regardless of viewport width. */
+#hudType { margin-right: auto; }
+#hudHintBtn,
 #hudQuitBtn {
     padding: 0.4rem 0.9rem;
+    background: rgba(40, 30, 50, 0.7);
+    border-radius: 0.4rem;
+    font-family: inherit;
+    font-size: clamp(0.8rem, 1.6vw, 0.95rem);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+#hudSettingsBtn {
+    padding: 0.4rem 0.6rem;
     background: rgba(40, 30, 50, 0.7);
     color: rgba(220, 200, 230, 0.85);
     border: 1px solid rgba(200, 180, 220, 0.3);
     border-radius: 0.4rem;
     font-family: inherit;
-    font-size: clamp(0.8rem, 1.6vw, 0.95rem);
-    font-weight: 500;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-size: clamp(0.95rem, 1.8vw, 1.15rem);
+    line-height: 1;
     cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+#hudSettingsBtn:hover {
+    background: rgba(70, 40, 70, 0.9);
+    border-color: rgba(220, 200, 230, 0.6);
+    color: #fff;
+    transform: rotate(45deg);
+}
+#hudHintBtn {
+    color: rgba(255, 215, 0, 0.85);
+    border: 1px solid rgba(255, 215, 0, 0.4);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+}
+#hudHintBtn:hover {
+    background: rgba(60, 40, 70, 0.9);
+    border-color: rgba(255, 215, 0, 0.75);
+    color: #FFD700;
+}
+#hudQuitBtn {
+    color: rgba(220, 200, 230, 0.85);
+    border: 1px solid rgba(200, 180, 220, 0.3);
+    font-weight: 500;
 }
 #hudQuitBtn:hover {
     background: rgba(70, 40, 70, 0.9);
@@ -580,6 +775,11 @@ html.mode-game #hintBtn {
     margin-top: 0.6rem;
     align-items: center;
 }
+/* `display: flex` above overrides the browser's default `[hidden] { display: none }`,
+   so the JS toggling `gameOverNameRow.hidden` had no visual effect — the name+Save
+   row appeared even on zero-score / non-ranking game-overs. Attribute-selector
+   specificity (.class[attr] beats .class) restores the intended hide behavior. */
+.gameOverNameRow[hidden] { display: none; }
 #gameOverName {
     padding: 0.55rem 0.9rem;
     background: rgba(20, 24, 50, 0.85);
@@ -669,6 +869,21 @@ html.mode-game #hintBtn {
     font-variant-numeric: tabular-nums;
 }
 #leaderboardEntries li:last-child { border-bottom: none; }
+/* The player's just-saved row when arriving from the game-over screen. Soft
+   gold wash + glow to match the rank color used elsewhere; pulses briefly
+   on appear so a top-of-board entry doesn't get lost above the scroll. */
+#leaderboardEntries li.lbHighlight {
+    background: rgba(255, 215, 0, 0.14);
+    box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.45) inset,
+                0 0 1.2rem rgba(255, 215, 0, 0.18);
+    border-radius: 0.35rem;
+    animation: lbHighlightPulse 1.6s ease-out 2;
+}
+@keyframes lbHighlightPulse {
+    0%   { box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.45) inset, 0 0 0.4rem  rgba(255, 215, 0, 0.18); }
+    50%  { box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.85) inset, 0 0 1.8rem  rgba(255, 215, 0, 0.55); }
+    100% { box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.45) inset, 0 0 1.2rem  rgba(255, 215, 0, 0.18); }
+}
 #leaderboardEntries li .lbRank { color: rgba(255, 215, 0, 0.85); font-weight: 600; }
 #leaderboardEntries li .lbName { font-weight: 600; }
 #leaderboardEntries li .lbSolved { color: rgba(180, 220, 180, 0.95); }
@@ -692,6 +907,67 @@ html.mode-game #hintBtn {
     margin-top: 0.4rem;
 }
 #leaderboardCloseBtn:hover {
+    background: rgba(60, 40, 70, 0.9);
+    border-color: rgba(255, 215, 0, 0.75);
+    color: #FFD700;
+}
+
+/* Watch button on each leaderboard entry — triggers replay of that run. */
+#leaderboardEntries li .lbWatch {
+    margin-left: 0.5rem;
+    padding: 0.15rem 0.55rem;
+    background: rgba(40, 60, 100, 0.7);
+    color: rgba(220, 230, 255, 0.95);
+    border: 1px solid rgba(150, 170, 220, 0.45);
+    border-radius: 0.3rem;
+    font-family: inherit;
+    font-size: 0.85em;
+    cursor: pointer;
+}
+#leaderboardEntries li .lbWatch:hover {
+    background: rgba(60, 90, 140, 0.85);
+    border-color: rgba(180, 200, 240, 0.8);
+}
+
+/* Replay HUD — pinned strip while watching another player's recording. */
+#replayHud {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.55rem 1rem;
+    background: rgba(20, 24, 50, 0.85);
+    border-bottom: 1px solid rgba(150, 170, 220, 0.35);
+    color: rgba(220, 230, 255, 0.95);
+    font-size: clamp(0.9rem, 2vw, 1.05rem);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+#replayLabel {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#replayStopBtn {
+    padding: 0.4rem 1rem;
+    background: rgba(40, 30, 50, 0.7);
+    color: rgba(255, 215, 0, 0.85);
+    border: 1px solid rgba(255, 215, 0, 0.4);
+    border-radius: 0.4rem;
+    font-family: inherit;
+    font-size: clamp(0.85rem, 1.7vw, 1rem);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+#replayStopBtn:hover {
     background: rgba(60, 40, 70, 0.9);
     border-color: rgba(255, 215, 0, 0.75);
     color: #FFD700;

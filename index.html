@@ -48,12 +48,14 @@
             <div id="hudType"></div>
             <div id="hudLevel"></div>
             <div id="hudTimer"><span class="hudTimerVal"></span></div>
-            <div id="hudScore"></div>
+            <button id="hudHintBtn" type="button" data-i18n="hint.button">Hint</button>
+            <button id="hudSettingsBtn" type="button" data-i18n-attr="title:settings.title" title="Settings">⚙</button>
             <button id="hudQuitBtn" type="button" data-i18n="marathon.quit">Quit</button>
         </div>
 
         <!-- Marathon main menu (game mode only) -->
         <div id="menu">
+            <button id="settingsBtn" type="button" data-i18n-attr="title:settings.title" title="Settings">⚙</button>
             <!-- Bold condensed all-caps wordmark in a viewfinder-style frame.
                  The O is a small canvas painted by TitleRenderer.draw() — same
                  color constants and beveled-tile drawing primitives as the
@@ -89,6 +91,25 @@
             <button id="menuLeaderboardBtn" type="button" data-i18n="marathon.leaderboards">Leaderboards</button>
         </div>
 
+        <!-- Settings popup (menu-only — intentionally NOT available during
+             gameplay because closing it would effectively pause the timer
+             and enable cheating). Currently exposes Music + SFX toggles;
+             more can be added later. -->
+        <div id="settingsOverlay">
+            <div id="settingsPopup">
+                <h2 data-i18n="settings.title">Settings</h2>
+                <div class="settingsRow">
+                    <label for="settingMusic" data-i18n="settings.music">Music</label>
+                    <button id="settingMusic" class="toggleSwitch" type="button" role="switch" aria-checked="true"><span class="toggleKnob"></span></button>
+                </div>
+                <div class="settingsRow">
+                    <label for="settingSfx" data-i18n="settings.sfx">Sound effects</label>
+                    <button id="settingSfx" class="toggleSwitch" type="button" role="switch" aria-checked="true"><span class="toggleKnob"></span></button>
+                </div>
+                <button id="settingsCloseBtn" type="button" data-i18n="settings.close">Close</button>
+            </div>
+        </div>
+
         <!-- Game over screen (game mode only) -->
         <div id="gameOver">
             <h2 data-i18n="marathon.timesUp">Time's up!</h2>
@@ -109,6 +130,12 @@
             <ol id="leaderboardEntries"></ol>
             <p id="leaderboardEmpty" data-i18n="marathon.boardEmpty" hidden>No scores yet — be the first!</p>
             <button id="leaderboardCloseBtn" type="button" data-i18n="marathon.close">Close</button>
+        </div>
+
+        <!-- Replay HUD (game mode only) — shown while watching another player's recording. -->
+        <div id="replayHud">
+            <div id="replayLabel"></div>
+            <button id="replayStopBtn" type="button" data-i18n="marathon.stopReplay">Stop</button>
         </div>
     </main>
 
@@ -178,7 +205,7 @@
     <script>
     (function() {
         var t = Date.now();
-        var srcs = ['config.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','maze.js','render.js','title-renderer.js','marathon.js','game.js'];
+        var srcs = ['config.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','maze.js','render.js','title-renderer.js','marathon.js','game.js'];
         for (var i = 0; i < srcs.length; i++) {
             document.write('<script src="' + srcs[i] + '?t=' + t + '"><\/script>');
         }

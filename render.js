@@ -163,6 +163,17 @@ const Render = (() => {
     let LIT_ORANGE_HI  = '#ffd6a8';
     let LIT_ORANGE_LO  = '#7a3a05';
 
+    // Joined-paths palette — when two different-color paths share a lane, the
+    // overlap lane flashes dark red to flag the conflict instead of being
+    // arbitrarily painted with one of the two path colors. Sentinel pathIdx
+    // value is JOINED_PATH_IDX (-2); -1 still means "lane not lit".
+    const JOINED_PATH_IDX        = -2;
+    const JOINED_PULSE_PERIOD_MS = 900;
+    const JOINED_PULSE_AMP       = 0.45;
+    let LIT_JOINED      = '#a02020';
+    let LIT_JOINED_HI   = '#cc4040';
+    let LIT_JOINED_LO   = '#4a0000';
+
     function setLitGreenLo(hex) { LIT_GREEN_LO = hex; if (ctx) draw(); }
     function setLitGreenHi(hex) { LIT_GREEN_HI = hex; if (ctx) draw(); }
     function setLitGoldLo(hex)  { LIT_GOLD_LO  = hex; if (ctx) draw(); }
@@ -170,8 +181,20 @@ const Render = (() => {
 
     // Each path picks up gold when ITS walk reaches the exit, independent of
     // the others. Path 0 = green, path 1 = blue, path 2 = pink, path 3 = orange.
+    // pathIdx === JOINED_PATH_IDX → dark-red flash, brightness-modulated by
+    // wall-clock time so the rAF loop drives the flicker without needing
+    // per-tile state.
     function litPalette(pathIdx) {
         const idx = pathIdx | 0;
+        if (idx === JOINED_PATH_IDX) {
+            const phase  = (Date.now() / JOINED_PULSE_PERIOD_MS) * 2 * Math.PI;
+            const factor = 1 + JOINED_PULSE_AMP * Math.sin(phase);
+            return {
+                base: scaleColor(LIT_JOINED,    factor),
+                hi:   scaleColor(LIT_JOINED_HI, factor),
+                lo:   scaleColor(LIT_JOINED_LO, factor),
+            };
+        }
         const pathsWon = Maze.pathsWon || [Maze.won, true, true, true];
         if (pathsWon[idx]) return { base: LIT_GOLD, hi: LIT_GOLD_HI, lo: LIT_GOLD_LO };
         if (idx === 3) return { base: LIT_ORANGE, hi: LIT_ORANGE_HI, lo: LIT_ORANGE_LO };
@@ -1109,6 +1132,20 @@ const Render = (() => {
     const DRAMATIC_PULSE_MS    = 600;
     const DRAMATIC_PULSE_AMP   = 0.85;
 
+    // Broken-chain fade. When a twin twist breaks the OTHER path (the SFX-
+    // eligible case), the orphaned downstream lanes don't cut out — they
+    // briefly FLASH (extra-bright via additive composite) so the player's
+    // eye catches the boo/gasp moment, then ramp from full lit alpha to 0
+    // over BROKEN_FADE_MS. Driven by game.js via Render.fadeLanes(entries).
+    // Entries reference lane port-pairs by (r, c, a, b); the tile rotations
+    // of these cells are unchanged by the twist (A and B are excluded), so
+    // the lane is still physically present and renderable from the
+    // post-rotation grid state.
+    const FLASH_BEFORE_FADE_MS = 200;
+    const BROKEN_FADE_MS       = 1500;
+    const FADE_LIFE_MS         = FLASH_BEFORE_FADE_MS + BROKEN_FADE_MS;
+    const fadingLanes = [];   // [{ r, c, a, b, pathIdx, startTime }]
+
     // Tile rotation animations — when enabled, tiles spin smoothly to their
     // new orientation rather than snapping. Maze state is mutated immediately
     // on click; this just animates the visual transition. At t=0 the tile is
@@ -1238,6 +1275,31 @@ const Render = (() => {
         if (animationFrameId !== null) return;
         animationFrameId = requestAnimationFrame(tick);
     }
+
+    // Start fading the given highlighted entries out — see BROKEN_FADE_MS
+    // comment for context. Entries are the original Maze.highlighted shape
+    // (row, col, inPort, outPort, path); we normalize to lo/hi port pairs
+    // here so the render pass doesn't have to.
+    function fadeLanes(entries) {
+        if (!entries || entries.length === 0) return;
+        const now = Date.now();
+        for (const e of entries) {
+            const inPort  = e.inPort  | 0;
+            const outPort = e.outPort | 0;
+            fadingLanes.push({
+                r: e.row | 0,
+                c: e.col | 0,
+                a: Math.min(inPort, outPort),
+                b: Math.max(inPort, outPort),
+                pathIdx: e.path | 0,
+                startTime: now,
+            });
+        }
+        ensureAnimating();
+    }
+    function clearFadingLanes() {
+        fadingLanes.length = 0;
+    }
     function shouldKeepAnimating() {
         const grid = Maze.grid;
         if (!grid) return false;
@@ -1247,6 +1309,26 @@ const Render = (() => {
             for (let c = 0; c < Maze.COLS; c++) {
                 if (grid[r][c]._hinted) return true;
             }
+        }
+        if (hasJoinedLanes()) return true;
+        if (fadingLanes.length > 0) return true;
+        return false;
+    }
+    // Conflict scan over Maze.highlighted: two entries on the same (cell, lane)
+    // with different path indexes means the player has joined two colored paths,
+    // and that lane should flash dark red. Used by draw() and shouldKeepAnimating
+    // BEFORE buildLitKeys has run (so we can't peek at its -2 sentinels yet).
+    function hasJoinedLanes() {
+        const h = Maze.highlighted;
+        if (!h || h.length === 0) return false;
+        const seen = new Map();
+        for (const e of h) {
+            const a = Math.min(e.inPort, e.outPort), b = Math.max(e.inPort, e.outPort);
+            const key = e.row + ',' + e.col + ',' + a + ',' + b;
+            const newPath = e.path | 0;
+            const prev = seen.get(key);
+            if (prev !== undefined && prev !== newPath) return true;
+            seen.set(key, newPath);
         }
         return false;
     }
@@ -1394,12 +1476,22 @@ const Render = (() => {
 
     // Build the (cell, portPair) → pathIdx lookup used by both Pass B
     // (skip lit lanes) and Pass C (dispatch lit lanes to per-path palette).
+    // If two different paths claim the same lane (player has connected
+    // colored paths together), the value becomes JOINED_PATH_IDX so the
+    // lit pass flashes that lane dark red instead of picking one color.
+    function setLit(litKeys, key, newPath) {
+        const existing = litKeys.get(key);
+        if (existing === undefined) litKeys.set(key, newPath);
+        else if (existing !== JOINED_PATH_IDX && existing !== newPath) {
+            litKeys.set(key, JOINED_PATH_IDX);
+        }
+    }
     function buildLitKeys() {
         const grid = Maze.grid;
         const litKeys = new Map();
         for (const h of Maze.highlighted) {
             const a = Math.min(h.inPort, h.outPort), b = Math.max(h.inPort, h.outPort);
-            litKeys.set(h.row + ',' + h.col + ',' + a + ',' + b, h.path | 0);
+            setLit(litKeys, h.row + ',' + h.col + ',' + a + ',' + b, h.path | 0);
         }
         // Hint-locked path tiles light up even before the live walk reaches
         // them, so the player sees the hint contributing to the chain.
@@ -1416,13 +1508,13 @@ const Render = (() => {
                             const llo = Math.min(la, lb), lhi = Math.max(la, lb);
                             if (llo === lo && lhi === hi) { p = lp; break; }
                         }
-                        litKeys.set(r + ',' + c + ',' + lo + ',' + hi, p);
+                        setLit(litKeys, r + ',' + c + ',' + lo + ',' + hi, p);
                     }
                 } else {
                     const tilePath = tile._path | 0;
                     for (const [a, b] of Maze.getConnections(tile)) {
                         const lo = Math.min(a, b), hi = Math.max(a, b);
-                        litKeys.set(r + ',' + c + ',' + lo + ',' + hi, tilePath);
+                        setLit(litKeys, r + ',' + c + ',' + lo + ',' + hi, tilePath);
                     }
                 }
             }
@@ -1440,7 +1532,8 @@ const Render = (() => {
         withTileRotation(r, c, () => {
             const conns = Maze.getConnections(tile);
             for (const [a, b] of conns) {
-                if (litPathFor(litKeys, r, c, a, b) >= 0) continue;
+                // Skip rim under any lit lane — including joined lanes (-2).
+                if (litPathFor(litKeys, r, c, a, b) !== -1) continue;
                 if (laneIsOpposite(a, b)) drawStraightRim(px, py, laneIsVertical(a, b), w, rim);
                 else                       drawChannelRim(px, py, a, b, w, rim);
             }
@@ -1455,7 +1548,8 @@ const Render = (() => {
             const conns = Maze.getConnections(tile);
             for (const [a, b] of conns) {
                 const pathIdx = litPathFor(litKeys, r, c, a, b);
-                if (pathIdx < 0) continue;
+                // Draw if lit by a path (0..3) or joined (-2); skip only the truly un-lit (-1).
+                if (pathIdx === -1) continue;
                 if (laneIsOpposite(a, b)) drawStraightLit(px, py, laneIsVertical(a, b), w, rim, pathIdx);
                 else                       drawChannelLit(px, py, a, b, w, rim, pathIdx);
             }
@@ -1527,6 +1621,55 @@ const Render = (() => {
         // Pass C: lit channels at full opacity.
         for (let r = 0; r < Maze.ROWS; r++) {
             for (let c = 0; c < Maze.COLS; c++) renderTileLit(r, c, litKeys, w, rim);
+        }
+
+        // Pass D: broken-chain fade. Drawn after Pass C so the fading lanes
+        // overlay the now-dim renderings of those cells. Two phases per
+        // entry: a brief FLASH (full alpha + decaying additive overlay,
+        // makes the lane pop bright at the moment the SFX hits), then the
+        // standard alpha ramp from 1 to 0.
+        if (fadingLanes.length > 0) {
+            const now  = Date.now();
+            const keep = [];
+            for (const e of fadingLanes) {
+                const elapsed = now - e.startTime;
+                if (elapsed >= FADE_LIFE_MS) continue;
+                const px = originX + e.c * cellSize;
+                const py = originY + e.r * cellSize;
+                const drawLane = () => {
+                    withTileRotation(e.r, e.c, () => {
+                        if (laneIsOpposite(e.a, e.b)) {
+                            drawStraightLit(px, py, laneIsVertical(e.a, e.b), w, rim, e.pathIdx);
+                        } else {
+                            drawChannelLit(px, py, e.a, e.b, w, rim, e.pathIdx);
+                        }
+                    });
+                };
+                // Base lit lane at the phase-appropriate alpha.
+                let baseAlpha;
+                if (elapsed < FLASH_BEFORE_FADE_MS) {
+                    baseAlpha = 1;
+                } else {
+                    baseAlpha = 1 - (elapsed - FLASH_BEFORE_FADE_MS) / BROKEN_FADE_MS;
+                }
+                ctx.globalAlpha = baseAlpha;
+                drawLane();
+                // Flash overlay during the early window — additive composite
+                // on top of the base draw amplifies the lit colors toward
+                // white. Strength decays linearly across the flash window
+                // so the brightening tapers into the standard fade.
+                if (elapsed < FLASH_BEFORE_FADE_MS) {
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'lighter';
+                    ctx.globalAlpha = (1 - elapsed / FLASH_BEFORE_FADE_MS) * 0.7;
+                    drawLane();
+                    ctx.restore();
+                }
+                ctx.globalAlpha = 1;
+                keep.push(e);
+            }
+            fadingLanes.length = 0;
+            for (const e of keep) fadingLanes.push(e);
         }
 
         // Pass A: tile walls at full opacity. Drawn AFTER both channel passes
@@ -1733,8 +1876,10 @@ const Render = (() => {
             }
         }
 
+        const joinedActive = hasJoinedLanes();
+        const fadingActive = fadingLanes.length > 0;
         const canPartial = rotationAnims.length > 0
-            && !dramaticActive && !hintActive && !needsFullDraw;
+            && !dramaticActive && !hintActive && !joinedActive && !fadingActive && !needsFullDraw;
 
         if (canPartial) {
             drawAnimatedFrame();
@@ -1765,5 +1910,7 @@ const Render = (() => {
              setLockFaceColor, setCompleteCircuits, setGridSize,
              flashTwinPair, renderSnippet,
              setAnimateRotations, animateRotationAt,
+             hasJoinedLanes,    // game.js polls this for the overlap-SFX state machine
+             fadeLanes, clearFadingLanes,  // broken-chain fade triggered alongside the twin-break SFX
              refit: resize };  // public hook to recompute canvas dims after Maze.ROWS/COLS change
 })();

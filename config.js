@@ -26,6 +26,17 @@ const BACKGROUND_IMAGE_URL =
 const THUMBNAIL_URL_BASE =
     'https://github.com/crdeardorff74-commits/circuitousness-front-end/releases/download/Images/';
 
+// Gameplay music. music.js fetches the per-game playlist from the umbrella
+// API (AUTH_API/api/songs?game=<slug>) and resolves each row's filename
+// against this base URL. Points at TANTЯO's music release so reused songs
+// don't have to be duplicated into a Circuitousness-only releases repo —
+// the admin tool already maps song memberships per-game, the underlying
+// MP3s can live in one shared repo. Same iPad/iOS caveat as the SFX
+// system: GitHub 302 redirects don't follow in <audio> elements; would
+// need a backend proxy to support iOS.
+const MUSIC_BASE_URL =
+    'https://github.com/crdeardorff74-commits/blockchainstorm-frontend/releases/download/Music/';
+
 const AppConfig = {
     // TODO: set when back-end is deployed
     GAME_API: 'https://circuitousness-api.onrender.com/api',
@@ -39,12 +50,18 @@ const AppConfig = {
 // Quad: each 2×2 sub-tile group is a tile (so a 4×4 quad puzzle = 16 tiles,
 // even though the underlying maze is 8×8 sub-tiles).
 const MARATHON = {
-    // Per-puzzle starting time, seconds × tile count.
-    TIME_PER_TILE_SINGULAR: 2,
-    TIME_PER_TILE_QUAD:    4,
-    // Carry-over cap after a solve, seconds × tile count of the JUST-FINISHED puzzle.
-    TIME_CAP_PER_TILE_SINGULAR: 7,
-    TIME_CAP_PER_TILE_QUAD:    12,
+    // Per-puzzle starting time and carry-over cap. Both are per tile AND per
+    // path count — more paths in a puzzle means more thinking per tile, so the
+    // allotment scales linearly with N. Final formula at runtime:
+    //   fresh_ms = tile_count × TIME_PER_TILE_*  × pathCount × 1000
+    //   cap_ms   = tile_count × TIME_CAP_PER_TILE_* × pathCount × 1000
+    // Caps are intentionally above fresh per path (cap = 2 × N vs fresh =
+    // 1.5 × N for singular) so banking always has headroom regardless of
+    // path count, instead of clipping at high-N puzzles.
+    TIME_PER_TILE_SINGULAR: 1.5,
+    TIME_PER_TILE_QUAD:    3,
+    TIME_CAP_PER_TILE_SINGULAR: 2,
+    TIME_CAP_PER_TILE_QUAD:    4,
 
     // Puzzle progression. Dims grow one dim at a time, period-4 cycle:
     // (singular) 8×8 → 8×9 → 9×9 → 10×9 → 10×10 → 10×11 → 11×11 → 12×11 → …
@@ -54,8 +71,9 @@ const MARATHON = {
     MIN_DIM_SINGULAR: 8,
     MIN_DIM_QUAD:    6,
 
-    // Leaderboard storage. Top N entries kept per game type.
-    LEADERBOARD_TOP_N: 10,
+    // Leaderboard storage. Top N entries shown per game type.
+    // Per universal rule 7a: 20.
+    LEADERBOARD_TOP_N: 20,
 
     // After a solve, wait for the player to click before building the next
     // puzzle — gives them time to read the banked-time message instead of

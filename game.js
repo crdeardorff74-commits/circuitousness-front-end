@@ -39,6 +39,12 @@
 
         let lastWon    = false; // start false so the banner appears even if init() randomly produces a winning rotation
         let isBuilding = false;
+        // SFX state: refresh() detects per-path completion + overlap-loop
+        // transitions by diffing against these. newPuzzle resets both so a
+        // fresh puzzle doesn't replay applause for paths that are already
+        // connected in the loaded snapshot.
+        let lastPathsWon = [false, false, false, false];
+        let lastJoined   = false;
 
         // Progression rule: after a win, the player advances to the next
         // larger size. Sequence alternates which dimension grows so the
@@ -249,6 +255,35 @@
             } else if (!Maze.won && lastWon) {
                 banner.classList.remove('visible');
             }
+
+            // SFX state machine. Skipped during replay (passive viewing) and
+            // when Sfx isn't loaded yet (defensive — script-order should
+            // guarantee it's there).
+            if (typeof Sfx !== 'undefined' && !isReplaying) {
+                const cur = Maze.pathsWon || [false, false, false, false];
+                // Intermediate path completion: applause when a single path
+                // connects but the puzzle as a whole isn't solved yet.
+                // The final-path case is handled by Marathon.onSolve →
+                // applause_long; we suppress applause here when Maze.won
+                // so the two cues don't stack.
+                if (!Maze.won) {
+                    for (let i = 0; i < 4; i++) {
+                        if (cur[i] && !lastPathsWon[i]) {
+                            Sfx.play('applause');
+                            break;
+                        }
+                    }
+                }
+                lastPathsWon = [!!cur[0], !!cur[1], !!cur[2], !!cur[3]];
+
+                // Two-paths-overlap loop: rising edge starts the glitch loop,
+                // falling edge stops it.
+                const joined = !!(Render.hasJoinedLanes && Render.hasJoinedLanes());
+                if (joined && !lastJoined)      Sfx.playLoop('glitch_overlap', 'glitch');
+                else if (!joined && lastJoined) Sfx.stopLoop('glitch_overlap');
+                lastJoined = joined;
+            }
+
             lastWon = Maze.won;
         }
 
@@ -266,17 +301,26 @@
                 }
             }
         }
-        async function replay() {
-            if (!recording || isReplaying) return;
-            isReplaying = true;
-            replayCancelled = false;
-            replayBtn.disabled = true;
-            // Restore the initial scrambled state.
-            Maze.loadSnapshot(deepCloneSnapshot(recording.initialState));
+        // Core single-puzzle playback. Caller is responsible for the
+        // isReplaying lifecycle — replay() flips it per invocation, but
+        // replayAll() holds it true across the whole sequence so the
+        // gating in handlePointer / hintBtn stays active between puzzles.
+        async function playOneRecording(rec) {
+            if (!rec) return;
+            // Recordings may carry a different mode/dims than the current
+            // game state. Sync mode flags + dims BEFORE loadSnapshot so
+            // the grid is interpreted correctly.
+            if (typeof rec.quadMode === 'boolean') Maze.setQuadMode(rec.quadMode);
+            if (typeof rec.pathCount === 'number') Maze.setPathCount(rec.pathCount);
+            if (rec.initialState
+                && (rec.initialState.rows !== Maze.ROWS || rec.initialState.cols !== Maze.COLS)) {
+                Maze.setDimensions(rec.initialState.rows, rec.initialState.cols);
+            }
+            Maze.loadSnapshot(deepCloneSnapshot(rec.initialState));
+            Render.refit();
             Render.draw();
-            // Schedule each move at its recorded offset, paced from now.
             const start = Date.now();
-            for (const move of recording.moves) {
+            for (const move of (rec.moves || [])) {
                 if (replayCancelled) break;
                 const wait = Math.max(0, move.t - (Date.now() - start));
                 if (wait > 0) {
@@ -294,11 +338,54 @@
                 Render.draw();
                 if (Maze.won) banner.classList.add('visible');
             }
+        }
+
+        async function replay() {
+            if (!recording || isReplaying) return;
+            isReplaying = true;
+            replayCancelled = false;
+            replayBtn.disabled = true;
+            await playOneRecording(recording);
             isReplaying = false;
             replayCancelled = false;
             replayBtn.disabled = false;
         }
         if (replayBtn) replayBtn.addEventListener('click', replay);
+
+        // Cross-puzzle orchestration — Marathon uses this when a player
+        // clicks Watch on a leaderboard entry. `events` is the array of
+        // per-puzzle recordings from the server. `onPuzzleChange(idx, total)`
+        // fires before each puzzle starts so the caller can update HUD text.
+        // Returns true on completion, false if cancelled via cancelReplay().
+        async function replayAll(events, onPuzzleChange) {
+            if (isReplaying || !Array.isArray(events) || events.length === 0) return false;
+            isReplaying = true;
+            replayCancelled = false;
+            let completed = true;
+            for (let i = 0; i < events.length; i++) {
+                if (replayCancelled) { completed = false; break; }
+                if (typeof onPuzzleChange === 'function') {
+                    try { onPuzzleChange(i, events.length); } catch (e) {}
+                }
+                await playOneRecording(events[i]);
+                if (replayCancelled) { completed = false; break; }
+                // Brief breath between puzzles so the solved state is
+                // visible before the next snapshot loads.
+                if (i < events.length - 1) {
+                    await new Promise((res) => {
+                        replayResolve = res;
+                        replayTimer = setTimeout(() => {
+                            replayTimer = null;
+                            replayResolve = null;
+                            res();
+                        }, 800);
+                    });
+                }
+            }
+            isReplaying = false;
+            replayCancelled = false;
+            return completed;
+        }
 
         async function newPuzzle(rows, cols) {
             // Bail out of any in-progress replay BEFORE the isBuilding gate
@@ -385,6 +472,20 @@
 
             isBuilding = false;
             lastWon = Maze.won;
+            // Seed the SFX diff baselines from the CURRENT puzzle state, not
+            // all-false. Two reasons:
+            //   (1) Maze.pathsWon's unused slots default to `true` in modes
+            //       with fewer than 4 paths (e.g. 1-path → [F,T,T,T]). An
+            //       all-false baseline reads those phantom trues as newly
+            //       completed paths and fires applause on every puzzle start.
+            //   (2) The refresh() at the end of this function would otherwise
+            //       fire applause for any genuinely-won path that happens to
+            //       already be lit in the loaded snapshot.
+            const initPaths = Maze.pathsWon || [false, false, false, false];
+            lastPathsWon = [!!initPaths[0], !!initPaths[1], !!initPaths[2], !!initPaths[3]];
+            lastJoined   = !!(Render.hasJoinedLanes && Render.hasJoinedLanes());
+            if (typeof Sfx !== 'undefined') Sfx.stopLoop('glitch_overlap');
+            if (Render.clearFadingLanes) Render.clearFadingLanes();
             // Start a fresh recording for the new puzzle. Hide any leftover
             // replay button from the previous puzzle.
             startRecording();
@@ -431,7 +532,10 @@
             setPathCount: setPathCount,
             setQuadMode: setQuadMode,
             get quadMode() { return quadMode; },
-            get recording() { return recording; }   // debug/test access
+            get recording() { return recording; },  // debug/test access
+            replayAll: replayAll,                   // Marathon leaderboard playback
+            cancelReplay: cancelReplay,
+            get isReplaying() { return isReplaying; }
         };
 
         // Debug-panel pre-gen status indicator. Polls every 200ms — cheap
@@ -501,11 +605,11 @@
         // CCW, RIGHT-click is CW.
         function handlePointer(ev, ccw) {
             if (isBuilding || isReplaying) return;
-            // Marathon between-puzzles state: any tap advances instead of
-            // rotating a tile (the player has already won; rotating now would
-            // break the gold path they're looking at).
+            // Marathon between-puzzles state: swallow canvas taps entirely.
+            // Rotating now would break the gold path the player's looking at,
+            // and advance is intentionally popup-only so a click-cascade from
+            // solving by mashing can't accidentally skip the transition.
             if (typeof Marathon !== 'undefined' && Marathon.isInTransition()) {
-                Marathon.advance();
                 return;
             }
             const rect = canvas.getBoundingClientRect();
@@ -513,10 +617,145 @@
             const y = (ev.clientY !== undefined ? ev.clientY : ev.touches[0].clientY) - rect.top;
             const cell = Render.cellAt(x, y);
             if (!cell) return;
+            // Snapshot pre-rotation state for the twin-twist-break SFX check.
+            // Rules per the user:
+            //   1. SFX only when the PARTNER tile (B) is what breaks the path,
+            //      not the tile the player clicked (A) — directly breaking
+            //      your own twist is a choice, not a surprise.
+            //   2. Don't count it as a break if the only thing lost is the
+            //      tip of the chain (the chain just shortens by B; everything
+            //      else is intact).
+            // Per-path analysis: in multi-path mode, ANY path that B broke
+            // (and A didn't, and isn't just tip-loss) is enough to fire.
+            const preTile  = Maze.grid[cell.row] && Maze.grid[cell.row][cell.col];
+            const isTwin   = !!(preTile && preTile._twin);
+            let aCells = null, bCells = null, preByPath = null, preEntries = null;
+            if (isTwin) {
+                aCells = new Set();
+                bCells = new Set();
+                if (Maze.quadMode) {
+                    // Quad-twin: rotation cascades over all 4 sub-tiles of
+                    // both quads. A-set = clicked quad, B-set = partner quad
+                    // (partner key in assignQuadTwins is the partner quad's TL).
+                    const aQR = (cell.row >> 1) << 1, aQC = (cell.col >> 1) << 1;
+                    for (let dr = 0; dr < 2; dr++) for (let dc = 0; dc < 2; dc++) {
+                        aCells.add((aQR + dr) + ',' + (aQC + dc));
+                    }
+                    const parts = preTile._twin.partner.split(',');
+                    const bQR = parseInt(parts[0], 10), bQC = parseInt(parts[1], 10);
+                    for (let dr = 0; dr < 2; dr++) for (let dc = 0; dc < 2; dc++) {
+                        bCells.add((bQR + dr) + ',' + (bQC + dc));
+                    }
+                } else {
+                    aCells.add(cell.row + ',' + cell.col);
+                    bCells.add(preTile._twin.partner);
+                }
+                preByPath = [new Set(), new Set(), new Set(), new Set()];
+                // Snapshot the full entries (with port pairs) too — used to
+                // build the fade visual, which needs the specific lit lane,
+                // not just the cell.
+                preEntries = (Maze.highlighted || []).slice();
+                for (const h of preEntries) {
+                    const p = h.path | 0;
+                    if (p >= 0 && p < 4) preByPath[p].add(h.row + ',' + h.col);
+                }
+            }
             const ok = Maze.rotate(cell.row, cell.col, ccw);
             if (ok) {
                 recordMove({ type: 'rotate', r: cell.row, c: cell.col, ccw: !!ccw });
                 Render.animateRotationAt(cell.row, cell.col, ccw);
+                if (typeof Sfx !== 'undefined') Sfx.click();
+                if (isTwin && typeof Sfx !== 'undefined') {
+                    const postByPath = [new Set(), new Set(), new Set(), new Set()];
+                    for (const h of (Maze.highlighted || [])) {
+                        const p = h.path | 0;
+                        if (p >= 0 && p < 4) postByPath[p].add(h.row + ',' + h.col);
+                    }
+                    // Lane-level post lookup: keyed by (r, c, lo, hi, path).
+                    // Lets us detect when B's pre-walk LANE is gone even though
+                    // B's CELL is still lit via a different lane (e.g. an elbow
+                    // rotated to a new corner — the cell still glows, but the
+                    // old corner that fed the upstream segment is gone, so
+                    // everything that depended on that corner is orphaned).
+                    const postLaneKeys = new Set();
+                    for (const h of (Maze.highlighted || [])) {
+                        const lo = Math.min(h.inPort, h.outPort);
+                        const hi = Math.max(h.inPort, h.outPort);
+                        postLaneKeys.add(h.row + ',' + h.col + ',' + lo + ',' + hi + ',' + (h.path | 0));
+                    }
+                    let sfxEligible = false;
+                    // Collect entries to hand to Render.fadeLanes — the lost
+                    // downstream lanes on every path that passed the SFX
+                    // gate. Skip cells in bCells so B's own tile/quad stays
+                    // visually quiet (it's the "twisted tile" the user
+                    // asked us NOT to fade — the fade is for the remainder).
+                    const fadeEntries = [];
+                    const fadeSeen    = new Set();
+                    for (let p = 0; p < 4; p++) {
+                        const pre = preByPath[p], post = postByPath[p];
+                        let lost = null;
+                        for (const k of pre) if (!post.has(k)) (lost || (lost = new Set())).add(k);
+                        if (!lost) continue;
+                        // A in lost? Player's tile broke this path on its own.
+                        let aInLost = false;
+                        for (const k of aCells) if (lost.has(k)) { aInLost = true; break; }
+                        if (aInLost) continue;
+                        // B's old lane gone? True if any pre-walk entry through
+                        // B's cells has no matching (same port-pair) entry in
+                        // post. Strictly broader than "B in lost": catches the
+                        // elbow-still-lit case where B's CELL stays in
+                        // highlighted via a different corner but the chain
+                        // past B has been cut at B.
+                        let bOldLaneGone = false;
+                        for (const h of preEntries) {
+                            if ((h.path | 0) !== p) continue;
+                            if (!bCells.has(h.row + ',' + h.col)) continue;
+                            const lo = Math.min(h.inPort, h.outPort);
+                            const hi = Math.max(h.inPort, h.outPort);
+                            const key = h.row + ',' + h.col + ',' + lo + ',' + hi + ',' + p;
+                            if (!postLaneKeys.has(key)) { bOldLaneGone = true; break; }
+                        }
+                        if (!bOldLaneGone) continue;
+                        // The remainder (lost minus B's own cells) needs to
+                        // span more than a single "tile" — a quad in quad
+                        // mode (the player-perceived unit), otherwise a cell.
+                        // A 1-unit remainder feels too minor for SFX + fade.
+                        const remainderUnits = new Set();
+                        for (const k of lost) {
+                            if (bCells.has(k)) continue;
+                            if (Maze.quadMode) {
+                                const ci = k.indexOf(',');
+                                const r = +k.substring(0, ci);
+                                const c = +k.substring(ci + 1);
+                                remainderUnits.add(((r >> 1) << 1) + ',' + ((c >> 1) << 1));
+                            } else {
+                                remainderUnits.add(k);
+                            }
+                        }
+                        if (remainderUnits.size < 2) continue;
+                        sfxEligible = true;
+                        // Stash fade-eligible entries for this path: cells in
+                        // `lost` and not in bCells. Dedupe by (cell, lane)
+                        // because complete chains list each cell twice
+                        // (once each from the fwd + bwd walks meeting).
+                        for (const h of preEntries) {
+                            if ((h.path | 0) !== p) continue;
+                            const k = h.row + ',' + h.col;
+                            if (!lost.has(k)) continue;
+                            if (bCells.has(k)) continue;
+                            const a = Math.min(h.inPort, h.outPort);
+                            const b = Math.max(h.inPort, h.outPort);
+                            const dedupe = k + ',' + a + ',' + b;
+                            if (fadeSeen.has(dedupe)) continue;
+                            fadeSeen.add(dedupe);
+                            fadeEntries.push(h);
+                        }
+                    }
+                    if (sfxEligible) {
+                        Sfx.play(['fail', 'audience_boo', 'audience_disappointed', 'audience_gasp']);
+                        if (Render.fadeLanes) Render.fadeLanes(fadeEntries);
+                    }
+                }
             } else {
                 // Rotation rejected. If this tile is part of a twin pair
                 // and EITHER side is locked (hint OR player-lock), flash
@@ -652,33 +891,41 @@
             banner.addEventListener('click', () => { newPuzzle(); });
         }
 
-        // Hint: snap a random unsolved path tile to its solution and lock it red
-        const hintBtn = document.getElementById('hintBtn');
-        if (hintBtn) {
-            hintBtn.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-                if (isBuilding) return;
-                // Don't run hint during the between-puzzles transition; the
-                // player's already won, hint would just lock a tile on a
-                // puzzle they're about to leave behind. Treat it as a no-op.
-                if (typeof Marathon !== 'undefined' && Marathon.isInTransition()) return;
-                const pick = Maze.hint();
-                if (pick) {
-                    recordMove({ type: 'hint', r: pick.r, c: pick.c });
-                    // Hint always rotates CW (applyHintAt advances rotation
-                    // toward the solution by `turns` 90° steps). Skip the
-                    // animation when turns=0 (tile was already at solution).
-                    if (pick.turns > 0) Render.animateRotationAt(pick.r, pick.c, false, pick.turns);
-                    // Marathon penalty — only when actually playing (not in
-                    // debug or between puzzles). Marathon.onHintUsed handles
-                    // the timer cut and the visual feedback.
-                    if (typeof Marathon !== 'undefined' && Marathon.isPlaying()) {
-                        Marathon.onHintUsed();
-                    }
+        // Hint: snap a random unsolved path tile to its solution and lock it red.
+        // Two buttons share one handler: #hintBtn (debug mode, top-right corner)
+        // and #hudHintBtn (game mode, inside the HUD where the score used to be).
+        // CSS hides whichever button doesn't match the current mode.
+        function handleHintClick(ev) {
+            ev.stopPropagation();
+            if (isBuilding || isReplaying) return;
+            // Don't run hint during the between-puzzles transition; the
+            // player's already won, hint would just lock a tile on a
+            // puzzle they're about to leave behind. Treat it as a no-op.
+            if (typeof Marathon !== 'undefined' && Marathon.isInTransition()) return;
+            const pick = Maze.hint();
+            if (pick) {
+                recordMove({ type: 'hint', r: pick.r, c: pick.c });
+                if (typeof Sfx !== 'undefined') Sfx.play(['audience_shocked', 'jump_scare']);
+                // Hint always rotates CW (applyHintAt advances rotation
+                // toward the solution by `turns` 90° steps). Skip the
+                // animation when turns=0 (tile was already at solution).
+                if (pick.turns > 0) {
+                    Render.animateRotationAt(pick.r, pick.c, false, pick.turns);
+                    if (typeof Sfx !== 'undefined') Sfx.click();
                 }
-                refresh();
-            });
+                // Marathon penalty — only when actually playing (not in
+                // debug or between puzzles). Marathon.onHintUsed handles
+                // the timer cut and the visual feedback.
+                if (typeof Marathon !== 'undefined' && Marathon.isPlaying()) {
+                    Marathon.onHintUsed();
+                }
+            }
+            refresh();
         }
+        ['hintBtn', 'hudHintBtn'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('click', handleHintClick);
+        });
     }
 
     if (document.readyState === 'loading') {

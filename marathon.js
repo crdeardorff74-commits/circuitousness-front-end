@@ -23,10 +23,17 @@
  *   Marathon.onSolve()       — Maze.won just transitioned to true
  */
 const Marathon = (() => {
-    const STATE = { MENU: 'menu', PLAYING: 'playing', GAME_OVER: 'gameOver', LEADERBOARD: 'leaderboard' };
+    const STATE = {
+        MENU:        'menu',
+        PLAYING:     'playing',
+        GAME_OVER:   'gameOver',
+        LEADERBOARD: 'leaderboard',
+        REPLAYING:   'replaying'   // watching another player's recording from a leaderboard entry
+    };
 
     let state          = STATE.MENU;
     let activeType     = null;     // 's1'..'s4', 'q1'..'q4'
+    let sessionToken   = null;     // server-issued cheat-proof timing token (from /api/game/start)
     let level          = 0;        // current puzzle index, 1-based
     let solvedCount    = 0;
     let totalSolveTime = 0;        // ms — sum of (now - puzzleStartTimeMs) per solved puzzle
@@ -35,20 +42,41 @@ const Marathon = (() => {
     let timerHandle    = null;
     let puzzleStartMs  = 0;        // ms epoch when current puzzle finished building
 
+    // Per-game accumulated recordings. Each entry is a deep clone of
+    // Game.recording captured in onSolve() right before the next puzzle
+    // overwrites it. Shipped with the score submission so the run can
+    // be replayed from any leaderboard view.
+    let recordings = [];
+
     let callbacks = null;
 
     // DOM refs (populated in init)
-    let menuEl, hudEl, gameOverEl, leaderboardEl, solveTransitionEl;
-    let hudType, hudLevel, hudTimer, hudScore, hudQuit;
+    let menuEl, hudEl, gameOverEl, leaderboardEl, solveTransitionEl, replayHudEl;
+    let hudType, hudLevel, hudTimer, hudQuit;
     let solveHeadline, solveBanked;
-    let gameOverScore, gameOverTime, gameOverRank, gameOverName, gameOverSave, gameOverMenu;
+    let gameOverScore, gameOverTime, gameOverRank, gameOverName, gameOverSave, gameOverMenu, gameOverNameRow;
     let leaderboardSelect, leaderboardEntries, leaderboardEmpty, leaderboardClose, menuLeaderboardBtn;
+    let replayLabel, replayStopBtn;
+
+    // After a save, the leaderboard view marks the player's just-saved entry
+    // with .lbHighlight so they can find it at a glance. Set by saveScore
+    // before transitioning to the leaderboard; cleared on goToMenu and at
+    // game start. Match by id (server-saved) OR by name+solved+totalMs
+    // (local-only fallback when the server submit failed).
+    let pendingHighlight = null;
 
     // Inter-puzzle transition: blocks repeat-onSolve and gates input. Player
-    // taps to advance (no auto-timeout) so they have time to read the banked
-    // message; the tap is captured by both the popup's click handler and
-    // game.js's handlePointer (when isInTransition() is true).
+    // taps the popup to advance (no auto-timeout) so they have time to read
+    // the banked message. Canvas taps are intentionally NOT a route — they're
+    // swallowed by game.js handlePointer when isInTransition() — because the
+    // click-cascade from mashing through the solve would otherwise skip the
+    // transition before the player registers the win.
     let inTransition = false;
+    // Click-quiet gate: advance() ignores taps until Date.now() >= this.
+    // Each tap (including ignored ones) pushes it out by TRANSITION_QUIET_MS,
+    // so a click-cascade from solving by mashing can't skip the transition.
+    const TRANSITION_QUIET_MS = 1000;
+    let transitionQuietUntil = 0;
 
     function $(id) { return document.getElementById(id); }
 
@@ -60,28 +88,32 @@ const Marathon = (() => {
         gameOverEl         = $('gameOver');
         leaderboardEl      = $('leaderboard');
         solveTransitionEl  = $('solveTransition');
+        replayHudEl        = $('replayHud');
 
         hudType  = $('hudType');
         hudLevel = $('hudLevel');
         hudTimer = $('hudTimer');
-        hudScore = $('hudScore');
         hudQuit  = $('hudQuitBtn');
 
         solveHeadline = $('solveHeadline');
         solveBanked   = $('solveBanked');
 
-        gameOverScore = $('gameOverScore');
-        gameOverTime  = $('gameOverTime');
-        gameOverRank  = $('gameOverRank');
-        gameOverName  = $('gameOverName');
-        gameOverSave  = $('gameOverSaveBtn');
-        gameOverMenu  = $('gameOverMenuBtn');
+        gameOverScore   = $('gameOverScore');
+        gameOverTime    = $('gameOverTime');
+        gameOverRank    = $('gameOverRank');
+        gameOverName    = $('gameOverName');
+        gameOverSave    = $('gameOverSaveBtn');
+        gameOverMenu    = $('gameOverMenuBtn');
+        gameOverNameRow = gameOverEl ? gameOverEl.querySelector('.gameOverNameRow') : null;
 
         leaderboardSelect  = $('leaderboardSelect');
         leaderboardEntries = $('leaderboardEntries');
         leaderboardEmpty   = $('leaderboardEmpty');
         leaderboardClose   = $('leaderboardCloseBtn');
         menuLeaderboardBtn = $('menuLeaderboardBtn');
+
+        replayLabel   = $('replayLabel');
+        replayStopBtn = $('replayStopBtn');
 
         // Wire mode buttons + populate thumbnails. Thumbnail filenames are
         // {1 or 4}x{pathCount}.png — the leading 1/4 is the grid-base
@@ -105,8 +137,9 @@ const Marathon = (() => {
         });
         if (leaderboardClose)   leaderboardClose.addEventListener('click', goToMenu);
         if (leaderboardSelect)  leaderboardSelect.addEventListener('change', renderLeaderboard);
-        // Tap the popup to advance to the next puzzle. handlePointer in
-        // game.js wires the same advance() to canvas clicks.
+        if (replayStopBtn)      replayStopBtn.addEventListener('click', stopReplay);
+        // Tap the popup to advance to the next puzzle. The canvas does NOT
+        // route here — see comment on the inTransition declaration above.
         if (solveTransitionEl)  solveTransitionEl.addEventListener('click', advance);
 
         // Populate the leaderboard mode dropdown — one option per game type.
@@ -148,7 +181,7 @@ const Marathon = (() => {
 
     function showOnly(...els) {
         const set = new Set(els);
-        [menuEl, hudEl, gameOverEl, leaderboardEl].forEach((el) => {
+        [menuEl, hudEl, gameOverEl, leaderboardEl, replayHudEl].forEach((el) => {
             if (!el) return;
             el.classList.toggle('visible', set.has(el));
         });
@@ -156,23 +189,41 @@ const Marathon = (() => {
 
     function clearTransition() {
         inTransition = false;
+        transitionQuietUntil = 0;
         if (solveTransitionEl) solveTransitionEl.classList.remove('visible');
     }
 
     // Player tapped during the inter-puzzle transition — proceed to the next
     // puzzle. No-op if not currently transitioning, so accidental rapid clicks
-    // after the next puzzle loads don't cascade into double-advances.
+    // after the next puzzle loads don't cascade into double-advances. Also
+    // absorbs taps that arrive inside the quiet window so a click-cascade
+    // from mashing through the solve can't skip the transition; every tap
+    // resets the window, so the player has to actually pause before
+    // advancing.
     function advance() {
         if (!inTransition) return;
         if (state !== STATE.PLAYING) return;
+        const now = Date.now();
+        if (now < transitionQuietUntil) {
+            transitionQuietUntil = now + TRANSITION_QUIET_MS;
+            return;
+        }
         clearTransition();
         startNextPuzzle();
     }
 
     function goToMenu() {
+        // Bail out of an in-flight replay before changing state. Game's
+        // own isReplaying flag stays true until the async loop wakes up,
+        // sees the flag, and exits — that's fine because we'll be on the
+        // menu before the next paint anyway.
+        if (state === STATE.REPLAYING && typeof Game !== 'undefined' && Game.cancelReplay) {
+            Game.cancelReplay();
+        }
         state = STATE.MENU;
         stopTimer();
         clearTransition();
+        pendingHighlight = null;   // leaving the leaderboard drops the highlight
         showOnly(menuEl);
     }
 
@@ -213,23 +264,59 @@ const Marathon = (() => {
         return logical.rows * logical.cols;
     }
 
-    function timeForPuzzle(logical, quadMode) {
+    function timeForPuzzle(logical, quadMode, pathCount) {
         const per = quadMode ? MARATHON.TIME_PER_TILE_QUAD : MARATHON.TIME_PER_TILE_SINGULAR;
-        return tileCount(logical) * per * 1000;
+        return tileCount(logical) * per * pathCount * 1000;
     }
 
-    function timeCapForPuzzle(logical, quadMode) {
+    function timeCapForPuzzle(logical, quadMode, pathCount) {
         const cap = quadMode ? MARATHON.TIME_CAP_PER_TILE_QUAD : MARATHON.TIME_CAP_PER_TILE_SINGULAR;
-        return tileCount(logical) * cap * 1000;
+        return tileCount(logical) * cap * pathCount * 1000;
     }
 
     function startGame(type) {
-        activeType     = type;
-        level          = 0;
-        solvedCount    = 0;
-        totalSolveTime = 0;
-        timeRemaining  = 0;        // first puzzle gets only its fresh allotment, no carry-over
+        activeType       = type;
+        sessionToken     = null;  // cleared until /api/game/start resolves
+        level            = 0;
+        solvedCount      = 0;
+        totalSolveTime   = 0;
+        timeRemaining    = 0;     // first puzzle gets only its fresh allotment, no carry-over
+        recordings       = [];    // fresh recording buffer for this game
+        pendingHighlight = null;  // any prior-game highlight is stale once a new run begins
+        if (typeof Music !== 'undefined' && Music.start) Music.start();
+        // Fire-and-forget: ask the server for a cheat-proof timing token.
+        // Game continues regardless — if the request fails (offline / cold
+        // back-end / network blip) we stay with sessionToken=null and the
+        // submit will fall through to the local-fallback path with no
+        // public leaderboard entry. Better than blocking play on a flaky
+        // request, and the front-end already handles local-only saves.
+        requestSessionToken(type);
         startNextPuzzle();
+    }
+
+    async function requestSessionToken(type) {
+        const base = apiBase();
+        if (!base) return;
+        const sentForType = type;
+        try {
+            const resp = await fetch(base + '/game/start', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ type: type, sessionId: getSessionId() })
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            // Defensive: if the player has already quit/started another
+            // game by the time the response lands, don't clobber the
+            // newer activeType's token slot.
+            if (activeType !== sentForType) return;
+            if (data && typeof data.sessionToken === 'string') {
+                sessionToken = data.sessionToken;
+            }
+        } catch (e) {
+            // Stays null; submit falls to local fallback. Logged for ops.
+            if (typeof Logger !== 'undefined') Logger.warn('Marathon: /game/start failed', e);
+        }
     }
 
     function startNextPuzzle() {
@@ -245,8 +332,8 @@ const Marathon = (() => {
         const physCols  = decoded.quadMode ? logical.cols * 2 : logical.cols;
 
         // Carry-over + fresh allotment, capped by THIS puzzle's cap.
-        const fresh = timeForPuzzle(logical, decoded.quadMode);
-        const cap   = timeCapForPuzzle(logical, decoded.quadMode);
+        const fresh = timeForPuzzle(logical, decoded.quadMode, decoded.pathCount);
+        const cap   = timeCapForPuzzle(logical, decoded.quadMode, decoded.pathCount);
         timeRemaining = Math.min(cap, timeRemaining + fresh);
 
         state = STATE.PLAYING;
@@ -271,6 +358,7 @@ const Marathon = (() => {
         if (state !== STATE.PLAYING) return;
         puzzleStartMs = Date.now();
         startTimer();
+        if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
     }
 
     function startTimer() {
@@ -328,7 +416,21 @@ const Marathon = (() => {
         if (state !== STATE.PLAYING) return;
         if (inTransition) return;     // refresh() can fire again on a re-rotate after the win
         inTransition = true;
+        transitionQuietUntil = Date.now() + TRANSITION_QUIET_MS;
         stopTimer();
+        if (typeof Sfx !== 'undefined') {
+            Sfx.stopLoop('glitch_overlap');  // any lingering overlap-loop dies with the win
+            Sfx.play('applause_long');
+        }
+
+        // Capture the just-solved puzzle's recording before the next
+        // puzzle's startRecording() overwrites Game.recording. JSON
+        // round-trip is a cheap deep clone that also strips functions
+        // and `undefined` — everything we need to ship is plain data.
+        if (typeof Game !== 'undefined' && Game.recording) {
+            try { recordings.push(JSON.parse(JSON.stringify(Game.recording))); }
+            catch (e) { Logger.warn('Marathon: failed to clone recording', e); }
+        }
 
         const elapsed = Date.now() - puzzleStartMs;
         totalSolveTime += elapsed;
@@ -338,19 +440,10 @@ const Marathon = (() => {
         // current leftover actually carries forward (rest is lost to the cap).
         const decoded   = decodeType(activeType);
         const nextLogical = dimsForLevel(level + 1, decoded.quadMode);
-        const fresh     = timeForPuzzle(nextLogical, decoded.quadMode);
-        const cap       = timeCapForPuzzle(nextLogical, decoded.quadMode);
+        const fresh     = timeForPuzzle(nextLogical, decoded.quadMode, decoded.pathCount);
+        const cap       = timeCapForPuzzle(nextLogical, decoded.quadMode, decoded.pathCount);
         const nextStart = Math.min(cap, timeRemaining + fresh);
         const bankedMs  = Math.max(0, nextStart - fresh);
-
-        // Reflect the solve in the HUD score immediately — keeps the HUD in
-        // sync with the transition popup, so when the popup hides the score
-        // doesn't suddenly jump.
-        if (hudScore) {
-            hudScore.textContent = I18n.t('marathon.solvedCount', {
-                n: solvedCount, s: solvedCount === 1 ? '' : 's'
-            });
-        }
 
         // Build + show the transition popup. Headline names the puzzle that
         // was just solved; subline tells the player what they're carrying
@@ -375,6 +468,17 @@ const Marathon = (() => {
         stopTimer();
         clearTransition();
         if (callbacks.quit) callbacks.quit();
+        if (typeof Music !== 'undefined' && Music.stop) Music.stop();
+        // Zero-solve game-overs aren't eligible to rank, so fire the
+        // "no rank" SFX immediately. For non-zero scores we wait for
+        // the leaderboard fetch in renderGameOver — the right SFX
+        // depends on the rank.
+        if (typeof Sfx !== 'undefined') {
+            Sfx.stopLoop('glitch_overlap');
+            if (solvedCount === 0) {
+                Sfx.play(['fail_long', 'audience_boo', 'audience_disappointed']);
+            }
+        }
         renderGameOver();
         showOnly(gameOverEl);
     }
@@ -382,6 +486,7 @@ const Marathon = (() => {
     function quitToMenu() {
         clearTransition();
         if (callbacks.quit) callbacks.quit();
+        if (typeof Music !== 'undefined' && Music.stop) Music.stop();
         goToMenu();
     }
 
@@ -404,7 +509,6 @@ const Marathon = (() => {
         if (!hudType) return;
         hudType.textContent  = I18n.t('marathon.mode' + activeType.toUpperCase());
         hudLevel.textContent = I18n.t('marathon.hudLevel', { n: level, r: logical.rows, c: logical.cols });
-        hudScore.textContent = I18n.t('marathon.solvedCount', { n: solvedCount, s: solvedCount === 1 ? '' : 's' });
         renderTimer();
     }
 
@@ -417,23 +521,64 @@ const Marathon = (() => {
         hudTimer.classList.toggle('urgent', timeRemaining < 10000);
     }
 
-    function renderGameOver() {
+    async function renderGameOver() {
         gameOverScore.textContent = I18n.t('marathon.solvedCount', { n: solvedCount, s: solvedCount === 1 ? '' : 's' });
         gameOverTime.textContent  = I18n.t('marathon.totalTime', { t: fmtTimePrecise(totalSolveTime) });
+        gameOverRank.textContent  = '';
+        gameOverRank.hidden       = true;
+        gameOverName.value        = '';
+        gameOverSave.disabled     = true;
+        gameOverSave.textContent  = I18n.t('marathon.save');
 
-        // Project where this score WOULD land if saved.
-        const board = loadBoard(activeType);
-        const rank  = computeRank(board, solvedCount, totalSolveTime);
-        if (solvedCount > 0 && rank <= MARATHON.LEADERBOARD_TOP_N) {
+        // Zero score → never eligible to save. Hide the name row up-front
+        // (per universal rule 7a) and bail without contacting the server.
+        if (solvedCount === 0) {
+            if (gameOverNameRow) gameOverNameRow.hidden = true;
+            return;
+        }
+
+        // Hide until we know whether the score ranks. Re-shown below if eligible.
+        if (gameOverNameRow) gameOverNameRow.hidden = true;
+
+        // Refresh the leaderboard from the server so the rank is accurate.
+        // Fall back to local cache on timeout/failure (offline). 4 s cap so
+        // a hung connection never blocks the game-over screen forever.
+        let board = loadBoard(activeType);
+        try {
+            const fresh = await Promise.race([
+                fetchBoardFromServer(activeType),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
+            ]);
+            saveBoard(activeType, fresh);
+            board = fresh;
+        } catch (e) {
+            // Stick with the cached board — may be stale but it's our best guess.
+        }
+
+        // User may have navigated away while the fetch was in flight.
+        if (state !== STATE.GAME_OVER) return;
+
+        const rank = computeRank(board, solvedCount, totalSolveTime);
+        if (rank <= MARATHON.LEADERBOARD_TOP_N) {
             gameOverRank.textContent = I18n.t('marathon.newBest', { r: rank });
             gameOverRank.hidden = false;
-        } else {
-            gameOverRank.textContent = '';
-            gameOverRank.hidden = true;
+            if (gameOverNameRow) gameOverNameRow.hidden = false;
+            gameOverSave.disabled = false;
+            // Drop the cursor straight into the name field so the player
+            // can type without an intermediate click. Wrapped in try because
+            // focus() can throw if the element was already detached (e.g.
+            // user navigated away while the leaderboard fetch was in flight).
+            if (gameOverName) {
+                try { gameOverName.focus(); } catch (e) {}
+            }
+            if (typeof Sfx !== 'undefined') {
+                Sfx.play(rank === 1 ? 'audience_cheer_long' : 'audience_cheer');
+            }
+        } else if (typeof Sfx !== 'undefined') {
+            // Ineligible: same SFX as the zero-solve path. Leaves the row
+            // hidden / no rank text — the player still sees score + time.
+            Sfx.play(['fail_long', 'audience_boo', 'audience_disappointed']);
         }
-        gameOverName.value = '';
-        gameOverSave.disabled = solvedCount === 0;
-        gameOverSave.textContent = I18n.t('marathon.save');
     }
 
     // ----- Leaderboard storage -----
@@ -447,6 +592,26 @@ const Marathon = (() => {
     function boardKey(type)  { return PROJECT_SLUG + '_lb_' + type; }
     function pendingKey()    { return PROJECT_SLUG + '_lb_pending'; }
     function sessionIdKey()  { return PROJECT_SLUG + '_session_id'; }
+    function ownRecKey(type) { return PROJECT_SLUG + '_own_rec_' + type; }
+
+    // Stash the player's just-saved recording locally, keyed by the server's
+    // score id. The painter cross-references this so the Watch button works
+    // even when the server doesn't surface events on its top-N (older
+    // back-end without the `hasRecording` field, payload dropped, etc).
+    // One slot per game type — overwritten on each successful save.
+    function saveOwnRecording(type, id, events) {
+        try {
+            localStorage.setItem(ownRecKey(type), JSON.stringify({ id: id, events: events }));
+        } catch (e) { Logger.warn('Marathon: failed to store own recording', e); }
+    }
+    function loadOwnRecording(type) {
+        try {
+            const raw = localStorage.getItem(ownRecKey(type));
+            if (!raw) return null;
+            const data = JSON.parse(raw);
+            return (data && Array.isArray(data.events)) ? data : null;
+        } catch (e) { return null; }
+    }
 
     function loadBoard(type) {
         try {
@@ -548,8 +713,18 @@ const Marathon = (() => {
             solved:        solvedCount,
             totalMs:       totalSolveTime,
             clientVersion: (typeof PAGE_VERSION === 'string' ? PAGE_VERSION : ''),
-            sessionId:     getSessionId()
-            // seed / events reserved for future replay validation.
+            sessionId:     getSessionId(),
+            // Server-issued timing token from /api/game/start. The server
+            // rejects submissions without one or with claimed totalMs that
+            // exceeds wall-clock since the token was issued. Null when
+            // the start request failed (offline play) → server-side
+            // submit will reject → front-end falls through to local
+            // fallback path, same as a network failure on submit itself.
+            sessionToken:  sessionToken,
+            // Move history per solved puzzle, in order. Stored server-side
+            // so any top-N entry is replayable via /api/scores/<id>/recording.
+            events:        recordings
+            // seed reserved for future server-side deterministic replay validation.
         };
     }
 
@@ -561,26 +736,32 @@ const Marathon = (() => {
         gameOverSave.disabled    = true;
         gameOverSave.textContent = I18n.t('marathon.save') + '…';
 
-        const payload = buildPayload(name);
+        const payload  = buildPayload(name);
+        let savedId    = null;
 
         try {
             await flushPending();          // opportunistically retry earlier failed submissions
             const data = await submitToServer(payload);
             if (Array.isArray(data.top)) saveBoard(activeType, data.top);
-            if (typeof data.rank === 'number' && gameOverRank) {
-                if (data.rank <= MARATHON.LEADERBOARD_TOP_N) {
-                    gameOverRank.textContent = I18n.t('marathon.newBest', { r: data.rank });
-                    gameOverRank.hidden = false;
-                } else {
-                    gameOverRank.hidden = true;
-                }
-            }
+            if (typeof data.id === 'number') savedId = data.id;
         } catch (e) {
             Logger.warn('Marathon: score submission failed, queueing for retry', e);
             // Persist locally so the player at least sees their entry on this
             // device, AND queue the payload for retry on the next save attempt.
+            // Stash the events too so the Watch button still works offline —
+            // without it, local-fallback entries have no `id` to fetch from
+            // the server AND no events to replay from disk, so they'd render
+            // without a replay affordance even though the player just played
+            // them.
             const board = loadBoard(activeType);
-            board.push({ name, solved: solvedCount, totalMs: totalSolveTime, date: Date.now() });
+            board.push({
+                name,
+                solved:       solvedCount,
+                totalMs:      totalSolveTime,
+                date:         Date.now(),
+                events:       recordings,
+                hasRecording: recordings.length > 0,
+            });
             board.sort((a, b) => {
                 if (b.solved !== a.solved) return b.solved - a.solved;
                 return a.totalMs - b.totalMs;
@@ -593,7 +774,40 @@ const Marathon = (() => {
             savePending(pending);
         }
 
+        // Player may have navigated away during the in-flight submit.
+        if (state !== STATE.GAME_OVER) return;
+
         gameOverSave.textContent = I18n.t('marathon.saved');
+
+        // Stash the recording locally for the Watch button to find later —
+        // robust against the server not storing/surfacing events itself.
+        // Keyed by server id when we have one; local-only saves (catch
+        // branch above) already carry events directly on the entry.
+        if (savedId !== null && recordings.length > 0) {
+            saveOwnRecording(activeType, savedId, recordings);
+        }
+
+        // Transition straight to the leaderboard with the player's row
+        // highlighted. id-match for server saves; name+solved+totalMs
+        // fallback for local-only saves where the entry has no id yet.
+        pendingHighlight = (savedId !== null)
+            ? { id: savedId }
+            : { name: name, solved: solvedCount, totalMs: totalSolveTime };
+        if (leaderboardSelect) leaderboardSelect.value = activeType;
+        showLeaderboard();
+    }
+
+    // Match a leaderboard entry against pendingHighlight. id-match is
+    // exact when the server save succeeded; the name+solved+totalMs
+    // fallback covers local-only saves (id-less entries).
+    function entryMatchesHighlight(entry) {
+        if (!pendingHighlight) return false;
+        if (pendingHighlight.id != null && entry.id != null) {
+            return entry.id === pendingHighlight.id;
+        }
+        return entry.name    === pendingHighlight.name
+            && entry.solved  === pendingHighlight.solved
+            && entry.totalMs === pendingHighlight.totalMs;
     }
 
     function paintLeaderboard(board) {
@@ -603,8 +817,18 @@ const Marathon = (() => {
             return;
         }
         leaderboardEmpty.hidden = true;
+        // Cross-reference for the player's own recording — keyed by score
+        // id. Lets the Watch button work on the player's own entry even
+        // when the server doesn't return events on this entry.
+        const boardType    = (leaderboardSelect && leaderboardSelect.value) || MARATHON.TYPES[0];
+        const ownRecording = loadOwnRecording(boardType);
+        let highlightedEl = null;
         board.forEach((entry, i) => {
             const li     = document.createElement('li');
+            if (entryMatchesHighlight(entry)) {
+                li.classList.add('lbHighlight');
+                highlightedEl = li;
+            }
             const rank   = document.createElement('span'); rank.className   = 'lbRank';   rank.textContent   = '#' + (i + 1);
             const name   = document.createElement('span'); name.className   = 'lbName';   name.textContent   = entry.name;
             const solved = document.createElement('span'); solved.className = 'lbSolved'; solved.textContent = entry.solved + ' solved';
@@ -613,8 +837,47 @@ const Marathon = (() => {
             li.appendChild(name);
             li.appendChild(solved);
             li.appendChild(time);
+            // Watch button on any entry with a replayable recording. Sources,
+            // in priority order:
+            //   1. ownEvents — player's own recording stashed locally by id
+            //      (covers the "server save succeeded but server didn't
+            //      return events" case, e.g. back-end without hasRecording).
+            //   2. localEvents — local-fallback entry that stashed events
+            //      on the entry itself because the server submit failed.
+            //   3. hasServerRecord — server says it has events; fetch them
+            //      via the recording endpoint. Used for other players'
+            //      entries.
+            // Entries from before the recording feature shipped have none
+            // and stay button-less.
+            const ownEvents       = (ownRecording && entry.id === ownRecording.id) ? ownRecording.events : null;
+            const localEvents     = Array.isArray(entry.events) && entry.events.length > 0
+                                    ? entry.events : null;
+            const directEvents    = ownEvents || localEvents;
+            const hasServerRecord = entry.id && entry.hasRecording;
+            if (directEvents || hasServerRecord) {
+                const watch = document.createElement('button');
+                watch.className   = 'lbWatch';
+                watch.type        = 'button';
+                watch.textContent = '▶ ' + I18n.t('marathon.watch');
+                if (directEvents) {
+                    const evCopy = directEvents;
+                    const name   = entry.name;
+                    watch.addEventListener('click', () => startReplayWithEvents(evCopy, name));
+                } else {
+                    const id = entry.id;
+                    watch.addEventListener('click', () => startReplay(id));
+                }
+                li.appendChild(watch);
+            }
             leaderboardEntries.appendChild(li);
         });
+        // Scroll the highlighted row into view so the player sees their entry
+        // without scanning. Soft block:'center' looks better than 'start' on
+        // mid-list highlights and is a no-op when the list already fits.
+        if (highlightedEl) {
+            try { highlightedEl.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+            catch (e) { highlightedEl.scrollIntoView(); }
+        }
     }
 
     async function renderLeaderboard() {
@@ -636,9 +899,63 @@ const Marathon = (() => {
         }
     }
 
+    // ----- Replay (watching another player's recording) -----
+
+    function updateReplayHud(name, n, total) {
+        if (!replayLabel) return;
+        replayLabel.textContent = I18n.t('marathon.replayingHeader', { name: name, n: n, total: total });
+    }
+
+    async function startReplay(scoreId) {
+        if (state === STATE.REPLAYING) return;
+        const base = apiBase();
+        if (!base) return;
+
+        let data;
+        try {
+            const resp = await fetch(base + '/scores/' + encodeURIComponent(scoreId) + '/recording');
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            data = await resp.json();
+        } catch (e) {
+            Logger.warn('Marathon: failed to fetch recording', e);
+            return;
+        }
+        const events = Array.isArray(data.events) ? data.events : [];
+        await startReplayWithEvents(events, data.name || '');
+    }
+
+    // Local-events variant — used by the Watch button on entries whose
+    // server submit failed, so the events live in localStorage. Same
+    // playback path as startReplay; just skips the API fetch.
+    async function startReplayWithEvents(events, displayName) {
+        if (state === STATE.REPLAYING) return;
+        if (!Array.isArray(events) || events.length === 0) return;
+
+        state = STATE.REPLAYING;
+        showOnly(replayHudEl);
+        const name = displayName || '';
+        updateReplayHud(name, 0, events.length);
+
+        await Game.replayAll(events, (idx, total) => {
+            updateReplayHud(name, idx + 1, total);
+        });
+
+        // Whether the replay finished naturally or was cancelled mid-stream,
+        // return to the leaderboard view IF the user hasn't navigated away
+        // (e.g. cancelled via Quit-to-menu instead of Stop).
+        if (state === STATE.REPLAYING) {
+            showLeaderboard();
+        }
+    }
+
+    function stopReplay() {
+        if (typeof Game !== 'undefined' && Game.cancelReplay) Game.cancelReplay();
+    }
+
     function isPlaying()       { return state === STATE.PLAYING; }
     function isMenuVisible()   { return state === STATE.MENU; }
     function isInTransition()  { return inTransition; }
+    function isReplaying()     { return state === STATE.REPLAYING; }
 
-    return { init, onSolve, onHintUsed, onPuzzleReady, advance, isPlaying, isMenuVisible, isInTransition };
+    return { init, onSolve, onHintUsed, onPuzzleReady, advance, isPlaying, isMenuVisible, isInTransition, isReplaying };
 })();
