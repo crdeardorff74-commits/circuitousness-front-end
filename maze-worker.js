@@ -35,9 +35,14 @@ async function processNext() {
         Maze.setPathCount(req.pathCount);
         Maze.setDimensions(req.rows, req.cols);
         await Maze.init();
+        // Echo back the optional `id` so callers running multiple
+        // independent request streams (marathon pre-gen + PotD bg gen)
+        // can match responses to requests. Marathon's flow doesn't set
+        // an id; its handler ignores the field.
         postMessage({
             type: 'ready', state: Maze.snapshotState(),
-            pathCount: req.pathCount, quadMode: !!req.quadMode
+            pathCount: req.pathCount, quadMode: !!req.quadMode,
+            id: req.id != null ? req.id : null
         });
     }
     inFlight = false;
@@ -49,7 +54,8 @@ self.onmessage = function (e) {
         pending = {
             rows: e.data.rows, cols: e.data.cols,
             pathCount: e.data.pathCount | 0 || 1,
-            quadMode: !!e.data.quadMode
+            quadMode: !!e.data.quadMode,
+            id: (e.data.id != null) ? e.data.id : null
         };
         processNext();
     } else if (e.data.type === 'hurry') {

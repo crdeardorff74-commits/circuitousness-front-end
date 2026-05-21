@@ -46,21 +46,74 @@ const TitleRenderer = (() => {
         };
     }
 
+    // True when the live Maze state is internally consistent — grid array
+    // length matches ROWS, every row length matches COLS. Maze.setDimensions
+    // updates ROWS/COLS WITHOUT touching grid, so there's a sync window
+    // mid-newPuzzle where the title-renderer's rAF loop can otherwise
+    // snapshot+restore corrupt state and crash updateHighlighted.
+    function mazeStateConsistent() {
+        if (!Maze.grid) return false;
+        if (Maze.ROWS <= 0 || Maze.COLS <= 0) return false;
+        if (Maze.grid.length !== Maze.ROWS) return false;
+        for (let r = 0; r < Maze.grid.length; r++) {
+            const row = Maze.grid[r];
+            if (!row || row.length !== Maze.COLS) return false;
+        }
+        return true;
+    }
+
     function draw(canvas, sizeCss) {
         if (!canvas || typeof Maze === 'undefined' || typeof Render === 'undefined') return;
         if (sizeCss <= 0) return;
 
+        // Skip the whole render this frame if Maze is mid-mutation (e.g.
+        // mid-newPuzzle, between setDimensions and the new grid population).
+        // Snapshotting an inconsistent state would persist it through the
+        // synthetic 2×2 load and corrupt the live grid on restore.
+        if (Maze.grid !== null && !mazeStateConsistent()) {
+            lastCanvas  = canvas;
+            lastSizeCss = sizeCss;
+            ensureAnimating();
+            return;
+        }
+
         // Snapshot only if Maze actually has a grid loaded — saves a crash
         // on first paint (menu shown before any puzzle has built).
-        const saved = (Maze.grid && Maze.ROWS > 0) ? Maze.snapshotState() : null;
+        const saved = mazeStateConsistent() ? Maze.snapshotState() : null;
 
         Maze.loadSnapshot(buildSnippetSnapshot());
+
+        // The 4 elbows form a closed loop, so walkFrom (which seeds
+        // Maze.highlighted) can't reach them from the dummy entry — only
+        // the dim pass would draw, and the channel interior would stay
+        // dark. Manually populate highlighted with the 4 lanes so the LIT
+        // pass paints them; combined with the renderSnippet `litColor`
+        // option below, the result is a fully red-filled circle.
+        if (Maze.highlighted && Array.isArray(Maze.highlighted)) {
+            Maze.highlighted.length = 0;
+            Maze.highlighted.push(
+                { row: 0, col: 0, inPort: Maze.E, outPort: Maze.S, path: 0 }, // TL: E↔S
+                { row: 0, col: 1, inPort: Maze.S, outPort: Maze.W, path: 0 }, // TR: S↔W
+                { row: 1, col: 1, inPort: Maze.W, outPort: Maze.N, path: 0 }, // BR: W↔N
+                { row: 1, col: 0, inPort: Maze.N, outPort: Maze.E, path: 0 }  // BL: N↔E
+            );
+        }
+
         // Punchier path than the in-game default — small inline element needs
-        // more contrast to read. Values dialed in via the debug-mode sliders.
+        // more contrast to read. litColor/litHi/litLo + litPulse override
+        // litPalette inside the snippet so the lit lanes paint with the
+        // JOINED-style red gradient AND pulse with the same sine-driven
+        // brightness modulation that the player sees when paths overlap
+        // in multi-path puzzles. The continuous redraw is driven by the
+        // rAF loop set up below in `ensureAnimating`.
         Render.renderSnippet(canvas, sizeCss, {
             widthFrac: 0.28,
             alpha:     0.66,
-            color:     '#ff2424'
+            color:     '#ff2424',
+            litColor:  '#a02020',
+            litHi:     '#cc4040',
+            litLo:     '#4a0000',
+            litPulse:  true
         });
 
         if (saved) {
@@ -71,6 +124,40 @@ const TitleRenderer = (() => {
             // newPuzzle finishes building doesn't paint the snippet onto the
             // main canvas (e.g. game.js's Render.refit fires before await).
             Maze.clear();
+        }
+
+        // Capture the latest canvas/size for the animation loop, then
+        // ensure the loop is running so the pulse animates.
+        lastCanvas  = canvas;
+        lastSizeCss = sizeCss;
+        ensureAnimating();
+    }
+
+    // Continuous redraw loop drives the litPulse animation. Idempotent —
+    // multiple draw() calls don't multiply the loop. Ticks skip rendering
+    // when the canvas is hidden (zero size), but stay scheduled so the
+    // pulse resumes immediately the next time the menu becomes visible.
+    let lastCanvas  = null;
+    let lastSizeCss = 0;
+    let rafId       = null;
+    function ensureAnimating() {
+        if (rafId !== null) return;
+        rafId = requestAnimationFrame(animTick);
+    }
+    function animTick() {
+        rafId = null;
+        if (!lastCanvas) return;
+        const rect = lastCanvas.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+            // Re-measure: when the title font reflows or the viewport
+            // resizes, the canvas's CSS size changes. Use the same min/max
+            // floor as marathon.js's paintTitleO so the loop stays in sync.
+            const size = Math.max(24, Math.min(rect.width, rect.height));
+            draw(lastCanvas, size);
+        } else {
+            // Canvas hidden — keep the loop alive so the pulse resumes
+            // when the menu re-shows. Cheap (one rAF callback per frame).
+            rafId = requestAnimationFrame(animTick);
         }
     }
 

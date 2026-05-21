@@ -36,6 +36,15 @@ const Marathon = (() => {
     let sessionToken   = null;     // server-issued cheat-proof timing token (from /api/game/start)
     let level          = 0;        // current puzzle index, 1-based
     let solvedCount    = 0;
+    // Per-game growth sequence: one entry per "level transition" (so
+    // growthSequence[0] is the choice between puzzle 1 and puzzle 2,
+    // growthSequence[1] between 2 and 3, etc). Each entry is 'r' (row
+    // grows) or 'c' (col grows). Rolled lazily — `ensureGrowthSequence(N)`
+    // extends the array up to index N-1 with fresh 50/50 picks. Reset on
+    // startGame() so each new game gets a fresh sequence. Lazy + append-
+    // only means pre-gen's lookahead calls pin the upcoming choices, and
+    // any later call for the same level returns the same dims.
+    let growthSequence = [];
     let totalSolveTime = 0;        // ms — sum of (now - puzzleStartTimeMs) per solved puzzle
     let timeRemaining  = 0;        // ms — single carry-over pool, ticks down during PLAYING
     let lastTickTime   = 0;        // ms epoch — for delta-based timer
@@ -126,7 +135,19 @@ const Marathon = (() => {
                 const paths = mode[1];
                 thumb.src = THUMBNAIL_URL_BASE + base + 'x' + paths + '.png';
             }
-            btn.addEventListener('click', () => startGame(mode));
+            // Click delegates to Potd when the mode picker says so,
+            // otherwise marathon owns the click (legacy default). Both
+            // modules use the same .menuModeBtn buttons.
+            btn.addEventListener('click', () => {
+                const pickedMode = (typeof ModePicker !== 'undefined' && ModePicker.getMode)
+                    ? ModePicker.getMode()
+                    : 'marathon';
+                if (pickedMode === 'potd' && typeof Potd !== 'undefined' && Potd.startPuzzle) {
+                    Potd.startPuzzle(mode);
+                } else {
+                    startGame(mode);
+                }
+            });
         });
         if (menuLeaderboardBtn) menuLeaderboardBtn.addEventListener('click', showLeaderboard);
         if (hudQuit)            hudQuit.addEventListener('click', quitToMenu);
@@ -245,13 +266,19 @@ const Marathon = (() => {
     // Equivalent rule for level L≥2: rows grows when L%4 ∈ {3, 0}, else cols.
     // Same pattern for regular and quad — quad just starts smaller (6×6 vs
     // 8×8) since each step adds 2× sub-tiles per axis. No upper cap.
+    function ensureGrowthSequence(lev) {
+        // Number of transitions needed = lev - 1 (transition index = level - 2).
+        while (growthSequence.length < lev - 1) {
+            growthSequence.push(Math.random() < 0.5 ? 'r' : 'c');
+        }
+    }
     function dimsForLevel(lev, quadMode) {
         const minDim = quadMode ? MARATHON.MIN_DIM_QUAD : MARATHON.MIN_DIM_SINGULAR;
+        ensureGrowthSequence(lev);
         let rowGrowth = 0, colGrowth = 0;
-        for (let L = 2; L <= lev; L++) {
-            const m = L % 4;
-            if (m === 3 || m === 0) rowGrowth++;
-            else                    colGrowth++;
+        for (let i = 0; i < lev - 1; i++) {
+            if (growthSequence[i] === 'r') rowGrowth++;
+            else                           colGrowth++;
         }
         return {
             rows: minDim + rowGrowth,
@@ -259,19 +286,40 @@ const Marathon = (() => {
         };
     }
 
-    function tileCount(logical) {
-        // Visible/interactable tiles (quad counts each 2×2 sub-tile group as 1).
-        return logical.rows * logical.cols;
+    // Game-side pre-gen lookahead. game.js's own `nextSize` produces a
+    // DIFFERENT 4×4→5×4→5×5 progression than Marathon's row/col growth
+    // cycle — without this hook the pre-gen worker builds sizes Marathon
+    // never asks for, every advance misses the cache, and the player sees
+    // "Building puzzle…" between every level. game.js calls this when
+    // Marathon is the active state machine.
+    //
+    // Returns PHYSICAL dims (×2 in quad mode) so game.js's cacheKey
+    // matches the wantR/wantC it passes to newPuzzle.
+    function upcomingDims(count) {
+        if (state !== STATE.PLAYING) return [];
+        const decoded = decodeType(activeType);
+        const out = [];
+        for (let i = 1; i <= count; i++) {
+            const logical  = dimsForLevel(level + i, decoded.quadMode);
+            const physRows = decoded.quadMode ? logical.rows * 2 : logical.rows;
+            const physCols = decoded.quadMode ? logical.cols * 2 : logical.cols;
+            out.push({ rows: physRows, cols: physCols });
+        }
+        return out;
     }
 
-    function timeForPuzzle(logical, quadMode, pathCount) {
-        const per = quadMode ? MARATHON.TIME_PER_TILE_QUAD : MARATHON.TIME_PER_TILE_SINGULAR;
-        return tileCount(logical) * per * pathCount * 1000;
-    }
-
-    function timeCapForPuzzle(logical, quadMode, pathCount) {
-        const cap = quadMode ? MARATHON.TIME_CAP_PER_TILE_QUAD : MARATHON.TIME_CAP_PER_TILE_SINGULAR;
-        return tileCount(logical) * cap * pathCount * 1000;
+    // Per-puzzle fresh allotment under the difficulty-ramp model: starts at
+    // MARATHON.START_TIME_*[pathCount-1] and shaves TIME_DECREASE_PER_SOLVE
+    // seconds for every prior solve, floored at TIME_FLOOR. Independent of
+    // grid size — puzzle time is purely a function of mode + path count +
+    // solvedCount. Banking is unlimited; the caller just adds the result
+    // to timeRemaining with no cap.
+    function timeForPuzzle(quadMode, pathCount, solvedCount) {
+        const starts = quadMode ? MARATHON.START_TIME_QUAD : MARATHON.START_TIME_SINGULAR;
+        const idx    = Math.max(0, Math.min(starts.length - 1, (pathCount | 0) - 1));
+        const start  = starts[idx];
+        const fresh  = Math.max(MARATHON.TIME_FLOOR, start - solvedCount * MARATHON.TIME_DECREASE_PER_SOLVE);
+        return fresh * 1000;
     }
 
     function startGame(type) {
@@ -283,6 +331,7 @@ const Marathon = (() => {
         timeRemaining    = 0;     // first puzzle gets only its fresh allotment, no carry-over
         recordings       = [];    // fresh recording buffer for this game
         pendingHighlight = null;  // any prior-game highlight is stale once a new run begins
+        growthSequence   = [];    // fresh random row/col growth sequence per game
         if (typeof Music !== 'undefined' && Music.start) Music.start();
         // Fire-and-forget: ask the server for a cheat-proof timing token.
         // Game continues regardless — if the request fails (offline / cold
@@ -331,10 +380,11 @@ const Marathon = (() => {
         const physRows  = decoded.quadMode ? logical.rows * 2 : logical.rows;
         const physCols  = decoded.quadMode ? logical.cols * 2 : logical.cols;
 
-        // Carry-over + fresh allotment, capped by THIS puzzle's cap.
-        const fresh = timeForPuzzle(logical, decoded.quadMode, decoded.pathCount);
-        const cap   = timeCapForPuzzle(logical, decoded.quadMode, decoded.pathCount);
-        timeRemaining = Math.min(cap, timeRemaining + fresh);
+        // Carry-over + fresh allotment. solvedCount = (level - 1) here
+        // (incremented in onSolve before the player advances). No cap —
+        // unlimited banking, so the running total just grows.
+        const fresh = timeForPuzzle(decoded.quadMode, decoded.pathCount, solvedCount);
+        timeRemaining = timeRemaining + fresh;
 
         state = STATE.PLAYING;
         showOnly(hudEl);
@@ -359,6 +409,9 @@ const Marathon = (() => {
         puzzleStartMs = Date.now();
         startTimer();
         if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
+        // Background shuffle has already fired at the START of the build
+        // (in game.js startPuzzle callback) so the new image is visible
+        // throughout the "Building puzzle…" wait — not after it.
     }
 
     function startTimer() {
@@ -386,12 +439,15 @@ const Marathon = (() => {
     }
 
     // Hint penalty: lop MARATHON.HINT_PENALTY_FRACTION off the remaining time
-    // (e.g. 0.25 → keep 75%) and play a shake/flash + floating "−Xs" indicator
-    // on the HUD timer so the cost is unmissable. No-op if a transition is in
-    // flight (between puzzles) or we're not actively playing.
+    // (e.g. 0.25 → keep 75%) FLOORED at MARATHON.HINT_PENALTY_MIN_MS so the
+    // cost stays meaningful as the timer winds down — otherwise the
+    // fractional penalty trends to zero and hints become free. Plays a
+    // shake/flash + floating "−Xs" indicator on the HUD timer so the cost
+    // is unmissable. No-op if a transition is in flight or we're not playing.
     function onHintUsed() {
         if (state !== STATE.PLAYING || inTransition) return;
-        const penaltyMs = timeRemaining * MARATHON.HINT_PENALTY_FRACTION;
+        const fractionalMs = timeRemaining * MARATHON.HINT_PENALTY_FRACTION;
+        const penaltyMs    = Math.max(MARATHON.HINT_PENALTY_MIN_MS, fractionalMs);
         timeRemaining -= penaltyMs;
         if (timeRemaining < 0) timeRemaining = 0;
         renderTimer();
@@ -436,14 +492,14 @@ const Marathon = (() => {
         totalSolveTime += elapsed;
         solvedCount++;
 
-        // Compute the projected next-puzzle starting time + how much of the
-        // current leftover actually carries forward (rest is lost to the cap).
+        // Project the next puzzle's starting clock for the transition popup.
+        // solvedCount was just incremented above, so it already reflects
+        // the "puzzles solved BEFORE the next one starts" count that
+        // timeForPuzzle wants. No cap on banking — all of leftover carries.
         const decoded   = decodeType(activeType);
-        const nextLogical = dimsForLevel(level + 1, decoded.quadMode);
-        const fresh     = timeForPuzzle(nextLogical, decoded.quadMode, decoded.pathCount);
-        const cap       = timeCapForPuzzle(nextLogical, decoded.quadMode, decoded.pathCount);
-        const nextStart = Math.min(cap, timeRemaining + fresh);
-        const bankedMs  = Math.max(0, nextStart - fresh);
+        const fresh     = timeForPuzzle(decoded.quadMode, decoded.pathCount, solvedCount);
+        const nextStart = timeRemaining + fresh;
+        const bankedMs  = timeRemaining;
 
         // Build + show the transition popup. Headline names the puzzle that
         // was just solved; subline tells the player what they're carrying
@@ -564,6 +620,16 @@ const Marathon = (() => {
             gameOverRank.hidden = false;
             if (gameOverNameRow) gameOverNameRow.hidden = false;
             gameOverSave.disabled = false;
+            // Pre-fill the name field with the player's last-submitted name
+            // (universal rule 7a). Mirrors TANTЯO's behavior so returning
+            // players don't have to retype every session. localStorage can
+            // throw in private mode or when quota is exceeded — fail open.
+            if (gameOverName && typeof PROJECT_SLUG === 'string') {
+                try {
+                    const last = localStorage.getItem(PROJECT_SLUG + '_lastPlayerName');
+                    if (last) gameOverName.value = last;
+                } catch (e) { /* localStorage unavailable */ }
+            }
             // Drop the cursor straight into the name field so the player
             // can type without an intermediate click. Wrapped in try because
             // focus() can throw if the element was already detached (e.g.
@@ -731,7 +797,17 @@ const Marathon = (() => {
     async function saveScore() {
         if (state !== STATE.GAME_OVER) return;
         if (solvedCount === 0) return;     // no zero-score entries
-        const name = ((gameOverName.value || '').trim().slice(0, 16)) || 'Player';
+        const rawName = (gameOverName.value || '').trim().slice(0, 16);
+        const name = rawName || 'Player';
+
+        // Persist the entered name so the next high-score input pre-fills
+        // (universal rule 7a). Save BEFORE the server submit so the name
+        // sticks even if the player is offline / submission queues for retry.
+        // Only persist actual user input — don't write the 'Player' fallback.
+        if (rawName && typeof PROJECT_SLUG === 'string') {
+            try { localStorage.setItem(PROJECT_SLUG + '_lastPlayerName', rawName); }
+            catch (e) { /* localStorage unavailable */ }
+        }
 
         gameOverSave.disabled    = true;
         gameOverSave.textContent = I18n.t('marathon.save') + '…';
@@ -957,5 +1033,6 @@ const Marathon = (() => {
     function isInTransition()  { return inTransition; }
     function isReplaying()     { return state === STATE.REPLAYING; }
 
-    return { init, onSolve, onHintUsed, onPuzzleReady, advance, isPlaying, isMenuVisible, isInTransition, isReplaying };
+    return { init, onSolve, onHintUsed, onPuzzleReady, advance, isPlaying, isMenuVisible, isInTransition, isReplaying, upcomingDims,
+             getSolvedCount: () => solvedCount };
 })();

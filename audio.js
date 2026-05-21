@@ -45,6 +45,16 @@ const Sfx = (function () {
     let volume = 0.6;
     let muted  = false;
 
+    // Per-type throttle: don't replay an effect of the same type within
+    // THROTTLE_MS. Players chaining the same trigger rapidly (twisting
+    // twins, joining paths in a sweep, mashing through a solve) would
+    // otherwise hear the same exclamation back to back, which gets
+    // annoying fast. For OR-triggers the throttle filters the type
+    // list — any non-throttled type in the spec can still play.
+    const THROTTLE_MS  = 7000;
+    const lastPlayedAt = new Map();          // type → ms timestamp
+    const warnedUnknownTypes = new Set();    // de-dupe console noise
+
     // Per-type shuffle bag: { order: [permutation of 1..count], pos: cursor }.
     const bags = {};
     function reshuffle(type) {
@@ -74,17 +84,6 @@ const Sfx = (function () {
             cache.set(key, a);
         }
         return a;
-    }
-
-    // Resolve a trigger spec (string OR array of strings) to one concrete pick.
-    function pickVariant(spec) {
-        const types = Array.isArray(spec) ? spec : [spec];
-        const type  = types[Math.floor(Math.random() * types.length)];
-        if (!POOLS[type]) {
-            if (typeof Logger !== 'undefined') Logger.warn('Sfx: unknown type', type);
-            return null;
-        }
-        return { type: type, idx: nextIndex(type) };
     }
 
     // Ducking: any new play() fades whatever is currently playing down to 0
@@ -118,12 +117,37 @@ const Sfx = (function () {
 
     // Fire-and-forget play. Returns the live element so callers can attach
     // listeners or stop it early (used by playLoop for chaining).
-    function play(spec) {
+    //
+    // Throttling (universal rule): filter the spec's types to those that
+    // (a) exist in POOLS and (b) haven't played in the last THROTTLE_MS.
+    // Pick uniformly among the survivors; if all are throttled, play
+    // nothing. The bag position is only advanced for the type that
+    // actually plays — throttled types don't burn through their shuffle.
+    function play(spec, skipThrottle) {
         if (muted) return null;
-        const pick = pickVariant(spec);
-        if (!pick) return null;
+        const allTypes = Array.isArray(spec) ? spec : [spec];
+        const now = Date.now();
+        const eligible = [];
+        for (const t of allTypes) {
+            if (!POOLS[t]) {
+                if (!warnedUnknownTypes.has(t)) {
+                    warnedUnknownTypes.add(t);
+                    if (typeof Logger !== 'undefined') Logger.warn('Sfx: unknown type', t);
+                }
+                continue;
+            }
+            if (!skipThrottle) {
+                const last = lastPlayedAt.get(t) || 0;
+                if (now - last < THROTTLE_MS) continue;
+            }
+            eligible.push(t);
+        }
+        if (eligible.length === 0) return null;
+        const type = eligible[Math.floor(Math.random() * eligible.length)];
+        const idx  = nextIndex(type);
+        lastPlayedAt.set(type, now);
         fadeOutAll();
-        const tmpl = getTemplate(pick.type, pick.idx);
+        const tmpl = getTemplate(type, idx);
         const a    = tmpl.cloneNode();
         a.volume   = volume;
         const entry = { audio: a, fadeInterval: null, onEnded: null };
@@ -139,7 +163,7 @@ const Sfx = (function () {
         const p = a.play();
         if (p && p.catch) {
             p.catch(function (err) {
-                if (typeof Logger !== 'undefined') Logger.warn('Sfx: play failed', pick.type, pick.idx, err);
+                if (typeof Logger !== 'undefined') Logger.warn('Sfx: play failed', type, idx, err);
                 a.removeEventListener('ended', entry.onEnded);
                 active.delete(entry);
             });
@@ -155,7 +179,10 @@ const Sfx = (function () {
     const loops = new Map();   // key → { currentAudio }
     function playLoop(key, spec) {
         if (loops.has(key)) return;
-        const a = play(spec);
+        // Loops are sustained state indicators (e.g. the path-overlap
+        // glitch) — they should fire whenever the state re-enters,
+        // even within the per-type throttle window. Skip the throttle.
+        const a = play(spec, true);
         if (!a) return;
         a.loop = true;
         loops.set(key, { currentAudio: a });
@@ -219,6 +246,40 @@ const Sfx = (function () {
         src.stop(t0 + CLICK_DURATION + 0.01);
     }
 
+    // Gate-rotation click — same noise-burst family as click() so the two
+    // feel related, but distinctly "thockier": bandpass with a narrow Q at
+    // a lower center frequency gives a tonal mechanical resonance instead
+    // of the tile click's soft lowpass tap, and double the duration with
+    // a slightly higher peak reads as a heavier, more deliberate action
+    // (which a gate rotation is — it cascades through every gate at once).
+    // Like click(), this bypasses the play() ducking/throttle pipeline.
+    const GATE_CLICK_VOLUME   = 0.22;
+    const GATE_CLICK_DURATION = 0.06;
+    function gateClick() {
+        if (muted) return;
+        const ctx = getAudioCtx();
+        if (!ctx) return;
+        const len    = Math.max(1, Math.floor(ctx.sampleRate * GATE_CLICK_DURATION));
+        const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+        const data   = buffer.getChannelData(0);
+        for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+        const src    = ctx.createBufferSource();
+        src.buffer   = buffer;
+        const filter = ctx.createBiquadFilter();
+        filter.type  = 'bandpass';
+        filter.Q.value = 4;
+        filter.frequency.value = 600 + Math.random() * 250;  // 0.6 – 0.85 kHz
+        const gain   = ctx.createGain();
+        const peak   = volume * GATE_CLICK_VOLUME;
+        const t0     = ctx.currentTime;
+        gain.gain.setValueAtTime(0, t0);
+        gain.gain.linearRampToValueAtTime(peak, t0 + 0.001);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + GATE_CLICK_DURATION);
+        src.connect(filter).connect(gain).connect(ctx.destination);
+        src.start(t0);
+        src.stop(t0 + GATE_CLICK_DURATION + 0.01);
+    }
+
     function setVolume(v) { volume = Math.max(0, Math.min(1, v)); }
     function setMuted(b)  {
         muted = !!b;
@@ -256,6 +317,7 @@ const Sfx = (function () {
         stopLoop: stopLoop,
         stopAllLoops: stopAllLoops,
         click: click,
+        gateClick: gateClick,
         setVolume: setVolume,
         setMuted: setMuted,
     };

@@ -24,20 +24,30 @@ const CORE_ASSETS = [
     '/render.js',
     '/game.js',
     '/manifest.json',
-    '/favicon.ico'
+    '/favicon.svg'
 ];
 
-// Cross-origin assets (e.g. images hosted on GitHub Releases). Fetched with
-// mode: 'no-cors' so the browser allows the cross-origin response, which
-// arrives "opaque" — opaque responses fail cache.addAll's response.ok check,
-// so we cache.put() them individually instead.
-const EXTERNAL_ASSETS = [BACKGROUND_IMAGE_URL];
+// Cross-origin assets to precache at SW install. Currently empty: the 54
+// background images are too heavy to precache up-front (multi-MB at SW
+// install would block the new worker), and the runtime fetch path + the
+// browser's own HTTP cache handle repeats fine. Anything that's small,
+// always-needed, and cross-origin should be added here as a string URL —
+// they're fetched with `mode: 'no-cors'` (opaque response) and stored
+// via cache.put().
+const EXTERNAL_ASSETS = [];
 
 self.addEventListener('install', (event) => {
     event.waitUntil((async () => {
         const cache = await caches.open(CACHE_NAME);
         console.log('PWA: Caching core assets for v' + APP_VERSION);
-        await cache.addAll(CORE_ASSETS);
+        // Per-asset add so ONE missing file (404, removed asset, etc) doesn't
+        // reject the whole precache batch the way cache.addAll() does — that
+        // was leaving the entire cache empty when /favicon.ico was missing,
+        // breaking offline play for the rest of the assets too.
+        await Promise.all(CORE_ASSETS.map(async (url) => {
+            try { await cache.add(url); }
+            catch (err) { console.log('PWA: Failed to precache core asset', url, err); }
+        }));
         await Promise.all(EXTERNAL_ASSETS.map(async (url) => {
             try {
                 const response = await fetch(url, { mode: 'no-cors' });

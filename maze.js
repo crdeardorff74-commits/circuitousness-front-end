@@ -885,7 +885,12 @@ const Maze = (() => {
             exit4:  exit4  ? Object.assign({}, exit4)  : null,
             // quadScramble carries the per-quad rotation offsets used by
             // hint() to find non-solved quads. Null when not in quad mode.
-            quadScramble: quadScramble ? quadScramble.map((row) => row.slice()) : null
+            quadScramble: quadScramble ? quadScramble.map((row) => row.slice()) : null,
+            // Set of "r,c" keys for hint-locked tiles, serialized as an
+            // array (Sets don't survive JSON / structured-clone of plain
+            // objects). PotD's background-gen save/restore relies on this
+            // to preserve the player's hint state across the dance.
+            locked: Array.from(locked)
         };
     }
     function restoreState(s) {
@@ -918,7 +923,12 @@ const Maze = (() => {
         entry4 = s.entry4 || null;
         exit4  = s.exit4  || null;
         quadScramble = s.quadScramble ? s.quadScramble.map((row) => row.slice()) : null;
-        locked = new Set();
+        // Restore the hint-lock set if the snapshot carried one (PotD's
+        // mid-play save/restore needs this). Older snapshots without the
+        // `locked` field — e.g. recordings predating this addition, or
+        // fresh worker output — fall back to an empty set, matching the
+        // previous behavior.
+        locked = new Set(s.locked || []);
         updateHighlighted();
     }
 
@@ -1231,11 +1241,95 @@ const Maze = (() => {
                 return { result, exitedAt: { row: cell.row, col: cell.col, port: exitPort } };
             }
 
+            // Gate-blocked edge: the path tried to exit `cell` via exitPort
+            // but a gate's prong currently sits on the cell↔next boundary.
+            // Treat as a dead-end. The Gates guard keeps the worker context
+            // (which doesn't load gates.js) walking unblocked.
+            if (typeof Gates !== 'undefined'
+                && Gates.edgeBlocked
+                && Gates.edgeBlocked(cell.row, cell.col, next.row, next.col)) {
+                return { result, exitedAt: null };
+            }
+
             cell = next;
             port = (exitPort + 2) & 3;
         }
 
         return { result, exitedAt: null };
+    }
+
+    // Canonical "r1,c1|r2,c2" with the lexicographically-smaller cell first
+    // — matches Gates' internal key format so gate.edgeBlocked lookups match
+    // what solutionEdges produces here.
+    function canonicalEdgeKey(r1, c1, r2, c2) {
+        if (r1 < r2 || (r1 === r2 && c1 < c2)) {
+            return r1 + ',' + c1 + '|' + r2 + ',' + c2;
+        }
+        return r2 + ',' + c2 + '|' + r1 + ',' + c1;
+    }
+
+    // Walk every solution path and return the Set of canonical edge keys it
+    // traverses. Used by Gates.assignGates to find safe gate placements.
+    //
+    // Non-quad: each tile is at a fixed position; `_solution` is its solved
+    // rotation. Walk grid[r][c] using `_solution` and we get the solved path.
+    //
+    // Quad mode: BOTH positions AND rotations of sub-tiles are scrambled by
+    // quad rotations. The sub-tile currently at (r, c) might be a different
+    // sub-tile than the one that belongs at (r, c) when solved. So walking
+    // with `_solution` at scrambled positions does NOT yield the solved path.
+    // Temporarily un-scramble (apply inverse quad rotations) so each sub-tile
+    // is back at its original position with rotation = _solution, walk, then
+    // restore via snapshotState/restoreState. quadScramble is saved separately
+    // because restoreState doesn't currently round-trip it.
+    function solutionEdges() {
+        if (!quadMode || !quadScramble) return walkSolutionEdges();
+        const snap = snapshotState();
+        const savedQuadScramble = quadScramble.map((row) => row.slice());
+        try {
+            for (let qr = 0; qr < quadScramble.length; qr++) {
+                for (let qc = 0; qc < quadScramble[qr].length; qc++) {
+                    const turns = quadScramble[qr][qc];
+                    for (let i = 0; i < turns; i++) rotateQuad(qr * 2, qc * 2, true);
+                    quadScramble[qr][qc] = 0;
+                }
+            }
+            return walkSolutionEdges();
+        } finally {
+            restoreState(snap);
+            quadScramble = savedQuadScramble;
+        }
+    }
+
+    function walkSolutionEdges() {
+        const edges = new Set();
+        const pairs = [[entry, exit], [entry2, exit2], [entry3, exit3], [entry4, exit4]];
+        const maxSteps = ROWS * COLS * 4;
+        for (const [eStart, eEnd] of pairs) {
+            if (!eStart || !eEnd) continue;
+            let r = eStart.row, c = eStart.col;
+            let inPort = eStart.port;
+            for (let step = 0; step < maxSteps; step++) {
+                if (!inBounds(r, c)) break;
+                const tile = grid[r][c];
+                if (!tile || tile._solution === undefined) break;
+                let outPort = -1;
+                for (const pair of BASE_CONNECTIONS[tile.type]) {
+                    const ra = rot(pair[0], tile._solution);
+                    const rb = rot(pair[1], tile._solution);
+                    if (ra === inPort) { outPort = rb; break; }
+                    if (rb === inPort) { outPort = ra; break; }
+                }
+                if (outPort < 0) break;
+                const nr = r + DELTA[outPort].dr;
+                const nc = c + DELTA[outPort].dc;
+                if (!inBounds(nr, nc)) break;
+                edges.add(canonicalEdgeKey(r, c, nr, nc));
+                r = nr; c = nc;
+                inPort = (outPort + 2) & 3;
+            }
+        }
+        return edges;
     }
 
     // Highlights = union of (forward-walk-from-entry) and (backward-walk-from-exit),
@@ -1775,11 +1869,43 @@ const Maze = (() => {
                 }
                 return false;
             }
+            // True iff applying the hint rotation to this quad would produce
+            // a connection-equivalent state (every position's effective
+            // connections unchanged) — i.e. the player has the quad in a
+            // configuration that "works just as well" as the solution even
+            // though quadScramble != 0. Without this check, the hint locks
+            // a quad red after a 180°/90°/270° rotation that has no effect
+            // on the lit chain, which feels worthless to the player.
+            //
+            // CW position cycle: TL → TR → BR → BL → TL. After `turns` CW
+            // rotations, the tile at position i NEW came from position
+            // (i - turns + 4) % 4 OLD, with its own rotation +turns.
+            function quadAlreadyPortEquivalent(qr, qc) {
+                const turns = (4 - quadScramble[qr][qc]) & 3;
+                if (turns === 0) return true;  // already at solution; caught above but defensive
+                const r0 = qr * 2, c0 = qc * 2;
+                const positions = [
+                    [r0,     c0    ],  // 0: TL
+                    [r0,     c0 + 1],  // 1: TR
+                    [r0 + 1, c0 + 1],  // 2: BR
+                    [r0 + 1, c0    ],  // 3: BL
+                ];
+                for (let i = 0; i < 4; i++) {
+                    const srcIdx = (i - turns + 4) % 4;
+                    const src = grid[positions[srcIdx][0]][positions[srcIdx][1]];
+                    const dst = grid[positions[i      ][0]][positions[i      ][1]];
+                    if (src.type !== dst.type) return false;
+                    const srcEffectiveRot = (src.rotation + turns) & 3;
+                    if (!rotationsHaveSamePorts(src.type, srcEffectiveRot, dst.rotation)) return false;
+                }
+                return true;
+            }
             for (let qr = 0; qr < qROWS; qr++) {
                 for (let qc = 0; qc < qCOLS; qc++) {
                     if (locked.has((qr*2) + ',' + (qc*2))) continue;
                     if (!quadHasPathTile(qr, qc)) continue;
                     if (quadAnyTileCorrect(qr, qc)) continue;
+                    if (quadAlreadyPortEquivalent(qr, qc)) continue;
                     // Twin partner quad must also pass the "no correct tile"
                     // check — hinting cascades to it, and locking a partner
                     // that contains correctly-placed tiles wastes the hint.
@@ -1932,6 +2058,8 @@ const Maze = (() => {
         snapshotState, loadSnapshot, clear,
         getConnections,
         hasShortcutWithin,
+        solutionEdges,
+        recompute: () => updateHighlighted(),
         isLocked(r, c)    { return locked.has(r + ',' + c); },
         get ROWS()        { return ROWS; },
         get COLS()        { return COLS; },

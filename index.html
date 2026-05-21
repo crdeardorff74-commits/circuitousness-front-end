@@ -13,7 +13,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0a0a2e">
-    <link rel="icon" href="favicon.ico">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
 
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -31,6 +31,19 @@
     <main id="app">
         <canvas id="maze"></canvas>
         <button id="hintBtn" type="button" data-i18n="hint.button">Hint</button>
+        <!-- Now Playing — populated by music.js setOnSongChange callback.
+             Hidden until a song is actually playing; pinned to the bottom-
+             left corner so it doesn't fight the timer/HINT/QUIT row at top.
+             Mirrors TANTЯO's pattern: ⏮ / ⏯ / ⏭ controls + song label. -->
+        <div id="nowPlaying">
+            <div id="nowPlayingLabel">♪ NOW PLAYING ♪</div>
+            <div id="nowPlayingTitle"></div>
+            <div id="nowPlayingControls">
+                <button id="nowPlayingPrev" type="button" title="Previous">⏮</button>
+                <button id="nowPlayingPause" type="button" title="Pause">⏸</button>
+                <button id="nowPlayingNext" type="button" title="Next">⏭</button>
+            </div>
+        </div>
         <div id="winBanner" data-i18n="game.youWon">You connected the path!</div>
         <div id="buildingBanner">Building puzzle&hellip;</div>
         <div id="lockToast" data-i18n="lock.firstHint">Tile locked — press and hold again to unlock</div>
@@ -69,6 +82,13 @@
                     <span class="titleInitial">C</span><span class="titleWord">IRCUIT</span><span class="titleMazeO" aria-label="O"><canvas id="titleOCanvas" width="160" height="160"></canvas></span><span class="titleWord">USNESS</span>
                 </h1>
             </div>
+            <!-- Mode picker (chip + modal, lifted from TANTЯO's
+                 Skill/Difficulty pattern). Click → openModeModal → click
+                 a card → setMode + close. Persists in localStorage. -->
+            <div class="menu-dropdown-wrapper" id="modeWrapper">
+                <div class="menu-dropdown-label" data-i18n="menu.mode">MODE</div>
+                <button id="modeBtn" type="button" class="menu-dropdown-btn" data-i18n="mode.potd.name">📅 Puzzle of the Day</button>
+            </div>
             <p class="menuSubtitle" data-i18n="marathon.subtitle">Solve as many puzzles as you can before time runs out</p>
             <div class="menuSection">
                 <h2 data-i18n="marathon.regularTiles">Singular tiles</h2>
@@ -95,16 +115,83 @@
              gameplay because closing it would effectively pause the timer
              and enable cheating). Currently exposes Music + SFX toggles;
              more can be added later. -->
+        <!-- PotD solved card — mirrors marathon's #solveTransition styling
+             (gold border + headline, dark backdrop card, tap anywhere on the
+             card to dismiss). Shown after a Puzzle-of-the-Day submission. -->
+        <div id="potdSolveTransition">
+            <div id="potdSolveHeadline" data-i18n="potd.solved.title">Solved!</div>
+            <div id="potdSolveTime"></div>
+            <div id="potdSolveRank" hidden></div>
+            <div id="potdSolveIneligible" data-i18n="potd.solved.ineligible" hidden>Not counted on the leaderboard.</div>
+            <div id="potdSolveOffline" data-i18n="potd.solved.offline" hidden>Offline — not submitted.</div>
+            <div id="potdSolveContinue" data-i18n="marathon.clickToContinue">Tap to continue</div>
+        </div>
+
+        <!-- PotD hint-use confirmation — using a hint mid-PotD play
+             disqualifies the run from today's leaderboard, so the player
+             confirms explicitly. -->
+        <div class="combo-modal-overlay" id="potdHintConfirmOverlay">
+            <div class="combo-modal potd-confirm-modal">
+                <div class="combo-modal-title" data-i18n="potd.hintConfirm.title">Use a hint?</div>
+                <p data-i18n="potd.hintConfirm.body">Using a hint will make this run ineligible for today's leaderboard.</p>
+                <div class="combo-modal-buttons">
+                    <button class="combo-modal-btn cancel" id="potdHintConfirmCancelBtn" type="button" data-i18n="potd.disclaimer.cancel">Cancel</button>
+                    <button class="combo-modal-btn apply" id="potdHintConfirmContinueBtn" type="button" data-i18n="potd.disclaimer.continue">Continue</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PotD ineligible-retry disclaimer — shown when the player tries
+             to restart a slot they already started today. Replaces confirm(). -->
+        <div class="combo-modal-overlay" id="potdDisclaimerOverlay">
+            <div class="combo-modal potd-confirm-modal">
+                <div class="combo-modal-title" data-i18n="potd.disclaimer.title">Replay this puzzle?</div>
+                <p data-i18n="potd.disclaimer.body">You've started this puzzle earlier today. Replaying it now will not be eligible for today's leaderboard.</p>
+                <div class="combo-modal-buttons">
+                    <button class="combo-modal-btn cancel" id="potdDisclaimerCancelBtn" type="button" data-i18n="potd.disclaimer.cancel">Cancel</button>
+                    <button class="combo-modal-btn apply" id="potdDisclaimerContinueBtn" type="button" data-i18n="potd.disclaimer.continue">Continue</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mode picker modal (lifted from TANTЯO's combo-modal pattern).
+             Hidden by default; mode-picker.js flips display='flex'. -->
+        <div class="combo-modal-overlay" id="modeModalOverlay">
+            <div class="combo-modal selection-modal">
+                <div class="combo-modal-title" data-i18n="menu.mode">MODE</div>
+                <div class="selection-options-list">
+                    <div class="selection-option" data-mode="potd">
+                        <div class="selection-option-header">
+                            <span class="selection-option-name" data-i18n="mode.potd.name">📅 Puzzle of the Day</span>
+                        </div>
+                        <div class="challenge-description" data-i18n="mode.potd.desc">Solve a puzzle as fast as you can to make the day's leaderboard.</div>
+                    </div>
+                    <div class="selection-option" data-mode="marathon">
+                        <div class="selection-option-header">
+                            <span class="selection-option-name" data-i18n="mode.marathon.name">🏃 Marathon</span>
+                        </div>
+                        <div class="challenge-description" data-i18n="mode.marathon.desc">Solve as many puzzles as you can before time runs out.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div id="settingsOverlay">
             <div id="settingsPopup">
                 <h2 data-i18n="settings.title">Settings</h2>
                 <div class="settingsRow">
                     <label for="settingMusic" data-i18n="settings.music">Music</label>
+                    <input type="range" id="settingMusicVolume" class="settingsSlider" min="0" max="100" aria-label="Music volume">
                     <button id="settingMusic" class="toggleSwitch" type="button" role="switch" aria-checked="true"><span class="toggleKnob"></span></button>
                 </div>
                 <div class="settingsRow">
                     <label for="settingSfx" data-i18n="settings.sfx">Sound effects</label>
+                    <input type="range" id="settingSfxVolume" class="settingsSlider" min="0" max="100" aria-label="SFX volume">
                     <button id="settingSfx" class="toggleSwitch" type="button" role="switch" aria-checked="true"><span class="toggleKnob"></span></button>
+                </div>
+                <div class="settingsRow">
+                    <label for="settingBackground" data-i18n="settings.background">Background</label>
+                    <button id="settingBackground" class="toggleSwitch" type="button" role="switch" aria-checked="true"><span class="toggleKnob"></span></button>
                 </div>
                 <button id="settingsCloseBtn" type="button" data-i18n="settings.close">Close</button>
             </div>
@@ -205,7 +292,7 @@
     <script>
     (function() {
         var t = Date.now();
-        var srcs = ['config.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','maze.js','render.js','title-renderer.js','marathon.js','game.js'];
+        var srcs = ['config.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','maze.js','gates.js','render.js','title-renderer.js','marathon.js','mode-picker.js','potd.js','game.js'];
         for (var i = 0; i < srcs.length; i++) {
             document.write('<script src="' + srcs[i] + '?t=' + t + '"><\/script>');
         }

@@ -149,15 +149,32 @@
         // size that's neither cached nor currently being built. Worker can
         // only do one at a time, so this is called both after each puzzle
         // is shown AND after each worker response — chains the queue.
+        //
+        // CRITICAL: when Marathon owns the lifecycle, ITS progression
+        // (a 4-step row/col growth cycle in marathon.js dimsForLevel) is
+        // the source of truth — NOT this file's `nextSize`, which uses a
+        // different "grow smaller dim" rule. The two diverge at puzzle 2
+        // (e.g. 8x8 → 9x8 here vs 8x9 in Marathon), so pre-gen would
+        // build sizes Marathon never asks for and every advance would
+        // cache-miss → "Building puzzle…" between every level.
         function fillPreGenQueue() {
             if (!ensureWorker()) return;
             if (preGenSize) return;
-            let r = Maze.ROWS, c = Maze.COLS;
-            for (let i = 0; i < PREGEN_LOOKAHEAD; i++) {
-                const next = nextSize(r, c);
-                r = next.rows; c = next.cols;
-                if (!preGenCache.has(cacheKey(r, c))) {
-                    requestBuild(r, c);
+            let upcoming;
+            if (typeof Marathon !== 'undefined' && Marathon.upcomingDims && Marathon.isPlaying && Marathon.isPlaying()) {
+                upcoming = Marathon.upcomingDims(PREGEN_LOOKAHEAD);
+            } else {
+                upcoming = [];
+                let r = Maze.ROWS, c = Maze.COLS;
+                for (let i = 0; i < PREGEN_LOOKAHEAD; i++) {
+                    const next = nextSize(r, c);
+                    r = next.rows; c = next.cols;
+                    upcoming.push({ rows: r, cols: c });
+                }
+            }
+            for (const dims of upcoming) {
+                if (!preGenCache.has(cacheKey(dims.rows, dims.cols))) {
+                    requestBuild(dims.rows, dims.cols);
                     return;
                 }
             }
@@ -202,6 +219,11 @@
                 quadMode: !!Maze.quadMode,
                 pathCount: Maze.pathCount,
                 initialState: deepCloneSnapshot(Maze.snapshotState()),
+                // Gate state at puzzle start. Without this the replay
+                // inherits whatever gates the live game has placed for
+                // its current puzzle — a sticking-out-of-grid mismatch
+                // when the live puzzle is larger than the replayed one.
+                gates: (typeof Gates !== 'undefined' && Gates.snapshot) ? Gates.snapshot() : null,
                 moves: []
             };
         }
@@ -244,7 +266,10 @@
             Render.draw();
             const justWon = Maze.won && !lastWon;
             if (justWon) {
-                if (typeof Marathon !== 'undefined' && Marathon.isPlaying()) {
+                if (typeof Potd !== 'undefined' && Potd.isPlaying && Potd.isPlaying()) {
+                    // PotD: timed solve → submit to server + back to menu.
+                    Potd.onSolve();
+                } else if (typeof Marathon !== 'undefined' && Marathon.isPlaying()) {
                     // Marathon owns progression — score the solve and queue
                     // the next (larger) puzzle. Banner stays hidden in game mode.
                     Marathon.onSolve();
@@ -299,6 +324,12 @@
                 if (result && result.turns > 0) {
                     Render.animateRotationAt(move.r, move.c, false, result.turns);
                 }
+            } else if (move.type === 'gate') {
+                if (typeof Gates !== 'undefined') {
+                    Gates.rotate(move.ccw);
+                    if (Maze.recompute) Maze.recompute();
+                    Render.animateGateRotation(move.ccw);
+                }
             }
         }
         // Core single-puzzle playback. Caller is responsible for the
@@ -317,6 +348,14 @@
                 Maze.setDimensions(rec.initialState.rows, rec.initialState.cols);
             }
             Maze.loadSnapshot(deepCloneSnapshot(rec.initialState));
+            // Restore gates for the puzzle being replayed. Older recordings
+            // pre-dating the gates feature have no `gates` field — clear in
+            // that case so we don't carry over stale state from prior plays.
+            if (typeof Gates !== 'undefined') {
+                if (rec.gates) Gates.restore(rec.gates);
+                else Gates.clear();
+                if (Maze.recompute) Maze.recompute();
+            }
             Render.refit();
             Render.draw();
             const start = Date.now();
@@ -471,6 +510,24 @@
             }
 
             isBuilding = false;
+            // Place gates AFTER the build finishes (works for both worker-
+            // built and main-thread-built puzzles). In quad mode, gates sit
+            // at SUB-TILE vertices and span one sub-tile edge — Maze.ROWS/COLS
+            // are physical (sub-tile) dims so the existing interior-vertex
+            // iteration just works. Maze.solutionEdges handles the quad
+            // un-scramble internally so safe-direction picks are correct.
+            // Recompute the walk so any newly-blocked edge is reflected in
+            // highlighted before refresh()/draw runs.
+            if (typeof Gates !== 'undefined') {
+                const solveCount = (typeof Marathon !== 'undefined' && Marathon.getSolvedCount)
+                    ? Marathon.getSolvedCount() : 0;
+                const target = 4 + Math.floor(solveCount / 3);
+                // Quad mode: anchor gates at quad-corners only (every other
+                // sub-tile vertex). The prong is still one sub-tile long.
+                const stride = Maze.quadMode ? 2 : 1;
+                Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), target, stride);
+                if (Maze.recompute) Maze.recompute();
+            }
             lastWon = Maze.won;
             // Seed the SFX diff baselines from the CURRENT puzzle state, not
             // all-false. Two reasons:
@@ -535,7 +592,13 @@
             get recording() { return recording; },  // debug/test access
             replayAll: replayAll,                   // Marathon leaderboard playback
             cancelReplay: cancelReplay,
-            get isReplaying() { return isReplaying; }
+            get isReplaying() { return isReplaying; },
+            // Exposed for PotD: loading a server-built snapshot bypasses
+            // newPuzzle, so PotD calls this after Maze.loadSnapshot /
+            // Gates.restore / Maze.recompute to start a fresh recording
+            // anchored on the loaded state instead of inheriting whatever
+            // the previous marathon run left in `recording`.
+            startRecording: startRecording,
         };
 
         // Debug-panel pre-gen status indicator. Polls every 200ms — cheap
@@ -578,6 +641,11 @@
                     // before checking grid, then bails on the null grid.
                     Maze.clear();
                     Render.draw();
+                    // Shuffle background HERE (not in onPuzzleReady) so the
+                    // new image appears at the START of the build/transition,
+                    // alongside "Building puzzle…" — otherwise the old
+                    // puzzle's background lingers while the worker runs.
+                    if (Render.shuffleBackground) Render.shuffleBackground();
                     if (pathCount !== opts.pathCount || quadMode !== opts.quadMode) {
                         pathCount = opts.pathCount;
                         quadMode  = opts.quadMode;
@@ -612,9 +680,32 @@
             if (typeof Marathon !== 'undefined' && Marathon.isInTransition()) {
                 return;
             }
+            // Same gate for PotD: the solved card is up — block canvas
+            // rotations so the player can't accidentally un-solve the
+            // puzzle while reading the result.
+            if (typeof Potd !== 'undefined' && Potd.isInSolveTransition && Potd.isInSolveTransition()) {
+                return;
+            }
             const rect = canvas.getBoundingClientRect();
             const x = (ev.clientX !== undefined ? ev.clientX : ev.touches[0].clientX) - rect.left;
             const y = (ev.clientY !== undefined ? ev.clientY : ev.touches[0].clientY) - rect.top;
+            // Gate hit overrides the tile under the pointer — tapping a gate
+            // (or its buffer zone) rotates all gates in unison, never the
+            // underlying tile.
+            if (Render.gateAt) {
+                const gate = Render.gateAt(x, y);
+                if (gate && typeof Gates !== 'undefined') {
+                    Gates.rotate(ccw);
+                    recordMove({ type: 'gate', ccw: !!ccw });
+                    // Walk uses Gates.edgeBlocked; recompute so highlighted
+                    // reflects the new gate state before drawing.
+                    if (Maze.recompute) Maze.recompute();
+                    Render.animateGateRotation(ccw);
+                    if (typeof Sfx !== 'undefined') Sfx.gateClick();
+                    refresh();
+                    return;
+                }
+            }
             const cell = Render.cellAt(x, y);
             if (!cell) return;
             // Snapshot pre-rotation state for the twin-twist-break SFX check.
@@ -814,6 +905,11 @@
         function startPress(canvasX, canvasY) {
             clearPress();
             longPressFired = false;
+            // Pressing on a gate (or its buffer) never targets the underlying
+            // tile — gates can't be locked, only rotated. Skip the long-press
+            // timer entirely so the tile beneath the gate isn't accidentally
+            // locked.
+            if (Render.gateAt && Render.gateAt(canvasX, canvasY)) return;
             pressStartX = canvasX;
             pressStartY = canvasY;
             pressTimer = setTimeout(() => {
@@ -895,13 +991,24 @@
         // Two buttons share one handler: #hintBtn (debug mode, top-right corner)
         // and #hudHintBtn (game mode, inside the HUD where the score used to be).
         // CSS hides whichever button doesn't match the current mode.
-        function handleHintClick(ev) {
+        async function handleHintClick(ev) {
             ev.stopPropagation();
             if (isBuilding || isReplaying) return;
             // Don't run hint during the between-puzzles transition; the
             // player's already won, hint would just lock a tile on a
             // puzzle they're about to leave behind. Treat it as a no-op.
             if (typeof Marathon !== 'undefined' && Marathon.isInTransition()) return;
+            // PotD: hint use forfeits leaderboard eligibility. Prompt the
+            // player first IF the run is still eligible. If they're
+            // already ineligible (e.g. retrying a spent slot), skip the
+            // prompt and just give them the hint.
+            if (typeof Potd !== 'undefined' && Potd.isPlaying && Potd.isPlaying()) {
+                if (Potd.isEligible && Potd.isEligible()) {
+                    const ok = await Potd.confirmHintUse();
+                    if (!ok) return;
+                    Potd.noteHintUsed();
+                }
+            }
             const pick = Maze.hint();
             if (pick) {
                 recordMove({ type: 'hint', r: pick.r, c: pick.c });

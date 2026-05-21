@@ -94,7 +94,22 @@ const Render = (() => {
     }
     recomputeTilePalette();  // derive initial palette from defaults
 
-    const LOCKED_PALETTE = {
+    // Hint-locked tiles use a gold palette — they show a tile in its
+    // solved orientation, so gold (the win color) reads as "this is
+    // already correct" instead of red's "stop / locked" connotation.
+    // The slow pulse in effectivePalette modulates brightness so the
+    // tile breathes between this base and a brighter highlight.
+    const HINT_PALETTE = {
+        face:  '#8b6920',
+        top:   '#e0b340',
+        left:  '#b88a28',
+        bot:   '#44320a',
+        right: '#5d4814'
+    };
+    // Rejection flash (player tries to twist a hint-locked or twin-locked
+    // pair) stays red — it's an alarm/stop signal, distinct from the
+    // hint's "this is correct" gold.
+    const REJECT_PALETTE = {
         face:  '#6b2030',
         top:   '#a04050',
         left:  '#823545',
@@ -186,6 +201,32 @@ const Render = (() => {
     // per-tile state.
     function litPalette(pathIdx) {
         const idx = pathIdx | 0;
+        // Snippet override: lets the title-O (and other static snippet
+        // renders) force a custom lit gradient, bypassing the normal
+        // per-path / won-state palette selection. Caller can pass an
+        // explicit hi/lo triplet (matching the curated style of
+        // LIT_GREEN/BLUE/PINK/ORANGE/JOINED palettes), or just litColor
+        // and we'll derive hi/lo via scaleColor — but the derivation
+        // muddies when the base channel is already saturated, so the
+        // explicit triplet is preferred.
+        if (snippetMode && snippetLitColor) {
+            const baseHex = snippetLitColor;
+            const hiHex   = snippetLitHi || scaleColor(baseHex, 1.35);
+            const loHex   = snippetLitLo || scaleColor(baseHex, 0.45);
+            // When litPulse is set, apply the same sine-driven brightness
+            // modulation as the in-game JOINED palette so the title-O
+            // pulses identically to the path-conflict flash.
+            if (snippetLitPulse) {
+                const phase  = (Date.now() / JOINED_PULSE_PERIOD_MS) * 2 * Math.PI;
+                const factor = 1 + JOINED_PULSE_AMP * Math.sin(phase);
+                return {
+                    base: scaleColor(baseHex, factor),
+                    hi:   scaleColor(hiHex,   factor),
+                    lo:   scaleColor(loHex,   factor),
+                };
+            }
+            return { base: baseHex, hi: hiHex, lo: loHex };
+        }
         if (idx === JOINED_PATH_IDX) {
             const phase  = (Date.now() / JOINED_PULSE_PERIOD_MS) * 2 * Math.PI;
             const factor = 1 + JOINED_PULSE_AMP * Math.sin(phase);
@@ -238,15 +279,84 @@ const Render = (() => {
         }
     }
 
+    // Background image shuffle bag — Fisher-Yates over 1..BACKGROUND_IMAGE_COUNT
+    // so every image plays once before any repeats, plus an avoid-back-to-back
+    // swap at refill boundaries so the same image can't appear twice in a row.
+    // State is in-memory only — bag resets on page reload, which is fine; the
+    // bag is for in-session variety, not a curated player experience.
+    let bgBag         = [];
+    let bgBagPos      = 0;
+    let lastBgIdx     = -1;
+    let bgEnabled     = true;   // mirrors Settings.isBackgroundEnabled(); when false, body shows pure black
+    let currentBgUrl  = null;   // most recently picked URL — re-applied on enable so toggling on/off doesn't waste bag entries
+    function refillBgBag() {
+        const count = (typeof BACKGROUND_IMAGE_COUNT === 'number' && BACKGROUND_IMAGE_COUNT > 0)
+                      ? BACKGROUND_IMAGE_COUNT : 0;
+        if (count === 0) { bgBag = []; bgBagPos = 0; return; }
+        bgBag = [];
+        for (let i = 1; i <= count; i++) bgBag.push(i);
+        for (let i = bgBag.length - 1; i > 0; i--) {
+            const j   = Math.floor(Math.random() * (i + 1));
+            const tmp = bgBag[i]; bgBag[i] = bgBag[j]; bgBag[j] = tmp;
+        }
+        // Avoid back-to-back of the image that just played at the bag boundary.
+        if (lastBgIdx > 0 && bgBag.length > 1 && bgBag[0] === lastBgIdx) {
+            const tmp = bgBag[0]; bgBag[0] = bgBag[1]; bgBag[1] = tmp;
+        }
+        bgBagPos = 0;
+    }
+    function nextBgUrl() {
+        if (typeof BACKGROUND_IMAGE_URL_BASE !== 'string' || !BACKGROUND_IMAGE_URL_BASE) return null;
+        if (bgBagPos >= bgBag.length) refillBgBag();
+        if (bgBag.length === 0) return null;
+        const idx = bgBag[bgBagPos++];
+        lastBgIdx = idx;
+        return BACKGROUND_IMAGE_URL_BASE + 'level' + idx + '.jpg';
+    }
     function applyBodyBackground() {
-        if (typeof BACKGROUND_IMAGE_URL !== 'string' || !BACKGROUND_IMAGE_URL) return;
-        document.body.style.backgroundImage = `url("${BACKGROUND_IMAGE_URL}")`;
+        const url = nextBgUrl();
+        if (!url) return;
+        currentBgUrl = url;
+        if (bgEnabled) document.body.style.backgroundImage = `url("${url}")`;
+        // (if !bgEnabled the bag still advances but the DOM stays empty
+        // until setBackgroundEnabled(true) re-applies currentBgUrl)
+    }
+    // Public alias — Marathon.onPuzzleReady calls this on every puzzle start
+    // so the visible bg rotates with the player's progression.
+    function shuffleBackground() { applyBodyBackground(); }
+    // Settings toggle. When off, body falls back to pure black instead of
+    // the CSS default dark navy — matches the "just be black" expectation.
+    // Re-applies the CURRENT bag URL (rather than advancing) on enable, so
+    // toggling on/off mid-game doesn't waste images from the rotation.
+    function setBackgroundEnabled(b) {
+        bgEnabled = !!b;
+        if (bgEnabled) {
+            document.body.style.backgroundColor = '';   // revert to CSS #0a0a2e
+            if (currentBgUrl) {
+                document.body.style.backgroundImage = `url("${currentBgUrl}")`;
+            } else {
+                applyBodyBackground();  // first time enabling: pick from bag
+            }
+        } else {
+            document.body.style.backgroundImage = '';
+            document.body.style.backgroundColor = '#000';
+        }
     }
 
     function init(c) {
         canvas = c;
         ctx = canvas.getContext('2d');
         window.addEventListener('resize', resize);
+        // Sync the bgEnabled flag from Settings BEFORE first apply, so a
+        // persisted-disabled user doesn't see an image flash on page load.
+        // Settings IIFE has already loaded its localStorage state by now;
+        // its .init (DOM-binding) is the part that waits for DOMContentLoaded.
+        if (typeof Settings !== 'undefined' && Settings.isBackgroundEnabled) {
+            bgEnabled = Settings.isBackgroundEnabled();
+            if (!bgEnabled) {
+                document.body.style.backgroundColor = '#000';
+            }
+        }
         applyBodyBackground();
         resize();
     }
@@ -455,14 +565,18 @@ const Render = (() => {
         return         { x: cx + dy, y: cy - dx };
     }
 
-    function drawBeveledPolygon(verts, palette, skipEdges, arcEdges) {
+    function drawBeveledPolygon(verts, palette, skipEdges, arcEdges, bevelOverride) {
         // BEVEL_FRAC is a fraction of cellSize, but in quad mode the visible
         // tile is 2× cellSize on each side — so double the bevel to keep its
         // visual proportion consistent with non-quad tiles. The inner-quad
         // edges (skipEdges) still receive 0 inset, so this only fattens the
         // outer-quad bevels that frame each 2×2 group.
+        // bevelOverride lets small overlays (gates) pick a thinner inset so
+        // tiny polygons don't get bevel-dominated.
         const bevelMul = Maze.quadMode ? 2 : 1;
-        const bevel = Math.max(2, Math.floor(cellSize * BEVEL_FRAC * bevelMul));
+        const bevel = (bevelOverride != null)
+            ? bevelOverride
+            : Math.max(2, Math.floor(cellSize * BEVEL_FRAC * bevelMul));
         const inner = insetPolygon(verts, bevel, skipEdges);
         const n = verts.length;
 
@@ -1116,7 +1230,7 @@ const Render = (() => {
 
     // ---- pulse animation ----
     //
-    // Hint tiles (LOCKED_PALETTE) breathe slowly — visual cue that they're
+    // Hint tiles (HINT_PALETTE) breathe slowly — visual cue that they're
     // not just twin-colored, they're hint-locked. Their twin partners get
     // a different look: face stays the twin color but the bevels go red,
     // marking them as "yoked to a hint" without making them look fully
@@ -1154,6 +1268,7 @@ const Render = (() => {
     let ANIMATE_ROTATIONS = true;
     const ROTATION_ANIM_MS = 200;
     let rotationAnims = []; // [{ cx, cy, deltaRad, startTime, duration, keys: Set<"r,c"> }]
+    let gateAnims     = []; // [{ gate, cx, cy, deltaRad, startTime, duration }] — gates rotate in unison but each spins around its own vertex
     function setAnimateRotations(on) { ANIMATE_ROTATIONS = !!on; }
 
     // Public API: schedule an animation for a click that already mutated
@@ -1267,6 +1382,76 @@ const Render = (() => {
         rotationAnims = rotationAnims.filter((a) => (now - a.startTime) < a.duration);
     }
 
+    // Gate rotation animations. All gates rotate in unison (one player tap
+    // rotates them all), but each gate spins around its own vertex center —
+    // mirroring the twin-tile pattern where partners spin around their own
+    // centers, not a shared pivot.
+    function animateGateRotation(ccw) {
+        if (!ANIMATE_ROTATIONS) return;
+        if (typeof Gates === 'undefined' || !Gates.list || Gates.list.length === 0) return;
+        const startTime = Date.now();
+        const deltaRad = ccw ? -Math.PI / 2 : Math.PI / 2;
+        for (const gate of Gates.list) {
+            gateAnims.push({
+                gate,
+                cx: originX + gate.vc * cellSize,
+                cy: originY + gate.vr * cellSize,
+                deltaRad, startTime, duration: ROTATION_ANIM_MS
+            });
+        }
+        needsFullDraw = true;
+        ensureAnimating();
+        setTimeout(function () { if (ctx) draw(); }, ROTATION_ANIM_MS + 30);
+    }
+
+    function gateRotationTransform(gate) {
+        if (gateAnims.length === 0) return null;
+        const now = Date.now();
+        let cx = 0, cy = 0, angle = 0;
+        let found = false;
+        for (const anim of gateAnims) {
+            if (anim.gate !== gate) continue;
+            const t = (now - anim.startTime) / anim.duration;
+            if (t >= 1) continue;
+            angle += -anim.deltaRad * (1 - t);
+            cx = anim.cx; cy = anim.cy;
+            found = true;
+        }
+        return found ? { cx, cy, angle } : null;
+    }
+
+    function withGateRotation(gate, fn) {
+        const t = gateRotationTransform(gate);
+        if (!t) { fn(); return; }
+        ctx.save();
+        ctx.translate(t.cx, t.cy);
+        ctx.rotate(t.angle);
+        ctx.translate(-t.cx, -t.cy);
+        fn();
+        ctx.restore();
+    }
+
+    function pruneFinishedGateAnims() {
+        if (gateAnims.length === 0) return;
+        const now = Date.now();
+        gateAnims = gateAnims.filter((a) => (now - a.startTime) < a.duration);
+    }
+
+    // Hit-test for gates. Returns the gate object or null. Caller passes
+    // CSS pixel coords; internal conversion to device pixels mirrors cellAt.
+    function gateAt(cssX, cssY) {
+        if (typeof Gates === 'undefined' || !Gates.list || Gates.list.length === 0) return null;
+        const x = cssX * dpr;
+        const y = cssY * dpr;
+        const cs = cellSize;
+        for (const gate of Gates.list) {
+            const cx = originX + gate.vc * cs;
+            const cy = originY + gate.vr * cs;
+            if (Gates.hitTest(gate, cs, cx, cy, x, y)) return gate;
+        }
+        return null;
+    }
+
     function tick() {
         animationFrameId = null;
         draw();   // draw() schedules the next frame if needed
@@ -1304,6 +1489,7 @@ const Render = (() => {
         const grid = Maze.grid;
         if (!grid) return false;
         if (rotationAnims.length > 0) return true;
+        if (gateAnims.length > 0) return true;
         if (dramaticPulseStart && (Date.now() - dramaticPulseStart) < DRAMATIC_PULSE_MS) return true;
         for (let r = 0; r < Maze.ROWS; r++) {
             for (let c = 0; c < Maze.COLS; c++) {
@@ -1405,12 +1591,13 @@ const Render = (() => {
 
         let palette;
         if (isHinted) {
-            palette = LOCKED_PALETTE;
+            palette = HINT_PALETTE;
         } else if (isTwinOfHint) {
             // Twin-of-hint partner: the partner shows its twin face color
-            // with red bevels — signals "locked because of the hint twin"
-            // without flooding the whole partner red.
-            palette = Object.assign({}, LOCKED_PALETTE, { face: tile._twin.color });
+            // with gold bevels — signals "locked because of the hint twin"
+            // (gold matches the hint's solved-state palette) without
+            // flooding the whole partner gold.
+            palette = Object.assign({}, HINT_PALETTE, { face: tile._twin.color });
         } else if (tile._twin) {
             // Plain twin pair: pastel face only — bevels stay default slate
             // so twins read as colored "stickers" on normal tiles instead of
@@ -1452,10 +1639,11 @@ const Render = (() => {
                     const decay  = 1 - t;                            // fade
                     const wave   = Math.abs(Math.sin(t * Math.PI * 3)); // 1.5 cycles → 3 peaks
                     const alpha  = decay * wave * DRAMATIC_PULSE_AMP;
-                    palette      = blendPalette(palette, LOCKED_PALETTE, alpha);
+                    palette      = blendPalette(palette, REJECT_PALETTE, alpha);
                     // Brightness boost on top of the red blend — needed so
-                    // the hint primary (already full-red LOCKED_PALETTE)
-                    // still shows a visible pulse. For the partner tile this
+                    // the hint primary (now HINT_PALETTE gold) still shows
+                    // a visible pulse over the red rejection flash. For
+                    // the partner tile this
                     // also intensifies the flash. Cap at +60% peak.
                     const brighten = 1 + decay * wave * 0.6;
                     palette = scalePaletteBrightness(palette, brighten);
@@ -1685,7 +1873,52 @@ const Render = (() => {
         // weird stub lines around the snippet).
         if (!snippetMode) drawCircuitOutline(w, rim);
 
+        // Gates sit on top of everything — they're physical objects laid
+        // over the tile grid, not part of any tile's own rendering.
+        if (!snippetMode) drawGates();
+
         ctx.restore();
+    }
+
+    // Draw all gates from the Gates module's current state. Each gate is
+    // base square + prong pentagon, both beveled in the gate palette. Prong
+    // first so the base sits visually on top, matching the mockup silhouette.
+    // withGateRotation wraps each gate's draw so an in-flight rotation
+    // animation smoothly interpolates from the old orientation to the new.
+    //
+    // Opaque face-color underlay before the beveled rendering: without it,
+    // the canvas anti-aliasing at the bevel's OUTER edge blends bevel-color
+    // with whatever sits on the canvas just outside the gate (a dark tile
+    // or channel), producing a translucent-looking halo along the gate
+    // silhouette. Pre-filling the outer polygons at face color means the
+    // bevel-edge AA blends bevel-with-face — a smooth red-on-red transition
+    // that reads as fully opaque.
+    function drawGates() {
+        if (typeof Gates === 'undefined') return;
+        const list = Gates.list;
+        if (!list || list.length === 0) return;
+        const cs = cellSize;
+        const gateBevel = Math.max(1, Math.round(cs * 0.04));
+        function fillOuter(pts) {
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+            ctx.closePath();
+            ctx.fill();
+        }
+        for (const gate of list) {
+            const cx = originX + gate.vc * cs;
+            const cy = originY + gate.vr * cs;
+            const polys = Gates.polygonsFor(gate, cs, cx, cy);
+            withGateRotation(gate, function () {
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = polys.palette.face;
+                fillOuter(polys.prong);
+                fillOuter(polys.base);
+                drawBeveledPolygon(polys.prong, polys.palette, null, null, gateBevel);
+                drawBeveledPolygon(polys.base,  polys.palette, null, null, gateBevel);
+            });
+        }
     }
 
     // Snippet mode: render the current Maze state into a separate target
@@ -1701,6 +1934,10 @@ const Render = (() => {
     let snippetWidthFrac = null;
     let snippetAlpha     = null;
     let snippetColor     = null;
+    let snippetLitColor  = null;
+    let snippetLitHi     = null;
+    let snippetLitLo     = null;
+    let snippetLitPulse  = false;
     function effectiveGrooveRim() {
         return (snippetMode && snippetColor) ? snippetColor : GROOVE_RIM;
     }
@@ -1740,6 +1977,10 @@ const Render = (() => {
         snippetWidthFrac = (opts && opts.widthFrac) || null;
         snippetAlpha     = (opts && opts.alpha != null) ? opts.alpha : null;
         snippetColor     = (opts && opts.color) || null;
+        snippetLitColor  = (opts && opts.litColor) || null;
+        snippetLitHi     = (opts && opts.litHi) || null;
+        snippetLitLo     = (opts && opts.litLo) || null;
+        snippetLitPulse  = !!(opts && opts.litPulse);
         try {
             drawCore();
         } finally {
@@ -1747,6 +1988,10 @@ const Render = (() => {
             snippetWidthFrac = null;
             snippetAlpha     = null;
             snippetColor     = null;
+            snippetLitColor  = null;
+            snippetLitHi     = null;
+            snippetLitLo     = null;
+            snippetLitPulse  = false;
         }
 
         canvas    = sCanvas;
@@ -1780,27 +2025,46 @@ const Render = (() => {
 
         // Dirty cells: animating tiles + 8 neighbors. A 45°-rotated tile's
         // corners poke ~0.207*cellSize into neighbor cells; redrawing the
-        // neighbors covers that overshoot, so no extra clip margin is needed.
-        const dirty = new Set();
+        // neighbors covers that overshoot.
+        //
+        // Build neighbor and rotating sets separately so iteration order
+        // can put rotating tiles LAST — without that ordering, neighbors
+        // are drawn after the rotating tile and visually overwrite its
+        // poke-corners, making the rotating tile look like it's BEHIND
+        // its neighbors during the spin.
+        const rotatingKeys = new Set();
+        const neighborKeys = new Set();
+        for (const anim of rotationAnims) {
+            for (const key of anim.keys) rotatingKeys.add(key);
+        }
         for (const anim of rotationAnims) {
             for (const key of anim.keys) {
-                dirty.add(key);
                 const [r, c] = key.split(',').map(Number);
                 for (const [dr, dc] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
                     const nr = r + dr, nc = c + dc;
                     if (nr >= 0 && nr < Maze.ROWS && nc >= 0 && nc < Maze.COLS) {
-                        dirty.add(nr + ',' + nc);
+                        const k = nr + ',' + nc;
+                        if (!rotatingKeys.has(k)) neighborKeys.add(k);
                     }
                 }
             }
         }
+        const dirty = new Set([...neighborKeys, ...rotatingKeys]); // neighbors first → rotating last
         if (dirty.size === 0) return;
 
         const litKeys = buildLitKeys();
         const w   = Math.max(4, Math.floor(cellSize * GROOVE_FRAC));
         const rim = Math.max(1, Math.floor(cellSize * GROOVE_RIM_FRAC));
 
-        // Clip path = union of dirty cell rects.
+        // Clip path = union of dirty cell rects PLUS a margin around each
+        // rotating tile. A 45° rotation extends the cell's corners
+        // ~0.207*cellSize past every cell edge; for INTERIOR tiles the 8
+        // neighbors absorb that overshoot, but for tiles on the GRID EDGE
+        // the overshoot lands in the canvas padding — and without the
+        // margin in the clip, it gets cropped at the grid boundary.
+        // Perimeter pixels inside the margin briefly disappear during
+        // the animation; the post-animation drawCore restores them.
+        const rotationMargin = Math.ceil(cellSize * 0.22);
         ctx.save();
         ctx.beginPath();
         for (const key of dirty) {
@@ -1808,16 +2072,28 @@ const Render = (() => {
             const px = originX + c * cellSize, py = originY + r * cellSize;
             ctx.rect(px, py, cellSize, cellSize);
         }
+        for (const key of rotatingKeys) {
+            const [r, c] = key.split(',').map(Number);
+            const px = originX + c * cellSize, py = originY + r * cellSize;
+            ctx.rect(px - rotationMargin, py - rotationMargin,
+                     cellSize + 2 * rotationMargin, cellSize + 2 * rotationMargin);
+        }
         ctx.clip();
-        ctx.clearRect(0, 0, canvas.width, canvas.height); // clipped to dirty cells only
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // clipped to dirty + margin
         ctx.lineCap = 'butt';
         ctx.lineJoin = 'miter';
 
         // Pass B: dim channels for dirty tiles only → offscreen → composite.
         ensureOffscreen();
-        // Clear only the dirty cells on offscreen — content elsewhere on
-        // offCanvas is irrelevant since the composite drawImage to ctx is
-        // also clipped to dirty cells.
+        // Clear matching regions on offscreen (dirty cells + rotation
+        // margin) so stale dim pixels don't ghost through the drawImage
+        // composite below.
+        for (const key of rotatingKeys) {
+            const [r, c] = key.split(',').map(Number);
+            const px = originX + c * cellSize, py = originY + r * cellSize;
+            offCtx.clearRect(px - rotationMargin, py - rotationMargin,
+                             cellSize + 2 * rotationMargin, cellSize + 2 * rotationMargin);
+        }
         for (const key of dirty) {
             const [r, c] = key.split(',').map(Number);
             const px = originX + c * cellSize, py = originY + r * cellSize;
@@ -1849,8 +2125,19 @@ const Render = (() => {
             renderTileWalls(r, c);
         }
 
-        // Perimeter outlines don't change during a rotation animation; the
-        // previous drawCore left them on the canvas outside the clip.
+        // The rotation margin (added so edge-tile rotations aren't cropped
+        // at the grid boundary) extends a few px into the canvas padding.
+        // The portion of any entry/exit notch that lives within that
+        // margin gets wiped by the clearRect above. Redraw the perimeter
+        // so those pixels come back. The clip restricts the strokes to
+        // the dirty+margin region — most of the perimeter is a no-op pass.
+        if (!snippetMode) drawCircuitOutline(w, rim);
+
+        // Gates overlap the 4 tiles around their vertex, so any dirty tile
+        // adjacent to a gate gets the gate's pixels cleared by the clip's
+        // clearRect. Repaint gates within the same clip so they survive.
+        drawGates();
+
         ctx.restore();
     }
 
@@ -1878,7 +2165,11 @@ const Render = (() => {
 
         const joinedActive = hasJoinedLanes();
         const fadingActive = fadingLanes.length > 0;
+        // Gates aren't tile-keyed so the partial-redraw clip doesn't include
+        // them — force a full draw whenever a gate is mid-rotation so the
+        // animation actually paints.
         const canPartial = rotationAnims.length > 0
+            && gateAnims.length === 0
             && !dramaticActive && !hintActive && !joinedActive && !fadingActive && !needsFullDraw;
 
         if (canPartial) {
@@ -1891,6 +2182,7 @@ const Render = (() => {
         // Drop finished rotation animations so shouldKeepAnimating reports
         // accurately and tileRotationTransform stops paying their cost.
         pruneFinishedRotations();
+        pruneFinishedGateAnims();
         if (shouldKeepAnimating()) ensureAnimating();
     }
 
@@ -1903,7 +2195,7 @@ const Render = (() => {
         return v === undefined ? -1 : v;
     }
 
-    return { init, draw, cellAt,
+    return { init, draw, cellAt, gateAt, animateGateRotation,
              setTileColor, setPathColor, setPathOpacity,
              setPathWidth, setBevelThickness, setTileFaceAlpha,
              setLitGreenLo, setLitGreenHi, setLitGoldLo, setLitGoldHi,
@@ -1912,5 +2204,7 @@ const Render = (() => {
              setAnimateRotations, animateRotationAt,
              hasJoinedLanes,    // game.js polls this for the overlap-SFX state machine
              fadeLanes, clearFadingLanes,  // broken-chain fade triggered alongside the twin-break SFX
+             shuffleBackground,  // marathon.js calls on each new puzzle to draw a fresh body bg from the 54-image bag
+             setBackgroundEnabled,  // settings.js calls to toggle bg images off (body goes pure black)
              refit: resize };  // public hook to recompute canvas dims after Maze.ROWS/COLS change
 })();

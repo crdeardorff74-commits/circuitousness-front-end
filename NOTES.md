@@ -2,6 +2,74 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-05-20 — Gates: quad mode, replay, edge-tile fixes
+
+- **Quad-mode gates** anchor at QUAD-CORNERS only (`vertexStride = 2` in sub-tile coords passed to `Gates.assignGates`); prong still spans one sub-tile `cellSize`. `Maze.solutionEdges` in quad mode un-scrambles the live grid via reverse `rotateQuad` calls inside a `try/finally` — walks the solved layout — then `restoreState` + manual `quadScramble` restore (snapshot/restore round-trip the grid but NOT `quadScramble`, so it's saved separately).
+- **Bevel "not opaque" was canvas AA, not alpha** — bevels rendered at `globalAlpha = 1` correctly, but AA at the bevel's OUTER edge blended bevel-color with the dark tile underneath, producing a translucent halo. Fix: pre-fill the gate's outer polygons at face color before `drawBeveledPolygon` so the AA blends bevel-with-face (smooth red-on-red).
+- **Recording/replay now carries gate state** — `Gates.snapshot/restore` added; stored in `recording.gates` at `startRecording` time, restored at `playOneRecording`, plus a new `{type:'gate', ccw, t}` move handled by `applyReplayMove`. Original symptom: replay was inheriting the live game's CURRENT gate placement (from a possibly-larger puzzle), so prongs rendered past the smaller replayed grid's edge. Pre-gates recordings (no `rec.gates`) fall through to `Gates.clear()` and replay sans gates.
+- **Edge-tile rotation render fix** in `drawAnimatedFrame`: dirty set rebuilt as `[...neighborKeys, ...rotatingKeys]` so rotating tiles iterate LAST in every pass — visible on top of neighbors, not buried under them. Clip = dirty cells PLUS a `~0.22*cellSize` margin around each rotating tile so the 45° rotation overshoot extends into the canvas padding instead of being cropped at the grid boundary. `offCanvas` dim pass also clears the margin so stale dim pixels don't ghost-blend through the composite.
+- **Perimeter survives the new margin** — the rotation margin clips into the bottom portion of entry/exit notches (notch length `0.4*cs`, margin `0.22*cs`). Final pass of `drawAnimatedFrame` calls `drawCircuitOutline(w, rim)` inside the same clip; most strokes are no-op (clip filters them) but the notch's affected portion gets redrawn each frame. User preference: perimeter intactness > overshoot visibility in any overlap region (overshoot can be covered where it intersects perimeter).
+
+## 2026-05-20 — Gates feature — first cut
+
+- Each gate has its own random `solutionDir`; all share a global `delta`. Rotate in unison but point in **varied** directions — user: "just because they rotate in sync doesn't mean they'll be pointing in the same direction." Both per-gate `solutionDir` and `delta` randomized at placement so player doesn't start at the gates-solved state. Count formula: `4 + floor(solveCount / 3)`, bumped from the initial `3 + /4` after first playtest.
+- Placement runs on the **main thread** after `Maze.loadSnapshot` (NOT in `maze-worker.js`) — keeps `Marathon.getSolvedCount` current even on pre-gen cache hits. `walkFrom` guards with `typeof Gates !== 'undefined'` so worker context doesn't error on the missing module.
+- Quad mode **skips** gate placement entirely (v1 decision — quad-corner placement is a future pass). Hints intentionally do NOT consider gate state, per user: "Hints don't need to bother with the gates. The player can see which tile was solved, and be able to recognize whether a gate needs rotating."
+- Render gotchas: `drawBeveledPolygon` got an optional `bevelOverride` so the small gate polygons aren't bevel-dominated. `PALETTE.faceAlpha = 1` is required to override the default `TILE_FACE_ALPHA` translucency. Gates aren't tile-keyed, so `canPartial` requires `gateAnims.length === 0` (gate rotations force full draws), AND `drawAnimatedFrame` calls `drawGates` so adjacent rotating tiles don't clear gate pixels via the dirty-cell clip.
+- **Open**: gate moves not yet in recording/replay (`{type:'gate', ccw, t}` planned; `snapshotState` needs Gates state for replays to start at the right orientations). Singularity counter is also not yet incremented on gate rotation — needs to match the twin-rotation "one move" treatment.
+
+## 2026-05-19 — Random puzzle progression + pre-gen sync
+
+- **`Marathon.dimsForLevel` is now per-game random**: a `growthSequence` array (one entry per level transition, `'r'` or `'c'`) is rolled lazily by `ensureGrowthSequence(lev)` and reset on `startGame`. Each transition is a 50/50 row-vs-col growth. Replaces the old deterministic 4-step cycle. Lazy + append-only means pre-gen's lookahead calls pin the upcoming choices, so any later call for the same level returns identical dims.
+- **Pre-gen sync via `Marathon.upcomingDims(count)`**: game.js's old `nextSize` walk used "grow smaller dim" logic that diverged from Marathon at puzzle 2 (8x8 → 9x8 here vs 8x9 in Marathon). Result: every advance was a cache miss + the worker had to finish the wrong-size in-flight build before starting the right one → "Building puzzle…" delays of a minute+ on bigger grids. Now `fillPreGenQueue` asks Marathon for the actual upcoming dims when Marathon is the active state machine; falls back to nextSize in debug mode.
+- **Hurry-on-mismatch safety net was DECLINED** (worker doesn't cancel in-flight builds when a new request arrives — it queues). User wanted any future pre-gen-sync regression to surface as visible "Building puzzle…" rather than being silently masked by an automatic cancel. Don't add it back without that conversation.
+
+## 2026-05-19 — Hint improvements: quad port-equivalence + 10s floor
+
+- **`quadAlreadyPortEquivalent(qr, qc)` in maze.js**: simulates the would-be hint rotation symbolically (each new-position tile = previous-position tile rotated +turns) and checks every position's connections stay the same via the existing `rotationsHaveSamePorts`. If yes → hint would be a chain-no-op → skip the quad. Catches all-STRAIGHT-same-parity quads, rotationally-symmetric ELBOW patterns, cross/straight checkerboards, etc, where 180°/90°/270° rotation moves nothing through the chain.
+- **`HINT_PENALTY_MIN_MS = 10000`** in config: marathon.js `onHintUsed` takes `max(timeRemaining × HINT_PENALTY_FRACTION, HINT_PENALTY_MIN_MS)`. Without the floor, the fractional cost trends to 0 as the timer winds down and players can hint-spam to solve a puzzle nearly for free. Player explicitly hit this exploit during playtest.
+- **`HINT_PENALTY_FRACTION` bumped 0.25 → 0.33** per playtest tuning. The floor still kicks in when 33% of remaining time falls below 10s.
+
+## 2026-05-19 — Background image: pre-build shuffle + on/off toggle
+
+- **`Render.shuffleBackground()` moved** from `Marathon.onPuzzleReady` (fires AFTER the build completes) to the START of game.js's `startPuzzle` callback (right after Maze.clear + Render.draw). New image is now visible throughout the "Building puzzle…" wait rather than appearing after. `cinematic_bass` SFX still fires from `onPuzzleReady` (when the puzzle is actually visible — semantically distinct).
+- **Background Image toggle in Settings popup** — third row alongside Music + SFX. Persisted as `<slug>_setting_backgroundEnabled` (default true). `Settings.setBackgroundEnabled(b)` propagates to `Render.setBackgroundEnabled(b)`. When OFF, body's `backgroundImage` is cleared AND `backgroundColor` is overridden to pure `#000` (otherwise the CSS default `#0a0a2e` dark navy would show, not the literal black the user asked for).
+- **`currentBgUrl` tracked in render.js** — toggling off then on re-applies the same image rather than advancing the bag. The bag still advances on every `shuffleBackground()` call regardless of enabled state (so the sequence is consistent across enable/disable cycles); only the DOM application is gated.
+- **`Render.init` reads `Settings.isBackgroundEnabled()` pre-paint** so a persisted-disabled state doesn't flash an image on page load. `Settings.init` also re-pushes the state to Render as belt-and-braces for any DOMContentLoaded ordering edge case.
+- **i18n** added across all 15 languages. Label is "Background Image" (was briefly "Background" before the rename).
+
+## 2026-05-18 — Leaderboard Watch button alignment
+
+- `#leaderboardEntries li` grid had **4 columns but 5 children** when a Watch button was present, so the button wrapped into a 2nd grid row in the rank (2rem) column — visible as a squished button with the ▶ icon on one line and "Watch" stacked below.
+- Fix: bumped grid to **5 columns** (`2rem 1fr auto auto auto`). The 5th column is reserved on EVERY row so buttons align vertically on the far right next to the time column, regardless of which rows have a button. Entries without a button leave the column empty (no cell content needed).
+- Added `align-items: center` on the row + `white-space: nowrap` on `.lbWatch` as belt-and-braces against future cramped layouts. Dropped the obsolete `margin-left: 0.5rem` (grid `gap` covers spacing now).
+
+## 2026-05-17 — Music: intro-then-shuffle paradigm (universal rule 7b)
+
+- **`music.js` rewritten** to implement the intro-then-shuffle paradigm (now codified as universal rule 7b in `../../CLAUDE.md`). Two pools from the admin API:
+  - `MUSIC_INTRO_LIST_NAME = 'album_intro'` — curated artistic sequence. Plays ONCE per player in position order, then never replays as a sequence.
+  - `MUSIC_SHUFFLE_LIST_NAME = 'gameplay'` — random pool that plays forever after the intro. **Falls back to the INTRO list if the SHUFFLE list is empty** (Circuitousness currently has no songs marked under `gameplay` in the admin, so post-intro just shuffles `album_intro`).
+- **Per-player intro progress** lives in two localStorage keys: `_introRemaining_v1` (JSON array of song IDs not yet played, shifted one-per-play) and `_introFingerprint_v1` (`|`-joined source IDs). Admin reorders mismatch the fingerprint → restart intro for everyone. Deliberate: "new album release, listen to it again."
+- **Queue/history preserved across `Music.stop()`** so songs progress BETWEEN games rather than restarting from #1 on every new game. Only the audio element + `currentSong` reset on stop so the Now Playing UI hides; `queue`, `queuePos`, `history`, `lastPlayedId`, `introRemaining` all persist.
+- **`MUSIC_BASE_URL` points at TANTЯO's `blockchainstorm-frontend` `Music/` release** (not a Circuitousness-specific repo). MP3s are shared across games; admin's per-game membership table is the source-of-truth for which songs play where. Saves maintaining a duplicate release for reused songs.
+- **Cache key bumped `_songLibrary_v2` → `_songLibrary_v3`** when the cached shape changed from `{songs:[]}` to `{intro:[],shuffle:[]}`. Pre-release, no migration needed.
+- **API endpoint**: `${AUTH_API}/api/songs?game=circuitousness` (umbrella API). CORS allowlist on that API now includes `http://localhost:8765` (see umbrella's `app.py` — separate codebase).
+
+## 2026-05-17 — Settings popup + volume controls + Now Playing UI
+
+- **`settings.js` + popup** (HTML/CSS in `index.html` / `styles.css`). TANTЯO-style dark-blue gradient popup with two settings rows: each has `[label] [volume slider 0–100] [mute toggle]`. Persisted to `<slug>_setting_(music|sfx)(Muted|Volume)`. Defaults: unmuted, 0.6.
+- **Two trigger buttons**: `#settingsBtn` (menu top-right gear) AND `#hudSettingsBtn` (in-game HUD, just left of QUIT). Both share `handleSettingsClick`. The original "no settings during gameplay" hard guard was REMOVED per user — they accept that opening Settings during a puzzle spends their timer. The hover-rotate animation on the gear is intentional polish.
+- **`Music.setVolume(v)` applies live** (mid-song slider drag changes loudness immediately, not on next track). `Sfx.setVolume(v)` only affects future plays — one-shot SFX in flight finish at their original volume.
+- **Now Playing UI** (`#nowPlaying`, bottom-right): "♪ NOW PLAYING ♪" label + song name + ⏮⏯⏭ controls. Hidden via `.visible` class toggle, driven by `Music.setOnSongChange((song, paused) => ...)` callback. Wired inline at bottom of `music.js` (tight coupling — not worth a separate module).
+- **Skip-prev navigation** uses a `history` array of song IDs; `historyPos` rewinds on prev. `advanceToNext` replays history forward before pulling fresh from the queue, so prev → forward replays the same sequence rather than diverging.
+
+## 2026-05-17 — PWA fixes: favicon SVG + resilient SW precache
+
+- Three intertwined issues fixed in one go: `favicon.ico` was missing (404 + broke SW `cache.addAll` precache — one missing asset rejected the whole batch, leaving the cache empty), four manifest PNG icons were referenced but didn't exist, and the SW failure cascaded into "PWA caching core assets" not actually caching anything.
+- **`favicon.svg` created** (gold "C" on dark blue `#0a0a2e` rounded square, 64×64). Inline SVG — no binary authoring required.
+- `manifest.json` collapsed from 4 missing PNG entries to 1 SVG entry with `purpose: "any maskable"` — modern browsers accept SVG as install icon.
+- `sw.js` precache loop switched from `cache.addAll(CORE_ASSETS)` to per-asset `cache.add()` with try/catch. One missing file now logs a warning but doesn't tank the whole batch. Defensive future-proofing on top of the immediate fix.
+
 ## 2026-05-16 — SFX system + click + broken-path flash/fade
 
 - **`audio.js` added**. Per-type shuffle bag (Fisher-Yates, no variant repeats inside a type until exhausted); OR-triggers pick the type uniformly first, then a variant from that type's bag. Single `play()`, `playLoop(key, spec)` / `stopLoop(key)` for the overlap glitch. **Glitch overlap = single variant looped via `Audio.loop`**, NOT a chain through the pool — earlier rotating-chain implementation was wrong per the user. 200ms duck/fade-out on every `play()` so a new sound supersedes anything still playing; the natural `ended` event is processed BEFORE the chain-handoff for loop variants so loop hand-offs don't fade themselves. `click()` synthesized via Web Audio (lazy AudioContext, ~30ms filtered-noise burst with frequency jitter); bypasses ducking pipeline; fires on tile rotations + hint. SFX skipped during replay.

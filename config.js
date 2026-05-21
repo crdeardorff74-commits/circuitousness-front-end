@@ -16,9 +16,15 @@
 const PROJECT_NAME = 'Circuitousness';
 const PROJECT_SLUG = 'circuitousness';
 
-// Cross-origin assets (precached by sw.js, drawn by render.js).
-const BACKGROUND_IMAGE_URL =
-    'https://github.com/crdeardorff74-commits/circuitousness-front-end/releases/download/Images/level1.jpg';
+// Background image pool. 54 files in the GitHub release, named
+// level1.jpg .. level54.jpg. render.js draws one at random per puzzle
+// via a shuffle bag (no repeats until all 54 have been shown, plus a
+// boundary-avoid so a freshly-refilled bag can't open with the same
+// image that just played). Not precached by sw.js — too heavy; the
+// browser HTTP cache handles repeats well enough.
+const BACKGROUND_IMAGE_URL_BASE =
+    'https://github.com/crdeardorff74-commits/circuitousness-front-end/releases/download/Images/';
+const BACKGROUND_IMAGE_COUNT = 54;
 
 // Mode-button thumbnails for the Marathon menu. Files are named
 // {grid-base}x{paths}.png — `1x{N}.png` for regular tiles, `4x{N}.png` for
@@ -37,6 +43,17 @@ const THUMBNAIL_URL_BASE =
 const MUSIC_BASE_URL =
     'https://github.com/crdeardorff74-commits/blockchainstorm-frontend/releases/download/Music/';
 
+// Music playback follows the intro-then-shuffle paradigm (universal rule
+// 7b). Two list knobs from the admin API's `lists.*`:
+//   INTRO   — curated artistic sequence. Plays ONCE per player in position
+//             order, then never replays as a sequence (admin reorders auto-
+//             restart it via fingerprint mismatch).
+//   SHUFFLE — random pool that plays forever after the intro is exhausted.
+// If SHUFFLE is empty/missing, music.js falls back to shuffling the INTRO
+// list so single-list projects still get post-intro variety.
+const MUSIC_INTRO_LIST_NAME   = 'album_intro';
+const MUSIC_SHUFFLE_LIST_NAME = 'gameplay';
+
 const AppConfig = {
     // TODO: set when back-end is deployed
     GAME_API: 'https://circuitousness-api.onrender.com/api',
@@ -50,24 +67,26 @@ const AppConfig = {
 // Quad: each 2×2 sub-tile group is a tile (so a 4×4 quad puzzle = 16 tiles,
 // even though the underlying maze is 8×8 sub-tiles).
 const MARATHON = {
-    // Per-puzzle starting time and carry-over cap. Both are per tile AND per
-    // path count — more paths in a puzzle means more thinking per tile, so the
-    // allotment scales linearly with N. Final formula at runtime:
-    //   fresh_ms = tile_count × TIME_PER_TILE_*  × pathCount × 1000
-    //   cap_ms   = tile_count × TIME_CAP_PER_TILE_* × pathCount × 1000
-    // Caps are intentionally above fresh per path (cap = 2 × N vs fresh =
-    // 1.5 × N for singular) so banking always has headroom regardless of
-    // path count, instead of clipping at high-N puzzles.
-    TIME_PER_TILE_SINGULAR: 1.5,
-    TIME_PER_TILE_QUAD:    3,
-    TIME_CAP_PER_TILE_SINGULAR: 2,
-    TIME_CAP_PER_TILE_QUAD:    4,
+    // Per-puzzle starting allotment (seconds). Each puzzle solved trims
+    // TIME_DECREASE_PER_SOLVE seconds from the NEXT puzzle's fresh time,
+    // floored at TIME_FLOOR. Banking is UNLIMITED — leftover time rolls
+    // forward without a cap. Final formula at runtime:
+    //   fresh_ms = max(TIME_FLOOR,
+    //                  START_TIME_*[pathCount-1]
+    //                  - solvedCount × TIME_DECREASE_PER_SOLVE) × 1000
+    //   timeRemaining += fresh_ms   (no cap on the running total)
+    // Arrays indexed by pathCount-1 → entries for 1, 2, 3, 4 paths.
+    START_TIME_SINGULAR:     [90, 120, 150, 180],
+    START_TIME_QUAD:         [120, 160, 200, 240],
+    TIME_DECREASE_PER_SOLVE: 15,
+    TIME_FLOOR:              30,
 
-    // Puzzle progression. Dims grow one dim at a time, period-4 cycle:
-    // (singular) 8×8 → 8×9 → 9×9 → 10×9 → 10×10 → 10×11 → 11×11 → 12×11 → …
-    // (quad)    6×6 → 6×7 → 7×7 → 8×7  → 8×8  → 8×9  → 9×9  → 10×9  → …
-    // Logical dims — quad mode's underlying maze is 2× per axis. Same step
-    // pattern for both, just a different starting size. No upper cap.
+    // Puzzle progression. Each solve grows EITHER rows or cols by one
+    // (never both) with a 50/50 random pick per puzzle. The sequence is
+    // rolled fresh at startGame and lazily extended by `dimsForLevel`,
+    // so pre-gen's lookahead pins the upcoming choices and any later
+    // call for the same level returns the same dims. Logical dims —
+    // quad mode's underlying maze is 2× per axis. No upper cap.
     MIN_DIM_SINGULAR: 8,
     MIN_DIM_QUAD:    6,
 
@@ -81,9 +100,13 @@ const MARATHON = {
     // players reported it was too easy to miss the win cue and feel like
     // the game was running ahead of them.)
 
-    // Each hint use lops off this fraction of the player's remaining time.
-    // 0.25 = lose 25% (keep 75%) — a meaningful penalty without being brutal.
-    HINT_PENALTY_FRACTION: 0.25,
+    // Each hint use lops off this fraction of the player's remaining time,
+    // with a floor of HINT_PENALTY_MIN_MS so the cost never falls below a
+    // meaningful threshold. Without the floor, the fractional penalty
+    // approaches zero as the timer winds down and the player can spam
+    // hints to solve a puzzle for nearly free.
+    HINT_PENALTY_FRACTION: 0.33,
+    HINT_PENALTY_MIN_MS:   10000,
 
     // 8 game types: singular/quad × 1..4 paths. Stored as keys 's1'..'s4', 'q1'..'q4'.
     TYPES: ['s1', 's2', 's3', 's4', 'q1', 'q2', 'q3', 'q4']
