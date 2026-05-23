@@ -721,6 +721,14 @@ const Potd = (() => {
         // marathon's game-over state leaves the canvas intact.
         if (typeof Maze !== 'undefined' && Maze.clear) Maze.clear();
         if (typeof Render !== 'undefined' && Render.draw) Render.draw();
+        // Show a banner immediately so the player always has visual
+        // feedback during the startPuzzle pipeline. ensurePuzzleAvailable
+        // may replace the text below (with "Loading today's puzzles…" or
+        // "Generating today's puzzle…") if it has work to do; on the
+        // cache-hit path it doesn't touch the banner, which is the case
+        // that previously left a dead screen for several seconds while
+        // postStart awaited a session token over the network.
+        showBanner('Loading today\'s puzzle…');
 
         let snapshot;
         try {
@@ -746,13 +754,19 @@ const Potd = (() => {
         // Issue session token + check eligibility. Server is the source
         // of truth: even if the player cleared localStorage, a prior
         // PotdSession row for (date, slot, sessionId) makes the new one
-        // ineligible.
+        // ineligible. The banner above stays up during this await so
+        // the player doesn't see a blank screen while we wait for the
+        // session-token round-trip.
         const startData = await postStart(date, slot);
         sessionToken = startData ? startData.sessionToken : null;
         eligible     = startData ? !!startData.eligible    : true;
 
         // Disclaimer for ineligible retries — in-page modal (see #potdDisclaimerOverlay).
         if (!eligible) {
+            // Hide the loading banner so it doesn't sit underneath the
+            // disclaimer card — the disclaimer is the player's full
+            // attention here.
+            hideBanner();
             const ok = await showDisclaimerModal();
             if (!ok) {
                 bailToMenu();
