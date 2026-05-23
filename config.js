@@ -24,7 +24,7 @@ const PROJECT_SLUG = 'circuitousness';
 // browser HTTP cache handles repeats well enough.
 const BACKGROUND_IMAGE_URL_BASE =
     'https://github.com/crdeardorff74-commits/circuitousness-front-end/releases/download/Images/';
-const BACKGROUND_IMAGE_COUNT = 54;
+const BACKGROUND_IMAGE_COUNT = 50;
 
 // Mode-button thumbnails for the Marathon menu. Files are named
 // {grid-base}x{paths}.png — `1x{N}.png` for regular tiles, `4x{N}.png` for
@@ -32,16 +32,39 @@ const BACKGROUND_IMAGE_COUNT = 54;
 const THUMBNAIL_URL_BASE =
     'https://github.com/crdeardorff74-commits/circuitousness-front-end/releases/download/Images/';
 
+const AppConfig = {
+    // TODO: set when back-end is deployed
+    GAME_API: 'https://circuitousness-api.onrender.com/api',
+
+    // TODO: shared auth/settings API for the Official Intelligence site
+    AUTH_API: 'https://official-intelligence-api.onrender.com'
+};
+
+// iPad / iPhone Safari can't follow GitHub's 302 redirects in <audio>
+// elements (error code 4) and `fetch()` for SFX decoding can't read
+// GitHub's responses (no CORS headers). On iOS we route music through
+// the back-end's /api/music/<tag>/<filename> proxy, which fetches from
+// GitHub server-side and streams the response with proper headers.
+// (SFX always uses the proxy regardless of platform — fetch+decode
+// needs CORS even on desktop. That URL is set in audio.js.)
+// The iPad-disguised-as-Mac case (iPadOS 13+ Safari) reports platform =
+// 'MacIntel' with maxTouchPoints > 1; catch that too.
+const IS_IOS_AUDIO = (typeof navigator !== 'undefined') && (
+    navigator.userAgent.indexOf('iPad')   !== -1 ||
+    navigator.userAgent.indexOf('iPhone') !== -1 ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+);
+
 // Gameplay music. music.js fetches the per-game playlist from the umbrella
 // API (AUTH_API/api/songs?game=<slug>) and resolves each row's filename
 // against this base URL. Points at TANTЯO's music release so reused songs
 // don't have to be duplicated into a Circuitousness-only releases repo —
 // the admin tool already maps song memberships per-game, the underlying
-// MP3s can live in one shared repo. Same iPad/iOS caveat as the SFX
-// system: GitHub 302 redirects don't follow in <audio> elements; would
-// need a backend proxy to support iOS.
-const MUSIC_BASE_URL =
-    'https://github.com/crdeardorff74-commits/blockchainstorm-frontend/releases/download/Music/';
+// MP3s can live in one shared repo. On iOS, swaps the GitHub URL for the
+// back-end proxy so Safari's redirect-unfollow issue doesn't kill it.
+const MUSIC_BASE_URL = IS_IOS_AUDIO
+    ? AppConfig.GAME_API + '/music/Music/'
+    : 'https://github.com/crdeardorff74-commits/blockchainstorm-frontend/releases/download/Music/';
 
 // Music playback follows the intro-then-shuffle paradigm (universal rule
 // 7b). Two list knobs from the admin API's `lists.*`:
@@ -53,14 +76,12 @@ const MUSIC_BASE_URL =
 // list so single-list projects still get post-intro variety.
 const MUSIC_INTRO_LIST_NAME   = 'album_intro';
 const MUSIC_SHUFFLE_LIST_NAME = 'gameplay';
-
-const AppConfig = {
-    // TODO: set when back-end is deployed
-    GAME_API: 'https://circuitousness-api.onrender.com/api',
-
-    // TODO: shared auth/settings API for the Official Intelligence site
-    AUTH_API: 'https://official-intelligence-api.onrender.com'
-};
+// End-credits pool. Played during the credits sequence that runs after a
+// Marathon ends or a PotD puzzle is solved (regardless of music mode), and
+// during regular play when the user picks the "End Credits" / "Gameplay +
+// End Credits" mode in Settings. If empty/missing, the gameplay pool is
+// used as a fallback so the credits sequence isn't silent.
+const MUSIC_CREDITS_LIST_NAME = 'credits';
 
 // ----- Marathon mode tuning -----
 // "Tile" here = the visible/interactable unit. Singular: each cell is a tile.

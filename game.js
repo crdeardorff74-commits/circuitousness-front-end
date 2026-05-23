@@ -20,6 +20,14 @@
 
     Logger.info(PROJECT_NAME + ' v' + PAGE_VERSION + ' ready');
 
+    // Fire the one-time page-load tracking POST. Defers ~500ms so the
+    // request doesn't race the rest of page init for network bandwidth
+    // and the cold-start render. Tracking module owns its own
+    // suppression (DevMode.isActive bypasses entirely).
+    setTimeout(function () {
+        if (typeof Tracking !== 'undefined' && Tracking.recordVisit) Tracking.recordVisit();
+    }, 500);
+
     function start() {
         const canvas          = document.getElementById('maze');
         const banner          = document.getElementById('winBanner');
@@ -88,16 +96,58 @@
         // builds so the cache stays full. With 3+ buffered, even a fast
         // hint-solver doesn't catch up to the worker on big grids.
         const PREGEN_LOOKAHEAD = 3;
-        const preGenCache = new Map();              // "r,c,paths" → snapshot
+        const preGenCache = new Map();              // "r,c,paths,Q|q" → snapshot
         let worker          = null;
         let workerAvailable = true;                  // flips to false on Worker construction/runtime error
-        let preGenSize      = null;                  // {rows, cols, pathCount} of the in-flight worker request
+        let preGenSize      = null;                  // {rows, cols, pathCount, quadMode} of the in-flight worker request
         let preGenStartTime = 0;
         let pathCount       = 1;                     // 1, 2, or 3
         let quadMode        = false;                 // 2×2 sub-tile groups rotate as one unit
         // Cache key includes pathCount AND quadMode so cross-mode collisions
-        // can't return a stale wrong-mode snapshot.
-        function cacheKey(r, c) { return r + ',' + c + ',' + pathCount + ',' + (quadMode ? 'Q' : 'q'); }
+        // can't return a stale wrong-mode snapshot. Optional params let
+        // starter pre-gen use cache keys that differ from the active
+        // globals (e.g. cache an s2 starter while quadMode is currently false).
+        function cacheKey(r, c, paths, quad) {
+            const p = (paths != null) ? paths : pathCount;
+            const q = (quad  != null) ? quad  : quadMode;
+            return r + ',' + c + ',' + p + ',' + (q ? 'Q' : 'q');
+        }
+
+        // ----- Starter pre-gen -----
+        // Marathon has 8 starting puzzle types (s1..s4, q1..q4). At page load
+        // we kick off background generation for all 8 at their level-1 dims so
+        // that picking ANY mode is instant — no "Building puzzle…" wait on
+        // first launch. Runs even in PotD mode since the player may switch
+        // to Marathon. Cache survives across games + invalidatePreGen calls
+        // (those only wipe lookahead entries built for the previous config).
+        //
+        // STARTER_PLAN derives from MARATHON.TYPES + MIN_DIM_* constants in
+        // config.js so changes to those propagate automatically. Each entry
+        // captures everything the worker needs (physical dims + pathCount +
+        // quadMode) and the cache key the result will land under.
+        const STARTER_PLAN = (function () {
+            const out = [];
+            if (typeof MARATHON !== 'object' || !MARATHON.TYPES) return out;
+            for (const type of MARATHON.TYPES) {
+                const quad   = type[0] === 'q';
+                const paths  = parseInt(type[1], 10) || 1;
+                const minDim = quad ? MARATHON.MIN_DIM_QUAD : MARATHON.MIN_DIM_SINGULAR;
+                // dimsForLevel(1, quad) returns logical {rows:minDim, cols:minDim};
+                // upcomingDims/startPuzzle convert ×2 for quad → PHYSICAL dims.
+                const rows = quad ? minDim * 2 : minDim;
+                const cols = rows;
+                out.push({
+                    type:      type,
+                    rows:      rows,
+                    cols:      cols,
+                    pathCount: paths,
+                    quadMode:  quad,
+                    cacheKey:  cacheKey(rows, cols, paths, quad)
+                });
+            }
+            return out;
+        })();
+        const STARTER_KEY_SET = new Set(STARTER_PLAN.map((p) => p.cacheKey));
         function ensureWorker() {
             if (worker || !workerAvailable) return worker;
             try {
@@ -116,10 +166,17 @@
                         && s.cols === preGenSize.cols
                         && respCount === preGenSize.pathCount
                         && respQuad === preGenSize.quadMode) {
-                        const key = s.rows + ',' + s.cols + ',' + respCount + ',' + (respQuad ? 'Q' : 'q');
+                        const key = cacheKey(s.rows, s.cols, respCount, respQuad);
                         preGenCache.set(key, s);
+                        const elapsed = ((Date.now() - preGenStartTime) / 1000).toFixed(2);
+                        Logger.info('✅ worker built ' +
+                            describeBuild(s.rows, s.cols, respCount, respQuad, preGenSize.purpose || 'pre-gen') +
+                            ' in ' + elapsed + 's');
                         preGenSize = null;
+                        // Lookahead has priority — if it queues something the
+                        // starter loop's preGenSize check defers automatically.
                         fillPreGenQueue();
+                        ensureStartersBuilt();
                     }
                 };
                 worker.onerror = function (e) {
@@ -134,14 +191,45 @@
             }
             return worker;
         }
-        function requestBuild(rows, cols) {
+        // Pretty-print a build for the pre-gen console log. `purpose`
+        // describes WHY this build was queued — "starter s4", "lookahead
+        // L+2", or "player request" — so the log trace tells the story of
+        // what the worker is doing at any given moment.
+        function describeBuild(rows, cols, paths, quad, purpose) {
+            const type = (quad ? 'q' : 's') + paths;
+            return purpose + ' ' + type + ' (' + rows + 'x' + cols + ', ' +
+                   paths + '-path ' + (quad ? 'quad' : 'singular') + ')';
+        }
+        // Optional `opts`:
+        //   urgent:    true → worker aborts any in-flight build and races
+        //                     to start this one. Used when the player is
+        //                     waiting on a build (newPuzzle cache miss).
+        //   pathCount: override the current global pathCount (used by
+        //              starter pre-gen, which queues all 8 starting types
+        //              before any game has set a global config).
+        //   quadMode:  same as pathCount but for the quad/singular toggle.
+        //   purpose:   short string describing why this build was queued,
+        //              used in the console log ('starter s2',
+        //              'lookahead L+1', 'player request'). Falls back to
+        //              'pre-gen' so unlabeled callers still get a line.
+        function requestBuild(rows, cols, opts) {
             const w = ensureWorker();
             if (!w) return false;
-            preGenSize = { rows: rows, cols: cols, pathCount: pathCount, quadMode: quadMode };
+            const usePaths   = (opts && opts.pathCount != null) ? opts.pathCount : pathCount;
+            const useQuad    = (opts && opts.quadMode  != null) ? !!opts.quadMode : quadMode;
+            const isUrgent   = !!(opts && opts.urgent);
+            const purpose    = (opts && opts.purpose) || 'pre-gen';
+            preGenSize = {
+                rows: rows, cols: cols, pathCount: usePaths, quadMode: useQuad,
+                purpose: purpose
+            };
             preGenStartTime = Date.now();
+            const desc = describeBuild(rows, cols, usePaths, useQuad, purpose);
+            Logger.info('🧩 worker ' + (isUrgent ? 'preempt → ' : 'building ') + desc);
             w.postMessage({
                 type: 'generate', rows: rows, cols: cols,
-                pathCount: pathCount, quadMode: quadMode
+                pathCount: usePaths, quadMode: useQuad,
+                urgent: isUrgent
             });
             return true;
         }
@@ -163,7 +251,9 @@
             let upcoming;
             if (typeof Marathon !== 'undefined' && Marathon.upcomingDims && Marathon.isPlaying && Marathon.isPlaying()) {
                 upcoming = Marathon.upcomingDims(PREGEN_LOOKAHEAD);
-            } else {
+            } else if (isDebugMode) {
+                // Debug mode owns its own progression via game.js's nextSize.
+                // No Marathon to ask, so walk the local progression instead.
                 upcoming = [];
                 let r = Maze.ROWS, c = Maze.COLS;
                 for (let i = 0; i < PREGEN_LOOKAHEAD; i++) {
@@ -171,16 +261,60 @@
                     r = next.rows; c = next.cols;
                     upcoming.push({ rows: r, cols: c });
                 }
+            } else {
+                // Game mode at menu (no active Marathon) — the next puzzle
+                // depends entirely on which mode the player picks. Don't
+                // burn worker cycles on stale lookahead dims left over from
+                // the previous game; ensureStartersBuilt handles this idle
+                // window instead.
+                return;
             }
-            for (const dims of upcoming) {
+            for (let i = 0; i < upcoming.length; i++) {
+                const dims = upcoming[i];
                 if (!preGenCache.has(cacheKey(dims.rows, dims.cols))) {
-                    requestBuild(dims.rows, dims.cols);
+                    requestBuild(dims.rows, dims.cols, {
+                        purpose: 'lookahead L+' + (i + 1)
+                    });
                     return;
                 }
             }
         }
+        // Wipes the lookahead cache (built for the OLD pathCount/quadMode
+        // config — those entries are now wrong-mode and would poison the
+        // next game). Preserves starter entries — those are per-type
+        // pre-built at level-1 dims and remain valid regardless of which
+        // type the player just left.
         function invalidatePreGen() {
-            preGenCache.clear();
+            for (const k of Array.from(preGenCache.keys())) {
+                if (!STARTER_KEY_SET.has(k)) preGenCache.delete(k);
+            }
+        }
+
+        // Background pre-gen for the 8 Marathon starting puzzles. Called
+        // at page load AND chained after every worker response, so any
+        // gap in the starter cache (player consumed one, then quit before
+        // refill finished) closes on its own as soon as the worker is idle.
+        //
+        // Defers to fillPreGenQueue during active play — the player
+        // needs the NEXT puzzle in their current game more urgently than a
+        // future starter for a different mode. Once lookahead is full,
+        // starter pre-gen resumes filling its gaps.
+        function ensureStartersBuilt() {
+            if (!ensureWorker()) return;
+            if (preGenSize) return;   // worker busy with something else
+            for (const plan of STARTER_PLAN) {
+                if (!preGenCache.has(plan.cacheKey)) {
+                    requestBuild(plan.rows, plan.cols, {
+                        pathCount: plan.pathCount,
+                        quadMode:  plan.quadMode,
+                        // describeBuild appends the type itself, so just
+                        // tag the role here — output reads "starter s4 (...)"
+                        purpose:   'starter'
+                    });
+                    return;
+                }
+            }
+            // All 8 starters cached — nothing to do until one gets consumed.
         }
         function waitForPreGen(rows, cols) {
             return new Promise(function (resolve) {
@@ -210,6 +344,8 @@
                 exit2:  s.exit2  ? Object.assign({}, s.exit2)  : null,
                 entry3: s.entry3 ? Object.assign({}, s.entry3) : null,
                 exit3:  s.exit3  ? Object.assign({}, s.exit3)  : null,
+                entry4: s.entry4 ? Object.assign({}, s.entry4) : null,
+                exit4:  s.exit4  ? Object.assign({}, s.exit4)  : null,
                 quadScramble: s.quadScramble ? s.quadScramble.map((row) => row.slice()) : null
             };
         }
@@ -459,6 +595,10 @@
             const cached = preGenCache.get(wantKey);
             if (cached) {
                 // Instant — the lookahead cache already has this size.
+                const isStarter = STARTER_KEY_SET.has(wantKey);
+                Logger.info('🎯 cache hit ' + (isStarter ? '(starter)' : '(lookahead)') +
+                    ' ' + describeBuild(wantR, wantC, pathCount, quadMode, 'player request') +
+                    ' — loaded instantly');
                 Maze.loadSnapshot(cached);
                 preGenCache.delete(wantKey);
             } else if (!ensureWorker()) {
@@ -476,9 +616,13 @@
                 //   inFlight=true  → worker is already building exactly
                 //     what we want. Send 'hurry' so it ships best-so-far
                 //     instead of finishing the strict canonical search.
-                //   inFlight=false → genuine fresh build (initial load,
-                //     dim change, or worker is on a different size);
-                //     start a request for our dims.
+                //   inFlight=false → worker is building something else
+                //     (a starter for a different mode, an old lookahead,
+                //     etc). Send an urgent generate so the worker aborts
+                //     that build and races to start ours — the player is
+                //     actively waiting on this one. Whatever was aborted
+                //     gets re-queued naturally by ensureStartersBuilt /
+                //     fillPreGenQueue once the urgent request completes.
                 // Banner shows "Loading…" or "Building puzzle…" only if
                 // the wait exceeds 500ms.
                 if (wantResize) invalidatePreGen();
@@ -488,8 +632,9 @@
                     && preGenSize.pathCount === pathCount
                     && preGenSize.quadMode === quadMode;
                 if (!inFlight) {
-                    requestBuild(wantR, wantC);
+                    requestBuild(wantR, wantC, { urgent: true, purpose: 'player request' });
                 } else if (worker) {
+                    Logger.info('⚡ worker hurry — player waiting on in-flight build');
                     worker.postMessage({ type: 'hurry' });
                 }
                 const bannerTimer = setTimeout(function () {
@@ -549,8 +694,13 @@
             if (replayBtn) replayBtn.hidden = true;
             refresh();
 
-            // Refill the lookahead cache (queues the next missing size).
+            // Refill the lookahead cache for THIS game's progression first;
+            // then top up any starter cache gaps (so consumed starters and
+            // any new gaps left by an invalidatePreGen call get re-built).
+            // Both functions are no-ops when the worker is busy or their
+            // respective conditions don't apply, so call order = priority.
             fillPreGenQueue();
+            ensureStartersBuilt();
         }
 
         async function setPathCount(n) {
@@ -621,6 +771,14 @@
                 preGenStatusEl.textContent = 'Cache: ' + cacheText + buildText;
             }, 200);
         }
+
+        // Kick off the Marathon starter pre-gen as soon as the worker can
+        // accept work. Runs regardless of which mode the player initially
+        // picks (PotD or Marathon) — they may switch to Marathon at any
+        // point, and we want their FIRST puzzle of either mode to be
+        // instant. ensureStartersBuilt walks the 8 starter types in order
+        // and chains the next request after each worker response.
+        ensureStartersBuilt();
 
         // In debug mode, drop straight into the existing default puzzle. In
         // game mode, hand the lifecycle to Marathon — it'll show the menu,
@@ -843,7 +1001,7 @@
                         }
                     }
                     if (sfxEligible) {
-                        Sfx.play(['fail', 'audience_boo', 'audience_disappointed', 'audience_gasp']);
+                        Sfx.play(['fail', 'audience_disappointed', 'audience_gasp']);
                         if (Render.fadeLanes) Render.fadeLanes(fadeEntries);
                     }
                 }
@@ -978,14 +1136,28 @@
 
         // Manual "next puzzle" controls only fire in debug mode. In Marathon
         // mode, advancement is owned by Marathon.onSolve / its game flow.
-        if (isDebugMode) {
-            // 'N' for a new puzzle
-            window.addEventListener('keydown', (ev) => {
-                if (ev.key === 'n' || ev.key === 'N') newPuzzle();
-            });
-            // Click the win banner to start a new puzzle
-            banner.addEventListener('click', () => { newPuzzle(); });
+        // Always register these — the mode check is done at handler-fire
+        // time (not boot-time) so the dev-mode Ctrl+D toggle works
+        // correctly. Before this, isDebugMode was captured ONCE at boot,
+        // so a session that started in game mode and Ctrl+D'd into debug
+        // got no win-banner click handler and no 'N' key — the player
+        // would solve a puzzle and have no way to advance.
+        function inDebugMode() {
+            return document.documentElement.classList.contains('mode-debug');
         }
+        // 'N' for a new puzzle
+        window.addEventListener('keydown', (ev) => {
+            if (!inDebugMode()) return;
+            // Skip when typing in an input — Ctrl+D dev shortcut already
+            // uses the same guard; reuse it here for consistency.
+            const t = ev.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+            if (ev.key === 'n' || ev.key === 'N') newPuzzle();
+        });
+        // Click the win banner to start a new puzzle
+        banner.addEventListener('click', () => {
+            if (inDebugMode()) newPuzzle();
+        });
 
         // Hint: snap a random unsolved path tile to its solution and lock it red.
         // Two buttons share one handler: #hintBtn (debug mode, top-right corner)

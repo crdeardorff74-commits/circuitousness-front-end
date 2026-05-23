@@ -103,6 +103,7 @@ body {
     color: rgba(255, 215, 0, 0.6);
     font-size: 0.85em;
     letter-spacing: 0.1em;
+    text-align: center;
 }
 #nowPlayingTitle {
     color: #e0e0e0;
@@ -473,7 +474,11 @@ html.mode-game #hintBtn { display: none; }
     color: rgba(220, 230, 250, 0.75);
     font-size: clamp(0.95rem, 2vw, 1.1rem);
     text-align: center;
-    margin: 0;
+    /* Vertical breathing room around the mode-description label so it doesn't
+       crowd the MODE chip above or the first menuSection below. The parent
+       .menuSection siblings already provide horizontal alignment, so margin
+       here is purely vertical spacing. */
+    margin: max(1.2vh, 10px) 0 max(1.6vh, 14px);
     white-space: nowrap;
 }
 .menuSection {
@@ -668,7 +673,12 @@ body:not(.mode-potd) .menuModeBtn.potd-started:not(.potd-solved)::after {
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 0.6rem;
     padding: 1.4rem 1.6rem;
-    width: clamp(18rem, 80vw, 26rem);
+    /* Popup width bumped from 26rem → 32rem so the music dropdown's longest
+       option ("🎲🎤 Game Playlist + End Credits by Claude") fits within the
+       popup when opened. The select itself (.settingsSelect) is wide enough
+       to fit the option text, so the native dropdown panel inherits that
+       width and no longer spills past the popup's right edge. */
+    width: clamp(18rem, 90vw, 32rem);
     color: #ccc;
     box-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.5);
     display: flex;
@@ -677,11 +687,89 @@ body:not(.mode-potd) .menuModeBtn.potd-started:not(.potd-solved)::after {
 }
 #settingsPopup h2 {
     margin: 0 0 0.3rem 0;
-    color: rgba(255, 215, 0, 0.9);
+    /* TANTЯO settings-title blue, matching .combo-modal-title elsewhere
+       in the UI for visual continuity. */
+    color: #6eb5ff;
     font-size: clamp(1.1rem, 2.4vw, 1.4rem);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-align: center;
+}
+
+/* Music playlist dropdown — lifted from TANTЯO's musicSelect style.
+   max-width bumped from 16rem → 22rem so the open dropdown panel is wide
+   enough for "🎲🎤 Game Playlist + End Credits by Claude" without
+   overflowing the (now-wider) popup. flex:1 still lets it shrink on
+   narrow viewports where the popup itself is constrained by 90vw. */
+.settingsSelect {
+    flex: 1;
+    margin-left: auto;
+    max-width: 22rem;
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+/* MUSIC/SFX volume row — speaker button + small caps label + slider + %.
+   Tighter than .settingsRow because it's a sub-row under the music select. */
+.settingsVolumeRow {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.15rem 0.3rem;
+}
+.settingsMuteBtn {
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #aaa;
+    padding: 0.25rem 0.45rem;
+    border-radius: 0.3rem;
+    cursor: pointer;
+    font-size: 0.95rem;
+    line-height: 1;
+    font-family: inherit;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.settingsMuteBtn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+.settingsMuteBtn.muted {
+    color: #ff6666;
+    border-color: rgba(255, 102, 102, 0.5);
+}
+.settingsVolumeLabel {
+    font-size: 0.7rem;
+    color: #888;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    min-width: 2.6rem;
+}
+/* Visual-tuning labels — used on BOTH the color-picker rows (Tile color,
+   Path color) and the slider rows (Tile opacity, Path opacity, Path
+   width, Bevel size). Font-size + color mirror the `.settingsRow label`
+   rule above so the color rows and slider rows read at the same weight.
+   Without explicit matching here, the slider rows used `<span>` and fell
+   back to the smaller volume-label size — the color rows used `<label>`
+   and picked up the larger `.settingsRow label` size, making the two
+   look visually inconsistent. Fixed min-width also gives the four slider
+   start positions a uniform vertical line. */
+.settingsVisualLabel {
+    font-size: clamp(0.9rem, 1.8vw, 1rem);
+    color: #ddd;
+    font-weight: 500;
+    min-width: 7rem;
+}
+.settingsVolumePercent {
+    font-size: 0.7rem;
+    color: #aaa;
+    min-width: 2.4rem;
+    text-align: right;
 }
 .settingsRow {
     display: flex;
@@ -732,6 +820,23 @@ body:not(.mode-potd) .menuModeBtn.potd-started:not(.potd-solved)::after {
     border-radius: 50%;
     cursor: pointer;
 }
+/* Tile-color swatch in the Settings popup. Strips the native
+   color-input chrome (a thick border + inner padding by default in
+   most browsers) so the swatch reads as a compact rounded chip
+   aligned with the slider thumbs above and below. */
+.settingsColor {
+    width: 3.4rem;
+    height: 1.7rem;
+    margin-left: auto;
+    padding: 0;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 0.3rem;
+    cursor: pointer;
+}
+.settingsColor::-webkit-color-swatch-wrapper { padding: 0; }
+.settingsColor::-webkit-color-swatch { border: none; border-radius: 0.2rem; }
+.settingsColor::-moz-color-swatch    { border: none; border-radius: 0.2rem; }
 .toggleSwitch {
     width: 2.4rem;
     height: 1.3rem;
@@ -778,6 +883,30 @@ body:not(.mode-potd) .menuModeBtn.potd-started:not(.potd-solved)::after {
     transition: background 0.15s ease;
 }
 #settingsCloseBtn:hover { background: #4a8de4; }
+
+/* Reset-visuals button — sits between the four sliders and the Close
+   button. Styled as a low-key text link rather than a prominent button
+   so it doesn't compete visually with Close (the row's primary action).
+   Right-aligned so its baseline doesn't clash with the centered Close
+   button below. */
+.settingsResetRow {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: -0.2rem;
+}
+.settingsResetBtn {
+    background: none;
+    border: none;
+    color: rgba(180, 200, 230, 0.7);
+    padding: 0.2rem 0.4rem;
+    font-family: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+    transition: color 0.15s ease;
+}
+.settingsResetBtn:hover { color: rgba(220, 240, 255, 0.95); }
 
 /* In debug mode the menu is hidden, and there's no concept of gameplay
    sessions, so the settings popup is meaningless — keep it out of the way. */
@@ -1043,6 +1172,404 @@ html.mode-debug #settingsOverlay { display: none !important; }
     cursor: default;
 }
 
+/* ============================================================
+   SHARE BUTTONS
+   ----------------------------------------------------------
+   Two surfaces use the same per-platform icons:
+     .shareRow / .shareIcon — minimalist row inside score popups
+       (#gameOverShareRow in #gameOver, #potdShareRow in
+       #potdSolveTransition). Small round icons, low contrast.
+     .share-overlay / .share-popup / .share-btn — the bigger
+       "Enjoying the game?" popup that fires after the 2nd finish
+       and offers labelled buttons + "Don't show again".
+   Wiring lives in share.js; CSS here is purely visual.
+   ============================================================ */
+
+.shareRow {
+    display: flex;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: 0.7rem;
+    flex-wrap: wrap;
+}
+.shareIcon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    text-decoration: none;
+}
+.shareIcon svg {
+    width: 0.95rem;
+    height: 0.95rem;
+    fill: rgba(255, 255, 255, 0.55);
+    transition: fill 0.15s ease;
+}
+.shareIcon:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.35);
+    transform: scale(1.08);
+}
+.shareIcon:hover svg { fill: rgba(255, 255, 255, 0.95); }
+/* Visual feedback when "copy link" succeeds — green tint for ~1.5s. */
+.shareIcon.share-copied { background: rgba(80, 200, 120, 0.35); border-color: rgba(80, 200, 120, 0.7); }
+.shareIcon.share-copied svg { fill: rgba(220, 255, 220, 0.95); }
+
+/* The "Enjoying the game?" popup overlay. Hidden by default; .visible
+   toggled by Share.showPopup. z-index above the credits overlay so it
+   sits on top after a 2nd finish even if credits are rolling. */
+.share-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0, 0, 0, 0.78);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1.2rem;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+.share-overlay.visible { display: flex; }
+.share-popup {
+    position: relative;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.8rem;
+    padding: 2rem 1.6rem 1.4rem;
+    width: clamp(18rem, 92vw, 26rem);
+    color: #e8edf5;
+    text-align: center;
+    box-shadow: 0 1.4rem 4rem rgba(0, 0, 0, 0.55);
+}
+.share-close {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.6rem;
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0.2rem 0.5rem;
+}
+.share-close:hover { color: #fff; }
+.share-emoji {
+    font-size: 2.4rem;
+    margin-bottom: 0.4rem;
+    line-height: 1;
+}
+.share-title {
+    font-size: clamp(1.2rem, 3vw, 1.5rem);
+    font-weight: 700;
+    color: #6eb5ff;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.5rem;
+}
+.share-subtitle {
+    font-size: clamp(0.9rem, 1.8vw, 1.05rem);
+    color: rgba(230, 240, 255, 0.85);
+    margin-bottom: 1.2rem;
+    line-height: 1.4;
+}
+.share-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 1.2rem;
+}
+.share-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.55rem 0.7rem;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 0.4rem;
+    color: #cfd8e6;
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.share-btn svg { width: 1rem; height: 1rem; fill: currentColor; }
+.share-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.35);
+    color: #fff;
+}
+.share-btn.share-copied { background: rgba(80, 200, 120, 0.35); border-color: rgba(80, 200, 120, 0.7); color: #fff; }
+.share-dismiss {
+    background: none;
+    border: none;
+    color: rgba(180, 200, 230, 0.55);
+    padding: 0.3rem 0.4rem;
+    font-family: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+    transition: color 0.15s ease;
+}
+.share-dismiss:hover { color: rgba(220, 240, 255, 0.95); }
+
+
+/* ============================================================
+   END CREDITS OVERLAY
+   ----------------------------------------------------------
+   Lifted from TANTЯO's style.css (same class names so the
+   markup pasted from credits.txt drops in unchanged). The
+   .credits-overlay is a full-viewport opaque backdrop;
+   .credits-scroll is the positioned element credits.js animates
+   bottom-to-top. While the overlay is showing, body has the
+   .credits-rolling class and the score popup
+   (#gameOver / #potdSolveTransition) repositions to the upper
+   third so the credits remain visible behind it.
+   ============================================================ */
+.credits-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.85);
+    display: none;
+    /* Was overflow:hidden (lifted from TANTЯO) — but on narrow windows the
+       max-width:34% on .credits-content makes the box too small to hold the
+       full CIRCUITOUSNESS title, so the title overflows to the right and the
+       overlay's hidden-overflow clipped it. body already has overflow:hidden,
+       so anything that spills past the viewport edge is still hidden, just
+       not clipped at the overlay's edges. */
+    overflow: visible;
+    z-index: 998;
+    font-family: 'Futura', 'Arial', 'Century Gothic', 'Trebuchet MS', sans-serif;
+}
+
+.credits-scroll {
+    display: flex;
+    justify-content: center;
+    position: absolute;
+    width: 100%;
+    color: white;
+    overflow: visible;
+}
+
+.credits-content {
+    padding: 20px;
+    text-align: center;
+    max-width: 34%;
+    /* Let the title (and any other content) render outside the 34%-wide
+       content box without being clipped by an ancestor. Default is already
+       `visible`, but set it explicitly so any future ancestor `overflow:
+       hidden` doesn't quietly start cropping the credits again. */
+    overflow: visible;
+}
+
+.credits-title {
+    font-size: 36px;
+    font-weight: bold;
+    font-family: 'Orbitron', sans-serif;
+    background: linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: none;
+    letter-spacing: 0.3vh;
+    filter: drop-shadow(0 0.2vh 0.4vh rgba(255, 215, 0, 0.5))
+            drop-shadow(0 0.4vh 0.8vh rgba(0, 0, 0, 0.7));
+    margin-bottom: 60px;
+}
+
+.credits-ai {
+    color: #FFFAAA;
+}
+
+.credits-section {
+    margin-bottom: 40px;
+}
+
+.credits-row {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-bottom: 8px;
+    font-size: 18px;
+}
+
+.credits-role {
+    width: 420px;
+    text-align: left;
+    color: #aaa;
+    padding-left: 50px;
+}
+
+.credits-name {
+    width: 250px;
+    text-align: left;
+    color: #fff;
+}
+
+.credits-thanks {
+    font-size: 18px;
+    color: #FFD700;
+    margin: 60px 0;
+}
+
+.credits-disclaimer {
+    font-size: 16px;
+    color: #aaa;
+    margin: 15px 0;
+}
+
+.credits-disclaimer p {
+    text-align: left;
+    text-indent: 2em;
+    margin: 0;
+}
+
+.credits-copyright {
+    font-size: 18px;
+    color: #aaa;
+    margin-top: 60px;
+}
+
+.credits-link {
+    font-size: 16px;
+    color: #4da6ff;
+    margin-top: 15px;
+}
+
+.credits-easter {
+    font-size: 1.88vh;
+    color: #666;
+    font-style: italic;
+}
+
+.soundtrack-section {
+    margin: 50px auto;
+    padding: 30px 40px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.soundtrack-heading {
+    font-size: 15px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 12px;
+}
+
+.soundtrack-title {
+    font-size: 20px;
+    color: #FFD700;
+    margin-bottom: 20px;
+    font-weight: 600;
+}
+
+.soundtrack-links {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    align-items: center;
+}
+
+.soundtrack-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: #ccc;
+    font-size: 14px;
+    padding: 8px 18px;
+    border-radius: 24px;
+    border: 2px solid rgba(79, 169, 252, 1);
+    transition: all 0.25s ease;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.soundtrack-link:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+.soundtrack-link svg {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.credits-spacer {
+    height: 24vh;
+}
+
+.credits-spacer-large {
+    height: 42vh;
+}
+
+.credits-spacer-final {
+    height: 100vh;
+}
+
+/* Score popup repositioning while credits are rolling. The popup needs
+   to live above the credits overlay (z-index > 998) and shrink to a
+   floating card in the upper third so the scrolling credits remain
+   visible behind/below it.
+
+   #gameOver is normally a full-screen blurred backdrop — strip that and
+   turn it into a Tantro-style translucent card pinned to top:12%.
+   #potdSolveTransition keeps its existing card shape; just shift its
+   vertical center to ~22% so the bulk of the screen is credits, not
+   modal. */
+body.credits-rolling #gameOver.visible {
+    position: fixed;
+    inset: auto auto auto 50%;
+    top: clamp(1rem, 6vh, 4rem);
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: min(90vw, 30rem);
+    padding: clamp(1rem, 2.4vw, 1.6rem) clamp(1.6rem, 4vw, 2.6rem);
+    background: linear-gradient(135deg, rgba(26, 26, 46, 0.92) 0%, rgba(22, 33, 62, 0.92) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.6rem;
+    box-shadow: 0 1.2rem 4rem rgba(0, 0, 0, 0.6),
+                0 0 4rem rgba(255, 215, 0, 0.2);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    z-index: 1001;
+    gap: 0.6rem;
+}
+body.credits-rolling #potdSolveTransition.visible {
+    /* Keep the existing translateX-centered transform; just shift Y up. */
+    top: 22%;
+    z-index: 1001;
+}
+
+/* Responsive overrides for narrow viewports (phones, tablets in portrait).
+   Same breakpoints + values TANTЯO uses so credits read cleanly at any
+   width — without them the 420px credits-role column overflows on phones. */
+@media (max-width: 1100px) {
+    .credits-role { width: 45vw; padding-left: 2vw; }
+    .credits-name { width: 40vw; }
+    .credits-row  { gap: 4vw; font-size: 14px; }
+}
+@media (pointer: coarse) {
+    .credits-content { max-width: 90%; }
+    .credits-role    { width: 35vw; padding-left: 0; text-align: right; }
+    .credits-name    { width: 35vw; }
+    .credits-row     { gap: 3vw; font-size: max(1.8vh, 13px); }
+}
+
 /* ----- Leaderboard view ----- */
 #leaderboard {
     position: absolute;
@@ -1064,6 +1591,40 @@ html.mode-debug #settingsOverlay { display: none !important; }
     letter-spacing: 0.05em;
     color: #FFD700;
     margin-top: 1rem;
+}
+/* Tab control switching PotD vs Marathon leaderboards. Sits between the
+   <h2> title and the per-slot/type dropdown. Underline-style active
+   indicator matches the gold accent already in use on the title +
+   ranks. */
+#leaderboardTabs {
+    display: flex;
+    gap: 0.4rem;
+    width: clamp(20rem, 70vw, 36rem);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+#leaderboardTabs .lbTab {
+    flex: 1;
+    padding: 0.55rem 0.6rem;
+    background: transparent;
+    color: rgba(220, 220, 220, 0.55);
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: clamp(0.9rem, 1.8vw, 1.05rem);
+    letter-spacing: 0.02em;
+    /* Tabs include emoji + label — keep on one line. */
+    white-space: nowrap;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+#leaderboardTabs .lbTab:hover {
+    color: rgba(220, 220, 220, 0.85);
+    background: rgba(255, 255, 255, 0.03);
+}
+#leaderboardTabs .lbTab.active {
+    color: rgba(255, 215, 0, 0.95);
+    border-bottom-color: rgba(255, 215, 0, 0.75);
 }
 #leaderboardSelect {
     padding: 0.55rem 1rem;
@@ -1213,6 +1774,11 @@ html.mode-debug #settingsOverlay { display: none !important; }
     left: 1.2rem;
     z-index: 50;
     padding: 0.8rem 1rem;
+    /* Cap the panel width so the variable-length #preGenStatus cache list
+       (which can grow to 8 starters + 3 lookahead = 11 space-separated
+       entries) wraps onto multiple lines instead of pushing the panel
+       across the canvas. */
+    max-width: 20rem;
     background: rgba(20, 24, 40, 0.78);
     color: #fff;
     border: 1px solid rgba(255, 255, 255, 0.18);
@@ -1258,6 +1824,13 @@ html.mode-debug #settingsOverlay { display: none !important; }
     font-size: 0.72rem;
     font-family: monospace;
     opacity: 0.75;
+    /* Cache entries are space-separated so they wrap at spaces naturally
+       under the panel's max-width; overflow-wrap covers the edge case
+       where a single token (e.g. "building 14x12 (10.2s)") still
+       overflows on a particularly narrow viewport. */
+    word-spacing: 0.1em;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
 }
 #debugSliders input[type="color"] {
     display: block;
@@ -1480,9 +2053,10 @@ html.mode-debug #settingsOverlay { display: none !important; }
     color: #6eb5ff;
 }
 .selection-option .challenge-description {
-    font-size: max(1.2vh, 11px);
+    font-size: max(1.5vh, 13px);
     color: #888;
-    margin-top: max(0.4vh, 3px);
+    margin-top: max(1.4vh, 11px);
+    margin-bottom: max(1.0vh, 8px);
     margin-left: 0;
 }
 .selection-option.selected .challenge-description {

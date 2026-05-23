@@ -3,10 +3,10 @@
 // Triggers (wired by marathon.js / game.js):
 //   new puzzle starts      → cinematic_bass
 //   two paths overlap      → glitch  (looped while the overlap persists)
-//   twin twist breaks line → fail | audience_boo | audience_disappointed | audience_gasp
+//   twin twist breaks line → fail | audience_disappointed | audience_gasp
 //   join one path of many  → applause
 //   puzzle solved          → applause_long
-//   game over, no rank     → fail_long | audience_boo | audience_disappointed
+//   game over, no rank     → fail_long | audience_disappointed
 //   game over, top-N       → audience_cheer
 //   game over, rank #1     → audience_cheer_long
 //
@@ -17,19 +17,27 @@
 // (each named type equally likely regardless of pool size), then draw a
 // variant from that type's bag.
 //
-// All MP3s live in a single GitHub release; filenames are <type>_<N>.mp3.
-// Direct URLs work on desktop + Android. iPad Safari can't follow GitHub's
-// 302 redirects in <audio> elements — mirror via the back-end if/when iOS
-// support is needed.
+// Playback: Web Audio API (decoded AudioBuffer + BufferSource). NOT
+// <audio> elements — the audio-element path requires every element to be
+// "blessed" by a user gesture before .play() will work on iPad Safari,
+// and cloning a blessed element doesn't preserve the blessing. Web Audio
+// bypasses the gesture restriction entirely once the AudioContext is
+// resumed (which we do on first interaction).
+//
+// MP3 URL: always proxied through the back-end (AppConfig.GAME_API +
+// /music/SFX/). Two reasons it's always the proxy, not just on iOS:
+//   1. fetch() needs CORS headers to read response bytes for decode;
+//      GitHub doesn't set them.
+//   2. iOS Safari can't follow GitHub's 302 redirects in audio fetches.
+// SFX files are small (a few KB each) so proxy load is negligible.
 
 const Sfx = (function () {
-    const BASE_URL = 'https://github.com/crdeardorff74-commits/circuitousness-front-end/releases/download/SFX/';
+    const BASE_URL = AppConfig.GAME_API + '/music/SFX/';
 
     // Variant counts per type. Filename pattern: <type>_<1..count>.mp3.
     const POOLS = {
-        applause:                5,
+        applause:                4,
         applause_long:           7,
-        audience_boo:            3,
         audience_cheer:          5,
         audience_cheer_long:     1,
         audience_disappointed:   3,
@@ -38,7 +46,7 @@ const Sfx = (function () {
         cinematic_bass:         13,
         fail:                   17,
         fail_long:               3,
-        glitch:                  7,
+        glitch:                  6,
         jump_scare:              3,
     };
 
@@ -72,51 +80,143 @@ const Sfx = (function () {
         return bags[type].order[bags[type].pos++];
     }
 
-    // Lazy-load + cache one Audio per variant; clone on play so overlapping
-    // triggers don't restart the cached element mid-playback.
-    const cache = new Map();   // 'type/idx' → HTMLAudioElement template
-    function getTemplate(type, idx) {
-        const key = type + '/' + idx;
-        let a = cache.get(key);
-        if (!a) {
-            a         = new Audio(BASE_URL + type + '_' + idx + '.mp3');
-            a.preload = 'auto';
-            cache.set(key, a);
+    // Web Audio context. Created lazily, resumed on first user gesture.
+    // Same context drives click(), gateClick(), AND the buffer-source
+    // SFX playback below — sharing one context keeps the audio routing
+    // sane and is required on iOS (which only allows one context per
+    // page, and only after a gesture).
+    let audioCtx = null;
+    function getAudioCtx() {
+        if (audioCtx) return audioCtx;
+        try {
+            const Ctor = window.AudioContext || window.webkitAudioContext;
+            if (Ctor) audioCtx = new Ctor();
+        } catch (e) { audioCtx = null; }
+        return audioCtx;
+    }
+    // iOS Safari starts the AudioContext in 'suspended' state and won't
+    // play anything until ctx.resume() runs INSIDE a user-gesture handler.
+    // Capture the first click/touchend/keydown and resume — once
+    // resumed, all later buffer-source plays work without further
+    // gesture restrictions.
+    let unlocked = false;
+    function unlockAudio() {
+        if (unlocked) return;
+        const ctx = getAudioCtx();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch(function () {});
         }
-        return a;
+        unlocked = true;
+    }
+    if (typeof document !== 'undefined') {
+        ['click', 'touchend', 'keydown'].forEach(function (evt) {
+            document.addEventListener(evt, unlockAudio, { capture: true });
+        });
     }
 
-    // Ducking: any new play() fades whatever is currently playing down to 0
-    // over FADE_OUT_MS, then pauses it. Keeps overlapping cues from
-    // muddying each other — the most recent trigger always reads cleanly.
-    // Natural end-of-clip removes the entry first, so loop chains that
-    // hand off via 'ended' don't fade themselves out.
-    const FADE_OUT_MS  = 200;
-    const FADE_STEP_MS = 20;
-    const active = new Set();  // entries: { audio, fadeInterval, onEnded }
+    // Decoded AudioBuffer cache: 'type/idx' → AudioBuffer. Populated by
+    // preloadAll() at module init via fetch + decodeAudioData. A missing
+    // entry at play time means the fetch is still in flight — we skip
+    // that play silently rather than block.
+    const buffers   = new Map();
+    const fetching  = new Set();   // 'type/idx' values currently being fetched
+    function loadBuffer(type, idx) {
+        const key = type + '/' + idx;
+        if (buffers.has(key)) return Promise.resolve(buffers.get(key));
+        if (fetching.has(key)) return Promise.resolve(null);
+        const ctx = getAudioCtx();
+        if (!ctx) return Promise.resolve(null);
+        fetching.add(key);
+        const url = BASE_URL + type + '_' + idx + '.mp3';
+        return fetch(url)
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.arrayBuffer();
+            })
+            .then(function (ab) { return ctx.decodeAudioData(ab); })
+            .then(function (buf) {
+                buffers.set(key, buf);
+                fetching.delete(key);
+                return buf;
+            })
+            .catch(function (e) {
+                fetching.delete(key);
+                if (typeof Logger !== 'undefined') Logger.warn('Sfx: load failed', key, e.message);
+                return null;
+            });
+    }
+
+    // Active playbacks for ducking: any new play() fades all in-progress
+    // SFX down to 0 over FADE_OUT_MS via Web Audio's linearRampToValueAtTime,
+    // then stops the source. Keeps overlapping cues from muddying each
+    // other — the most recent trigger always reads cleanly. Loop entries
+    // also live here; stopLoop fades them via the same path.
+    const FADE_OUT_MS = 200;
+    const active = new Set();   // entries: { source, gain, loopKey, fadeT }
 
     function fadeOutEntry(entry) {
-        if (entry.fadeInterval) return;
-        const startVol  = entry.audio.volume;
-        const startTime = Date.now();
-        entry.fadeInterval = setInterval(function () {
-            const t = Math.min(1, (Date.now() - startTime) / FADE_OUT_MS);
-            entry.audio.volume = Math.max(0, startVol * (1 - t));
-            if (t >= 1) {
-                clearInterval(entry.fadeInterval);
-                entry.fadeInterval = null;
-                try { entry.audio.pause(); } catch (e) {}
-                entry.audio.removeEventListener('ended', entry.onEnded);
-                active.delete(entry);
-            }
-        }, FADE_STEP_MS);
+        if (entry.fadeT) return;
+        const ctx = getAudioCtx();
+        if (!ctx) {
+            active.delete(entry);
+            return;
+        }
+        const t0 = ctx.currentTime;
+        // cancelScheduledValues drops any pending automation (e.g. an
+        // earlier fade-in ramp); setValueAtTime then anchors the current
+        // gain so the ramp starts from there (not from the original
+        // target).
+        try {
+            entry.gain.gain.cancelScheduledValues(t0);
+            entry.gain.gain.setValueAtTime(entry.gain.gain.value, t0);
+            entry.gain.gain.linearRampToValueAtTime(0, t0 + FADE_OUT_MS / 1000);
+        } catch (e) {}
+        entry.fadeT = setTimeout(function () {
+            try { entry.source.stop(); } catch (e) {}
+            active.delete(entry);
+        }, FADE_OUT_MS);
     }
     function fadeOutAll() {
         for (const entry of active) fadeOutEntry(entry);
     }
 
-    // Fire-and-forget play. Returns the live element so callers can attach
-    // listeners or stop it early (used by playLoop for chaining).
+    // Internal one-shot start. Handles both regular plays and looped
+    // plays (opts.loop=true sets source.loop, opts.loopKey tracks it
+    // in `loops` so stopLoop can find it). Returns the entry object
+    // (or null if buffer wasn't ready, audio context is unavailable,
+    // etc.) — callers shouldn't depend on a specific shape beyond
+    // "truthy means playback started."
+    function startSource(type, idx, opts) {
+        const ctx = getAudioCtx();
+        if (!ctx) return null;
+        const buf = buffers.get(type + '/' + idx);
+        if (!buf) return null;
+        fadeOutAll();
+        const source = ctx.createBufferSource();
+        source.buffer = buf;
+        if (opts && opts.loop) source.loop = true;
+        const gain = ctx.createGain();
+        gain.gain.value = volume;
+        source.connect(gain).connect(ctx.destination);
+        const entry = { source: source, gain: gain, fadeT: null, loopKey: (opts && opts.loopKey) || null };
+        source.onended = function () {
+            if (entry.fadeT) { clearTimeout(entry.fadeT); entry.fadeT = null; }
+            active.delete(entry);
+            if (entry.loopKey) loops.delete(entry.loopKey);
+        };
+        active.add(entry);
+        try { source.start(0); } catch (e) {
+            active.delete(entry);
+            return null;
+        }
+        return entry;
+    }
+
+    // Fire-and-forget play. Returns the entry (truthy) on successful
+    // start, null otherwise — callers historically depended only on
+    // null-vs-truthy so the shape change from HTMLAudioElement to entry
+    // object is invisible to them.
     //
     // Throttling (universal rule): filter the spec's types to those that
     // (a) exist in POOLS and (b) haven't played in the last THROTTLE_MS.
@@ -145,58 +245,41 @@ const Sfx = (function () {
         if (eligible.length === 0) return null;
         const type = eligible[Math.floor(Math.random() * eligible.length)];
         const idx  = nextIndex(type);
-        lastPlayedAt.set(type, now);
-        fadeOutAll();
-        const tmpl = getTemplate(type, idx);
-        const a    = tmpl.cloneNode();
-        a.volume   = volume;
-        const entry = { audio: a, fadeInterval: null, onEnded: null };
-        entry.onEnded = function () {
-            if (entry.fadeInterval) {
-                clearInterval(entry.fadeInterval);
-                entry.fadeInterval = null;
-            }
-            active.delete(entry);
-        };
-        active.add(entry);
-        a.addEventListener('ended', entry.onEnded, { once: true });
-        const p = a.play();
-        if (p && p.catch) {
-            p.catch(function (err) {
-                if (typeof Logger !== 'undefined') Logger.warn('Sfx: play failed', type, idx, err);
-                a.removeEventListener('ended', entry.onEnded);
-                active.delete(entry);
-            });
-        }
-        return a;
+        const entry = startSource(type, idx, null);
+        if (entry) lastPlayedAt.set(type, now);
+        // If the buffer wasn't ready yet, kick a load so a subsequent
+        // play of the same variant succeeds. The just-attempted play
+        // is silently dropped — no synchronous wait.
+        if (!entry && !buffers.has(type + '/' + idx)) loadBuffer(type, idx);
+        return entry;
     }
 
     // Looped play: picks one variant from `spec`'s shuffle bag and repeats
-    // THAT variant via HTMLAudioElement.loop until stopLoop(key) fires.
-    // (Earlier version chained through the pool — corrected after feedback
-    // that the overlap glitch should be a single repeating cue, not a
-    // rotating one.) Each fresh playLoop() call draws a new variant.
-    const loops = new Map();   // key → { currentAudio }
+    // THAT variant via BufferSource.loop=true until stopLoop(key) fires.
+    // Each fresh playLoop() call draws a new variant.
+    const loops = new Map();   // key → entry from startSource
     function playLoop(key, spec) {
         if (loops.has(key)) return;
+        if (muted) return;
+        const allTypes = Array.isArray(spec) ? spec : [spec];
         // Loops are sustained state indicators (e.g. the path-overlap
         // glitch) — they should fire whenever the state re-enters,
-        // even within the per-type throttle window. Skip the throttle.
-        const a = play(spec, true);
-        if (!a) return;
-        a.loop = true;
-        loops.set(key, { currentAudio: a });
+        // even within the per-type throttle window. Don't filter by
+        // throttle, just by validity.
+        const valid = allTypes.filter(function (t) { return !!POOLS[t]; });
+        if (valid.length === 0) return;
+        const type = valid[Math.floor(Math.random() * valid.length)];
+        const idx  = nextIndex(type);
+        const entry = startSource(type, idx, { loop: true, loopKey: key });
+        if (entry) loops.set(key, entry);
+        else if (!buffers.has(type + '/' + idx)) loadBuffer(type, idx);
     }
     function stopLoop(key) {
-        const state = loops.get(key);
-        if (!state) return;
-        if (state.currentAudio) {
-            // Fade out for a smooth stop instead of an abrupt cut — same
-            // ducking pathway play() uses when a new sound interrupts.
-            for (const entry of active) {
-                if (entry.audio === state.currentAudio) { fadeOutEntry(entry); break; }
-            }
-        }
+        const entry = loops.get(key);
+        if (!entry) return;
+        // Fade out for a smooth stop instead of an abrupt cut — same
+        // ducking pathway play() uses when a new sound interrupts.
+        fadeOutEntry(entry);
         loops.delete(key);
     }
     function stopAllLoops() {
@@ -212,15 +295,6 @@ const Sfx = (function () {
     // from sounding mechanically identical.
     const CLICK_VOLUME    = 0.18;   // relative to master `volume`
     const CLICK_DURATION  = 0.03;   // seconds
-    let audioCtx = null;
-    function getAudioCtx() {
-        if (audioCtx) return audioCtx;
-        try {
-            const Ctor = window.AudioContext || window.webkitAudioContext;
-            if (Ctor) audioCtx = new Ctor();
-        } catch (e) { audioCtx = null; }
-        return audioCtx;
-    }
     function click() {
         if (muted) return;
         const ctx = getAudioCtx();
@@ -286,22 +360,18 @@ const Sfx = (function () {
         if (muted) stopAllLoops();
     }
 
-    // Eager preload: kicks off fetches for every variant at module init so
-    // the first play doesn't pay a network round-trip (the symptom was a
-    // noticeable lag between puzzle-show and cinematic_bass). Browsers cap
-    // concurrent connections per origin (~6) so this queues — order matters
-    // for the ones that fire earliest in a session. cinematic_bass first
-    // because it plays on every puzzle start; applause_long next because
-    // it plays on every solve. Everything else trails in POOLS order.
-    // `audio.load()` is necessary on top of preload='auto' because browsers
-    // (especially mobile) frequently ignore the attribute as a hint.
+    // Eager preload: kicks off fetches+decodes for every variant at
+    // module init so the first play doesn't pay a network round-trip
+    // (the symptom was a noticeable lag between puzzle-show and
+    // cinematic_bass). cinematic_bass first because it plays on every
+    // puzzle start; applause_long next because it plays on every solve.
+    // Everything else trails in POOLS order.
     const PRELOAD_FIRST = ['cinematic_bass', 'applause_long'];
     function preloadType(type) {
         const count = POOLS[type];
         if (!count) return;
         for (let idx = 1; idx <= count; idx++) {
-            const a = getTemplate(type, idx);
-            try { a.load(); } catch (e) {}
+            loadBuffer(type, idx);
         }
     }
     function preloadAll() {
@@ -309,7 +379,10 @@ const Sfx = (function () {
         for (const t of PRELOAD_FIRST) { preloadType(t); done.add(t); }
         for (const t of Object.keys(POOLS)) if (!done.has(t)) preloadType(t);
     }
-    preloadAll();
+    // Wait for the AudioContext to exist before preloading — decodeAudioData
+    // is a method on the context. getAudioCtx() creates it lazily, so a
+    // single call from here is sufficient; preload kicks off immediately.
+    if (getAudioCtx()) preloadAll();
 
     return {
         play: play,

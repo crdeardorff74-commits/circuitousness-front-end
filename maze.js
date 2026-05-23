@@ -55,7 +55,12 @@ const Maze = (() => {
     function gridScale()        { return (ROWS + COLS) / 2; }
     function minPathLength()    { return Math.round(gridScale() * 2.25); }
     function minShortcutTwists(){ return Math.round(gridScale() * 1.25); }
-    function twinPairCount()    { return Math.max(1, Math.round(gridScale()) - 5); }
+    // Twin density scales off DOUBLED gridScale so 8×8 now produces ~11
+    // pairs (was 3). Kept as a separate multiplier here rather than baked
+    // into gridScale() itself so it doesn't cascade into the path-length /
+    // shortcut floors above, which need to stay where they are for the
+    // puzzle's overall character. Halve back to 1× if it feels too dense.
+    function twinPairCount()    { return Math.max(1, Math.round(gridScale() * 2) - 5); }
     function maxDfsSteps()      { return ROWS * COLS * 125; }
     const MAX_PATH_GEN_TRIES    = 12;  // re-runs of generateLanes per buildPuzzle
     const MAX_REROLL_ATTEMPTS   = 15;  // rotation rerolls per entry/exit pair
@@ -68,13 +73,29 @@ const Maze = (() => {
     // the color as a base and shades it for top/left/bot/right). Red is
     // reserved for hint-locked tiles. Pair count scales linearly with grid
     // size so larger grids get more constraints; min 1 keeps small grids playable.
+    // Cycled by `i % TWIN_COLORS.length` in assignTwins — once pair count
+    // exceeds the palette length, colors start repeating. With the density
+    // doubled (gridScale * 2 in twinPairCount), an 8×8 needs 11 pairs and
+    // bigger grids more, so the palette holds 16 distinct pastels — covers
+    // up to 21 pairs without repeats. Red is intentionally absent
+    // throughout (reserved for hint-locked tiles).
     const TWIN_COLORS = [
         '#5DA3D5', // pastel blue
         '#6CB97A', // pastel green
         '#B289CB', // pastel purple
-        '#D8A05D', // pastel orange — extra for higher pair counts
+        '#D8A05D', // pastel orange
         '#5DBFB0', // pastel teal
-        '#D87CA0'  // pastel pink
+        '#D87CA0', // pastel pink
+        '#E5C76B', // pastel yellow
+        '#8E7BBC', // pastel indigo
+        '#9BD3C5', // pastel mint
+        '#C9A077', // pastel light brown
+        '#7FAEDB', // pastel sky
+        '#A8C97F', // pastel lime
+        '#C58FA8', // pastel rose
+        '#D9B57F', // pastel tan
+        '#7BC0A2', // pastel sage
+        '#B589A8'  // pastel mauve
     ];
 
     const BASE_CONNECTIONS = {
@@ -968,6 +989,16 @@ const Maze = (() => {
     let hurryFlag = false;
     function setHurry() { hurryFlag = true; }
 
+    // Abort flag: set externally when an in-flight build is no longer
+    // needed (the worker received an urgent request for a different
+    // puzzle, so the current one should be discarded). init() checks
+    // this flag at the same attempt boundaries as hurry; when set, it
+    // returns false to signal "this result is garbage, do not snapshot".
+    // The state is left in whatever partial form the abort caught — the
+    // next init() call resets it before building.
+    let abortFlag = false;
+    function setAbort() { abortFlag = true; }
+
     async function init() {
         // Strategy:
         // 1. Outer pathCap loop — start with paths up to 50% of grid cells
@@ -988,6 +1019,7 @@ const Maze = (() => {
         // tiles using free rotation), we accept a shorter path. The user
         // wants long; we get as long as the constraint allows.
         hurryFlag = false;
+        abortFlag = false;
         let bestState  = null;
         let bestLength = 0;
 
@@ -1013,6 +1045,7 @@ const Maze = (() => {
             const hurryThreshold = Math.max(1, target - 1);
             for (let attempt = 0; attempt < maxAttempts; attempt++) {
                 await yieldToBrowser();
+                if (abortFlag) return false;
                 if (hurryFlag && bestCount >= hurryThreshold) break;
                 if (!buildPuzzle(startCap)) continue;
                 const got = entry4 ? 4 : (entry3 ? 3 : (entry2 ? 2 : 1));
@@ -1027,7 +1060,7 @@ const Maze = (() => {
             assignQuadTwins();   // assign before scramble so the scramble can keep twins in lockstep
             scrambleQuads();
             updateHighlighted();
-            return;
+            return true;
         }
 
         // 2-path mode: extra paths constrain the grid heavily, but with
@@ -1047,6 +1080,7 @@ const Maze = (() => {
             const maxAttempts = 24;
             for (let attempt = 0; attempt < maxAttempts; attempt++) {
                 await yieldToBrowser();
+                if (abortFlag) return false;
                 if (hurryFlag && (bestCanonical || bestFallback)) break;
                 if (!buildPuzzle(startCap)) continue;
                 const got = entry2 ? 2 : 1;
@@ -1115,7 +1149,7 @@ const Maze = (() => {
             locked = new Set();
             assignTwins();
             updateHighlighted();
-            return;
+            return true;
         }
 
         // 3+ paths: tight retry budget, no canonical check. buildPuzzle drops
@@ -1139,6 +1173,7 @@ const Maze = (() => {
             const hurryThreshold = Math.max(1, target - 1);
             for (let attempt = 0; attempt < maxAttempts; attempt++) {
                 await yieldToBrowser();
+                if (abortFlag) return false;
                 if (hurryFlag && bestCount >= hurryThreshold) break;
                 if (!buildPuzzle(startCap)) continue;
                 const got = entry4 ? 4 : (entry3 ? 3 : (entry2 ? 2 : 1));
@@ -1152,12 +1187,13 @@ const Maze = (() => {
             locked = new Set();
             assignTwins();
             updateHighlighted();
-            return;
+            return true;
         }
 
         outer: for (let pathCap = startCap; pathCap >= baseFloor; pathCap = Math.max(baseFloor, pathCap - 4)) {
             for (let attempt = 0; attempt < MAX_INIT_ATTEMPTS; attempt++) {
                 await yieldToBrowser();
+                if (abortFlag) return false;
                 // After at least one successful build, a hurry signal means
                 // the player is waiting — bail with best-so-far.
                 if (hurryFlag && grid !== null) break outer;
@@ -1214,6 +1250,7 @@ const Maze = (() => {
         locked = new Set();  // wipe locks from any previous puzzle
         assignTwins();
         updateHighlighted();
+        return true;
     }
 
     // Walk port-to-port through tiles, collecting (cell, inPort, outPort) tuples.
@@ -1330,6 +1367,65 @@ const Maze = (() => {
             }
         }
         return edges;
+    }
+
+    // Like solutionEdges, but returns an array of ORDERED CELL LISTS — one
+    // per active entry/exit pair — tracing the solved path from entry
+    // inward. Used by hint() to walk a path and find the first cell whose
+    // tile (or quad, in quad mode) isn't yet at a port-equivalent rotation
+    // to the solution. Same quad-mode un-scramble dance as solutionEdges
+    // so the walk follows the SOLVED grid even when the player has the
+    // quads scrambled; state is restored before returning.
+    function solutionPaths() {
+        if (!quadMode || !quadScramble) return walkAllSolutionPaths();
+        const snap = snapshotState();
+        const savedQuadScramble = quadScramble.map((row) => row.slice());
+        try {
+            for (let qr = 0; qr < quadScramble.length; qr++) {
+                for (let qc = 0; qc < quadScramble[qr].length; qc++) {
+                    const turns = quadScramble[qr][qc];
+                    for (let i = 0; i < turns; i++) rotateQuad(qr * 2, qc * 2, true);
+                    quadScramble[qr][qc] = 0;
+                }
+            }
+            return walkAllSolutionPaths();
+        } finally {
+            restoreState(snap);
+            quadScramble = savedQuadScramble;
+        }
+    }
+
+    function walkAllSolutionPaths() {
+        const pairs = [[entry, exit], [entry2, exit2], [entry3, exit3], [entry4, exit4]];
+        const paths = [];
+        const maxSteps = ROWS * COLS * 4;
+        for (const [eStart, eEnd] of pairs) {
+            if (!eStart || !eEnd) continue;
+            const cells = [];
+            let r = eStart.row, c = eStart.col;
+            let inPort = eStart.port;
+            for (let step = 0; step < maxSteps; step++) {
+                if (!inBounds(r, c)) break;
+                const tile = grid[r][c];
+                if (!tile || tile._solution === undefined) break;
+                cells.push({ r, c });
+                let outPort = -1;
+                for (const pair of BASE_CONNECTIONS[tile.type]) {
+                    const ra = rot(pair[0], tile._solution);
+                    const rb = rot(pair[1], tile._solution);
+                    if (ra === inPort) { outPort = rb; break; }
+                    if (rb === inPort) { outPort = ra; break; }
+                }
+                if (outPort < 0) break;
+                const nr = r + DELTA[outPort].dr;
+                const nc = c + DELTA[outPort].dc;
+                if (!inBounds(nr, nc)) break;
+                r = nr; c = nc;
+                inPort = (outPort + 2) & 3;
+            }
+            paths.push(cells);
+        }
+        return paths;
     }
 
     // Highlights = union of (forward-walk-from-entry) and (backward-walk-from-exit),
@@ -1836,88 +1932,214 @@ const Maze = (() => {
     }
 
     function hint() {
+        // ── Helpers shared by both the path-walk strategy and the
+        //    random-pick fallback below. ──
+
+        function quadHasPathTile(qr, qc) {
+            for (let dr = 0; dr < 2; dr++) {
+                for (let dc = 0; dc < 2; dc++) {
+                    if (grid[qr*2 + dr][qc*2 + dc]._solution !== undefined) return true;
+                }
+            }
+            return false;
+        }
+        // Skip a quad if ANY path tile inside it is already correctly
+        // placed (right rotation + lit with the right color). Hinting in
+        // quad mode locks all 4 sub-tiles red — including ones the player
+        // already worked out — so a single correctly-placed tile inside
+        // is enough to make the hint feel like a step backward.
+        //
+        // Exception: if the quad's scramble offset is non-zero, the quad
+        // itself is wrongly oriented and the player needs the hint to
+        // snap it; ignore the per-tile correctness in that case (it
+        // can't really be true if scramble != 0 anyway).
+        function quadAnyTileCorrect(qr, qc) {
+            if (quadScramble[qr][qc] !== 0) return false;
+            for (let dr = 0; dr < 2; dr++) {
+                for (let dc = 0; dc < 2; dc++) {
+                    const r = qr * 2 + dr;
+                    const c = qc * 2 + dc;
+                    if (grid[r][c]._solution === undefined) continue;
+                    if (tileShouldSkip(r, c)) return true;
+                }
+            }
+            return false;
+        }
+        // True iff applying the hint rotation to this quad would produce
+        // a connection-equivalent state (every position's effective
+        // connections unchanged) — i.e. the player has the quad in a
+        // configuration that "works just as well" as the solution even
+        // though quadScramble != 0. Without this check, the hint locks
+        // a quad red after a 180°/90°/270° rotation that has no effect
+        // on the lit chain, which feels worthless to the player.
+        //
+        // CW position cycle: TL → TR → BR → BL → TL. After `turns` CW
+        // rotations, the tile at position i NEW came from position
+        // (i - turns + 4) % 4 OLD, with its own rotation +turns.
+        function quadAlreadyPortEquivalent(qr, qc) {
+            const turns = (4 - quadScramble[qr][qc]) & 3;
+            if (turns === 0) return true;
+            const r0 = qr * 2, c0 = qc * 2;
+            const positions = [
+                [r0,     c0    ],  // 0: TL
+                [r0,     c0 + 1],  // 1: TR
+                [r0 + 1, c0 + 1],  // 2: BR
+                [r0 + 1, c0    ],  // 3: BL
+            ];
+            for (let i = 0; i < 4; i++) {
+                const srcIdx = (i - turns + 4) % 4;
+                const src = grid[positions[srcIdx][0]][positions[srcIdx][1]];
+                const dst = grid[positions[i      ][0]][positions[i      ][1]];
+                if (src.type !== dst.type) return false;
+                const srcEffectiveRot = (src.rotation + turns) & 3;
+                if (!rotationsHaveSamePorts(src.type, srcEffectiveRot, dst.rotation)) return false;
+            }
+            return true;
+        }
+        function quadEligible(qr, qc) {
+            if (locked.has((qr*2) + ',' + (qc*2))) return false;
+            if (!quadHasPathTile(qr, qc)) return false;
+            if (quadAnyTileCorrect(qr, qc)) return false;
+            if (quadAlreadyPortEquivalent(qr, qc)) return false;
+            // Twin partner quad must also pass the "no correct tile"
+            // check — hinting cascades to it, and locking a partner
+            // that contains correctly-placed tiles wastes the hint.
+            const tile = grid[qr*2][qc*2];
+            if (tile && tile._twin) {
+                const [pr, pc] = tile._twin.partner.split(',').map(Number);
+                const pqr = pr / 2, pqc = pc / 2;
+                if (pqr !== qr || pqc !== qc) {
+                    if (locked.has(pr + ',' + pc)) return false;
+                    if (quadAnyTileCorrect(pqr, pqc)) return false;
+                }
+            }
+            return true;
+        }
+        function tileEligible(r, c) {
+            const t = grid[r][c];
+            if (!t || t._solution === undefined) return false;
+            if (locked.has(r + ',' + c)) return false;
+            if (tileShouldSkip(r, c)) return false;
+            // Twin pairs rotate in lockstep — hinting one side rotates
+            // the other by the same delta. If the partner is already at
+            // its solution rotation, hinting THIS tile would knock the
+            // partner off solution AND lock it (locked.add(partner)),
+            // leaving the puzzle unwinnable. Skip the whole pair.
+            if (t._twin) {
+                const [tr, tc] = t._twin.partner.split(',').map(Number);
+                if (tileShouldSkip(tr, tc)) return false;
+            }
+            return true;
+        }
+
+        // Shared "is this cell's tile/quad at wrong orientation AND
+        // hintable" check — true iff a hint at (r, c) would correct an
+        // actually-wrong tile. Used by both the lit-chain pass below
+        // and the solution-path pass after it.
+        function cellWrongOrientationHintable(r, c) {
+            if (quadMode) {
+                const qr = Math.floor(r / 2);
+                const qc = Math.floor(c / 2);
+                // quadEligible already excludes port-equivalent quads
+                // (via quadAlreadyPortEquivalent), so no extra check
+                // needed here in quad mode.
+                return quadEligible(qr, qc);
+            }
+            if (!tileEligible(r, c)) return false;
+            // tileEligible's broader check (via tileShouldSkip) accepts
+            // tiles that are port-equivalent but lit with the wrong
+            // path index — those are routing problems, not orientation
+            // problems, and belong to the fallback tier. Filter them out
+            // here so the walk targets only genuine wrong-rotation tiles.
+            const t = grid[r][c];
+            return !rotationsHaveSamePorts(t.type, t.rotation, t._solution);
+        }
+        function hintCellOrQuad(r, c) {
+            if (quadMode) {
+                const r0 = Math.floor(r / 2) * 2;
+                const c0 = Math.floor(c / 2) * 2;
+                const result = applyHintAt(r0, c0);
+                return { r: r0, c: c0, turns: (result && result.turns) | 0 };
+            }
+            const result = applyHintAt(r, c);
+            return { r, c, turns: (result && result.turns) | 0 };
+        }
+
+        // ── Pass 1: lit-chain wrong-orientation pass (highest priority). ──
+        //
+        // Walk forward from each entry using the player's CURRENT tile
+        // rotations (== the lit chain the player can see right now). If
+        // any tile already IN the lit chain is at a wrong orientation,
+        // hint it — that's more useful than extending the chain past
+        // its end with a fresh tile, because the player is actively
+        // working with the wrong-oriented tile (it's lighting up under
+        // their fingers) and the chain often can't progress further
+        // without that fix. Without this pass, the solution-path walk
+        // happily skips over wrong-but-lit tiles whenever the lit
+        // chain happens to thread through them via a non-solution
+        // port pairing.
+        //
+        // Entry order is shuffled so consecutive hints distribute
+        // across paths rather than always favoring entry 1's chain.
+        const allEntries = [entry, entry2, entry3, entry4].filter(Boolean);
+        const entryOrder = shuffle(allEntries.map((_, i) => i));
+        for (const ei of entryOrder) {
+            const ent = allEntries[ei];
+            const walk = walkFrom(ent.row, ent.col, ent.port);
+            for (const step of walk.result) {
+                if (cellWrongOrientationHintable(step.row, step.col)) {
+                    return hintCellOrQuad(step.row, step.col);
+                }
+            }
+        }
+
+        // ── Pass 2: solution-path walk (lit chain is clean). ──
+        //
+        // For each entry/exit pair, walk the SOLVED path inward from
+        // the entry and hint the first cell whose tile/quad isn't yet
+        // at a port-equivalent orientation. Reached when every tile in
+        // every lit chain is already correctly oriented — the chain
+        // can't extend further, so the player needs the NEXT tile (the
+        // first wrong one beyond the current lit-chain endpoint) snapped
+        // for them. Port-equivalence (not strict rotation equality) is
+        // the "right orientation" test; in quad mode the equivalent is
+        // quadAlreadyPortEquivalent, which knows about the position
+        // permutation under quad rotation as well as per-tile symmetry.
+        //
+        // Path order is shuffled so consecutive hints distribute across
+        // paths rather than always racing down the same one. The
+        // random-pick fallback below covers the nearly-solved edge
+        // cases where every solution-path cell is also port-equivalent
+        // but some lower-tier candidate (e.g., a player-locked tile at
+        // the solution rotation) is still hint-able.
+        const paths    = solutionPaths();
+        const pathOrder = shuffle(paths.map((_, i) => i));
+        for (const pi of pathOrder) {
+            const cells = paths[pi];
+            for (let i = 0; i < cells.length; i++) {
+                const { r, c } = cells[i];
+                if (cellWrongOrientationHintable(r, c)) {
+                    return hintCellOrQuad(r, c);
+                }
+            }
+        }
+
+        // ── Pass 3: random-pick fallback (legacy tier logic). ──
+        //
+        // Reaches this when BOTH the lit-chain pass and the solution-
+        // path walk found no wrong-oriented cell. The remaining hintable
+        // tiles are edge cases the walk's strict "wrong orientation"
+        // filter skips: a tile/quad sitting at a port-equivalent
+        // rotation but lit with the wrong path index, or a
+        // player-locked tile that's already at the solution rotation.
+        // The original tier-based random pick still handles those —
+        // preserved verbatim.
         if (quadMode) {
             const qROWS = ROWS / 2, qCOLS = COLS / 2;
             const preferred = [], midPool = [], lastResort = [];
-            function quadHasPathTile(qr, qc) {
-                for (let dr = 0; dr < 2; dr++) {
-                    for (let dc = 0; dc < 2; dc++) {
-                        if (grid[qr*2 + dr][qc*2 + dc]._solution !== undefined) return true;
-                    }
-                }
-                return false;
-            }
-            // Skip a quad if ANY path tile inside it is already correctly
-            // placed (right rotation + lit with the right color). Hinting in
-            // quad mode locks all 4 sub-tiles red — including ones the player
-            // already worked out — so a single correctly-placed tile inside
-            // is enough to make the hint feel like a step backward.
-            //
-            // Exception: if the quad's scramble offset is non-zero, the quad
-            // itself is wrongly oriented and the player needs the hint to
-            // snap it; ignore the per-tile correctness in that case (it
-            // can't really be true if scramble != 0 anyway).
-            function quadAnyTileCorrect(qr, qc) {
-                if (quadScramble[qr][qc] !== 0) return false;
-                for (let dr = 0; dr < 2; dr++) {
-                    for (let dc = 0; dc < 2; dc++) {
-                        const r = qr * 2 + dr;
-                        const c = qc * 2 + dc;
-                        if (grid[r][c]._solution === undefined) continue;
-                        if (tileShouldSkip(r, c)) return true;
-                    }
-                }
-                return false;
-            }
-            // True iff applying the hint rotation to this quad would produce
-            // a connection-equivalent state (every position's effective
-            // connections unchanged) — i.e. the player has the quad in a
-            // configuration that "works just as well" as the solution even
-            // though quadScramble != 0. Without this check, the hint locks
-            // a quad red after a 180°/90°/270° rotation that has no effect
-            // on the lit chain, which feels worthless to the player.
-            //
-            // CW position cycle: TL → TR → BR → BL → TL. After `turns` CW
-            // rotations, the tile at position i NEW came from position
-            // (i - turns + 4) % 4 OLD, with its own rotation +turns.
-            function quadAlreadyPortEquivalent(qr, qc) {
-                const turns = (4 - quadScramble[qr][qc]) & 3;
-                if (turns === 0) return true;  // already at solution; caught above but defensive
-                const r0 = qr * 2, c0 = qc * 2;
-                const positions = [
-                    [r0,     c0    ],  // 0: TL
-                    [r0,     c0 + 1],  // 1: TR
-                    [r0 + 1, c0 + 1],  // 2: BR
-                    [r0 + 1, c0    ],  // 3: BL
-                ];
-                for (let i = 0; i < 4; i++) {
-                    const srcIdx = (i - turns + 4) % 4;
-                    const src = grid[positions[srcIdx][0]][positions[srcIdx][1]];
-                    const dst = grid[positions[i      ][0]][positions[i      ][1]];
-                    if (src.type !== dst.type) return false;
-                    const srcEffectiveRot = (src.rotation + turns) & 3;
-                    if (!rotationsHaveSamePorts(src.type, srcEffectiveRot, dst.rotation)) return false;
-                }
-                return true;
-            }
             for (let qr = 0; qr < qROWS; qr++) {
                 for (let qc = 0; qc < qCOLS; qc++) {
-                    if (locked.has((qr*2) + ',' + (qc*2))) continue;
-                    if (!quadHasPathTile(qr, qc)) continue;
-                    if (quadAnyTileCorrect(qr, qc)) continue;
-                    if (quadAlreadyPortEquivalent(qr, qc)) continue;
-                    // Twin partner quad must also pass the "no correct tile"
-                    // check — hinting cascades to it, and locking a partner
-                    // that contains correctly-placed tiles wastes the hint.
-                    const tile = grid[qr*2][qc*2];
-                    if (tile && tile._twin) {
-                        const [pr, pc] = tile._twin.partner.split(',').map(Number);
-                        const pqr = pr / 2, pqc = pc / 2;
-                        if (pqr !== qr || pqc !== qc) {
-                            if (locked.has(pr + ',' + pc)) continue; // partner already hint-locked
-                            if (quadAnyTileCorrect(pqr, pqc)) continue;
-                        }
-                    }
+                    if (!quadEligible(qr, qc)) continue;
                     const playerLocked = !!grid[qr*2][qc*2]._playerLocked;
                     const solved = quadScramble[qr][qc] === 0;
                     if (!solved)            preferred.push({ qr, qc });
@@ -1938,22 +2160,8 @@ const Maze = (() => {
         const fallback = [];
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
+                if (!tileEligible(r, c)) continue;
                 const t = grid[r][c];
-                if (t._solution === undefined) continue;
-                if (locked.has(r + ',' + c)) continue;
-                // Skip tiles the player has already correctly twisted. A
-                // wrong-color lit tile slips through tileShouldSkip and
-                // stays eligible (so hint can confirm the rotation is right).
-                if (tileShouldSkip(r, c)) continue;
-                // Twin pairs rotate in lockstep — hinting one side rotates
-                // the other by the same delta. If the partner is already at
-                // its solution rotation, hinting THIS tile would knock the
-                // partner off solution AND lock it (locked.add(partner)),
-                // leaving the puzzle unwinnable. Skip the whole pair.
-                if (t._twin) {
-                    const [tr, tc] = t._twin.partner.split(',').map(Number);
-                    if (tileShouldSkip(tr, tc)) continue;
-                }
                 const correct = t.rotation === t._solution;
                 if (t._playerLocked && correct) fallback.push({ r, c });
                 else                            preferred.push({ r, c });
@@ -2010,7 +2218,9 @@ const Maze = (() => {
     // sub-tile inspection finds the partner correctly even after the data
     // permutes inside the quad on subsequent rotations.
     function quadTwinPairCount() {
-        const qScale = (ROWS + COLS) / 4;  // average quads-per-side
+        // qScale doubled (was (ROWS + COLS) / 4) so 12×12 quad now produces
+        // ~9 pairs (was 3). Halve back to /4 if it feels too dense.
+        const qScale = (ROWS + COLS) / 2;  // average quads-per-side, doubled
         return Math.max(1, Math.round(qScale) - 3);
     }
     function assignQuadTwins() {
@@ -2054,7 +2264,7 @@ const Maze = (() => {
     return {
         N, E, S, W,
         T_STRAIGHT, T_ELBOW, T_CROSS,
-        init, rotate, hint, applyHintAt, togglePlayerLock, setDimensions, setHurry, setTwoPathMode, setPathCount, setQuadMode,
+        init, rotate, hint, applyHintAt, togglePlayerLock, setDimensions, setHurry, setAbort, setTwoPathMode, setPathCount, setQuadMode,
         snapshotState, loadSnapshot, clear,
         getConnections,
         hasShortcutWithin,

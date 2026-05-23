@@ -15,7 +15,11 @@
     <meta name="theme-color" content="#0a0a2e">
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
 
-    <link rel="stylesheet" href="styles.css">
+    <!-- DEV: cache-bust the stylesheet so iterative CSS edits are picked up
+         without manual hard-reload (the service worker would otherwise serve
+         the cached copy). Restore the plain <link rel="stylesheet"
+         href="styles.css"> tag before /release. -->
+    <script>document.write('<link rel="stylesheet" href="styles.css?t=' + Date.now() + '">');</script>
 </head>
 <body>
     <!-- URL param gate: ?debug=true enables the existing free-form puzzle UI
@@ -124,6 +128,29 @@
             <div id="potdSolveRank" hidden></div>
             <div id="potdSolveIneligible" data-i18n="potd.solved.ineligible" hidden>Not counted on the leaderboard.</div>
             <div id="potdSolveOffline" data-i18n="potd.solved.offline" hidden>Offline — not submitted.</div>
+            <!-- Minimalist share row — wired by Share.init via [data-share-platform].
+                 Click bubbling is stopped per-button so a tap doesn't also
+                 dismiss the modal (which has its own tap-anywhere handler). -->
+            <div class="shareRow" id="potdShareRow" onclick="event.stopPropagation()">
+                <a class="shareIcon" data-share-platform="twitter"  href="#" title="Share on X">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                </a>
+                <a class="shareIcon" data-share-platform="facebook" href="#" title="Share on Facebook">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"/></svg>
+                </a>
+                <a class="shareIcon" data-share-platform="reddit"   href="#" title="Share on Reddit">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0Zm6.067 11.461c.024.16.036.323.036.488 0 2.49-2.899 4.509-6.475 4.509-3.575 0-6.475-2.019-6.475-4.51 0-.164.013-.327.037-.487a1.355 1.355 0 1 1 1.495-2.214c1.121-.811 2.668-1.331 4.381-1.391l.828-3.898 2.708.576a.939.939 0 1 1-.045.504l-2.432-.517-.74 3.485c1.687.069 3.207.586 4.314 1.385a1.355 1.355 0 1 1 1.495 2.214Zm-3.633 1.81c-.41.41-1.275.557-2.434.557-1.16 0-2.025-.146-2.434-.557a.166.166 0 0 1 .235-.235c.262.262.945.412 2.2.412 1.252 0 1.936-.15 2.198-.412a.166.166 0 1 1 .235.235Zm-3.946-2.158a.886.886 0 1 1-1.772 0 .886.886 0 0 1 1.772 0Zm4.275.886a.886.886 0 1 1 0-1.772.886.886 0 0 1 0 1.772Z"/></svg>
+                </a>
+                <a class="shareIcon" data-share-platform="whatsapp" href="#" title="Share on WhatsApp">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.296-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.71.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                </a>
+                <a class="shareIcon" data-share-platform="telegram" href="#" title="Share on Telegram">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0Zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212-.07-.062-.174-.041-.249-.024-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635Z"/></svg>
+                </a>
+                <a class="shareIcon" data-share-platform="copylink" href="#" title="Copy link">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 0-10z"/></svg>
+                </a>
+            </div>
             <div id="potdSolveContinue" data-i18n="marathon.clickToContinue">Tap to continue</div>
         </div>
 
@@ -164,7 +191,7 @@
                         <div class="selection-option-header">
                             <span class="selection-option-name" data-i18n="mode.potd.name">📅 Puzzle of the Day</span>
                         </div>
-                        <div class="challenge-description" data-i18n="mode.potd.desc">Solve a puzzle as fast as you can to make the day's leaderboard.</div>
+                        <div class="challenge-description" data-i18n="mode.potd.desc">Solve each puzzle as fast as you can to make the day's leaderboard.</div>
                     </div>
                     <div class="selection-option" data-mode="marathon">
                         <div class="selection-option-header">
@@ -178,21 +205,91 @@
 
         <div id="settingsOverlay">
             <div id="settingsPopup">
-                <h2 data-i18n="settings.title">Settings</h2>
+                <!-- Cog lives outside data-i18n so applyTranslations doesn't
+                     wipe it (it replaces innerHTML wholesale). -->
+                <h2><span class="settingsCog">⚙</span> <span data-i18n="settings.title">Settings</span></h2>
+
+                <!-- Music playlist row (TANTЯO pattern). Four modes:
+                     none/mute, game playlist, end credits, and a combined
+                     gameplay+credits shuffle. The end-credits sequence after
+                     a Marathon/PotD finish always plays a credits song
+                     regardless of this choice. -->
                 <div class="settingsRow">
-                    <label for="settingMusic" data-i18n="settings.music">Music</label>
+                    <label for="settingMusicPlaylist" data-i18n="settings.music">Music</label>
+                    <select id="settingMusicPlaylist" class="settingsSelect">
+                        <option value="none"              data-i18n="music.none">🔇 None</option>
+                        <option value="game_playlist"     data-i18n="music.game_playlist" selected>🎲 Game Playlist</option>
+                        <option value="credits"           data-i18n="music.credits">🎤 End Credits by Claude</option>
+                        <option value="game_plus_credits" data-i18n="music.game_plus_credits">🎲🎤 Game Playlist + End Credits by Claude</option>
+                    </select>
+                </div>
+
+                <!-- MUSIC volume row: mute button + small label + slider + %. -->
+                <div class="settingsVolumeRow">
+                    <button id="settingMusicMuteBtn" class="settingsMuteBtn" type="button" title="Mute / unmute music">🔊</button>
+                    <span class="settingsVolumeLabel" data-i18n="settings.musicShort">MUSIC</span>
                     <input type="range" id="settingMusicVolume" class="settingsSlider" min="0" max="100" aria-label="Music volume">
-                    <button id="settingMusic" class="toggleSwitch" type="button" role="switch" aria-checked="true"><span class="toggleKnob"></span></button>
+                    <span id="settingMusicVolumeDisplay" class="settingsVolumePercent">60%</span>
                 </div>
-                <div class="settingsRow">
-                    <label for="settingSfx" data-i18n="settings.sfx">Sound effects</label>
+
+                <!-- SFX volume row: same pattern. -->
+                <div class="settingsVolumeRow">
+                    <button id="settingSfxMuteBtn" class="settingsMuteBtn" type="button" title="Mute / unmute sound effects">🔊</button>
+                    <span class="settingsVolumeLabel" data-i18n="settings.sfxShort">SFX</span>
                     <input type="range" id="settingSfxVolume" class="settingsSlider" min="0" max="100" aria-label="SFX volume">
-                    <button id="settingSfx" class="toggleSwitch" type="button" role="switch" aria-checked="true"><span class="toggleKnob"></span></button>
+                    <span id="settingSfxVolumeDisplay" class="settingsVolumePercent">60%</span>
                 </div>
+
+                <!-- Background image toggle (Circuitousness-specific). -->
                 <div class="settingsRow">
                     <label for="settingBackground" data-i18n="settings.background">Background</label>
                     <button id="settingBackground" class="toggleSwitch" type="button" role="switch" aria-checked="true"><span class="toggleKnob"></span></button>
                 </div>
+
+                <!-- Visual tuning — lifted from the dev-only debug panel.
+                     Players can tweak how the tiles look in real time.
+                     Each row mirrors a single Render.set* call. Values
+                     persist via Settings (slug-namespaced localStorage).
+                     All visual labels share .settingsVisualLabel so they
+                     reserve a fixed-width slot — sliders line up vertically. -->
+                <div class="settingsRow">
+                    <label for="settingTileColor" class="settingsVisualLabel" data-i18n="settings.tileColor">Tile color</label>
+                    <input type="color" id="settingTileColor" class="settingsColor" value="#153050">
+                </div>
+
+                <div class="settingsVolumeRow">
+                    <span class="settingsVisualLabel" data-i18n="settings.tileOpacity">Tile opacity</span>
+                    <input type="range" id="settingTileFaceOpacity" class="settingsSlider" min="0" max="100" aria-label="Tile opacity">
+                    <span id="settingTileFaceOpacityDisplay" class="settingsVolumePercent">80%</span>
+                </div>
+
+                <div class="settingsRow">
+                    <label for="settingPathColor" class="settingsVisualLabel" data-i18n="settings.pathColor">Path color</label>
+                    <input type="color" id="settingPathColor" class="settingsColor" value="#ff2424">
+                </div>
+
+                <div class="settingsVolumeRow">
+                    <span class="settingsVisualLabel" data-i18n="settings.pathOpacity">Path opacity</span>
+                    <input type="range" id="settingPathOpacity" class="settingsSlider" min="0" max="100" aria-label="Path opacity">
+                    <span id="settingPathOpacityDisplay" class="settingsVolumePercent">14%</span>
+                </div>
+
+                <div class="settingsVolumeRow">
+                    <span class="settingsVisualLabel" data-i18n="settings.pathWidth">Path width</span>
+                    <input type="range" id="settingPathWidth" class="settingsSlider" min="5" max="45" aria-label="Path width">
+                    <span id="settingPathWidthDisplay" class="settingsVolumePercent">0.18</span>
+                </div>
+
+                <div class="settingsVolumeRow">
+                    <span class="settingsVisualLabel" data-i18n="settings.bevel">Bevel size</span>
+                    <input type="range" id="settingBevel" class="settingsSlider" min="1" max="20" aria-label="Bevel size">
+                    <span id="settingBevelDisplay" class="settingsVolumePercent">0.07</span>
+                </div>
+
+                <div class="settingsResetRow">
+                    <button id="settingResetVisuals" class="settingsResetBtn" type="button" data-i18n="settings.resetVisuals">Reset visuals to defaults</button>
+                </div>
+
                 <button id="settingsCloseBtn" type="button" data-i18n="settings.close">Close</button>
             </div>
         </div>
@@ -208,11 +305,184 @@
                 <button id="gameOverSaveBtn" type="button" data-i18n="marathon.save">Save</button>
             </div>
             <button id="gameOverMenuBtn" type="button" data-i18n="marathon.backToMenu">Back to menu</button>
+            <!-- Minimalist share row — same wiring as PotD's row. Single
+                 Share module owns both via [data-share-platform]. -->
+            <div class="shareRow" id="gameOverShareRow">
+                <a class="shareIcon" data-share-platform="twitter"  href="#" title="Share on X">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                </a>
+                <a class="shareIcon" data-share-platform="facebook" href="#" title="Share on Facebook">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"/></svg>
+                </a>
+                <a class="shareIcon" data-share-platform="reddit"   href="#" title="Share on Reddit">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0Zm6.067 11.461c.024.16.036.323.036.488 0 2.49-2.899 4.509-6.475 4.509-3.575 0-6.475-2.019-6.475-4.51 0-.164.013-.327.037-.487a1.355 1.355 0 1 1 1.495-2.214c1.121-.811 2.668-1.331 4.381-1.391l.828-3.898 2.708.576a.939.939 0 1 1-.045.504l-2.432-.517-.74 3.485c1.687.069 3.207.586 4.314 1.385a1.355 1.355 0 1 1 1.495 2.214Zm-3.633 1.81c-.41.41-1.275.557-2.434.557-1.16 0-2.025-.146-2.434-.557a.166.166 0 0 1 .235-.235c.262.262.945.412 2.2.412 1.252 0 1.936-.15 2.198-.412a.166.166 0 1 1 .235.235Zm-3.946-2.158a.886.886 0 1 1-1.772 0 .886.886 0 0 1 1.772 0Zm4.275.886a.886.886 0 1 1 0-1.772.886.886 0 0 1 0 1.772Z"/></svg>
+                </a>
+                <a class="shareIcon" data-share-platform="whatsapp" href="#" title="Share on WhatsApp">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.296-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.71.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                </a>
+                <a class="shareIcon" data-share-platform="telegram" href="#" title="Share on Telegram">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0Zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212-.07-.062-.174-.041-.249-.024-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635Z"/></svg>
+                </a>
+                <a class="shareIcon" data-share-platform="copylink" href="#" title="Copy link">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 0-10z"/></svg>
+                </a>
+            </div>
+        </div>
+
+        <!-- "ENJOYING THE GAME?" popup — shows after 2nd cumulative finish
+             (Marathon game-over OR PotD solve). One-time dismissal via
+             "Don't show again" button persists in localStorage. Same
+             [data-share-platform] hooks as the minimalist rows. -->
+        <div class="share-overlay" id="shareOverlay">
+            <div class="share-popup">
+                <button class="share-close" id="shareCloseBtn" type="button" aria-label="Close">&times;</button>
+                <div class="share-emoji">🧩</div>
+                <div class="share-title" data-i18n="share.title">Enjoying the game?</div>
+                <div class="share-subtitle" data-i18n="share.subtitle">It's completely free — please share it with a friend!</div>
+                <div class="share-grid">
+                    <a class="share-btn" data-share-platform="twitter"  href="#" title="Share on X">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                        <span>X</span>
+                    </a>
+                    <a class="share-btn" data-share-platform="facebook" href="#" title="Share on Facebook">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"/></svg>
+                        <span>Facebook</span>
+                    </a>
+                    <a class="share-btn" data-share-platform="reddit"   href="#" title="Share on Reddit">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0Zm6.067 11.461c.024.16.036.323.036.488 0 2.49-2.899 4.509-6.475 4.509-3.575 0-6.475-2.019-6.475-4.51 0-.164.013-.327.037-.487a1.355 1.355 0 1 1 1.495-2.214c1.121-.811 2.668-1.331 4.381-1.391l.828-3.898 2.708.576a.939.939 0 1 1-.045.504l-2.432-.517-.74 3.485c1.687.069 3.207.586 4.314 1.385a1.355 1.355 0 1 1 1.495 2.214Zm-3.633 1.81c-.41.41-1.275.557-2.434.557-1.16 0-2.025-.146-2.434-.557a.166.166 0 0 1 .235-.235c.262.262.945.412 2.2.412 1.252 0 1.936-.15 2.198-.412a.166.166 0 1 1 .235.235Zm-3.946-2.158a.886.886 0 1 1-1.772 0 .886.886 0 0 1 1.772 0Zm4.275.886a.886.886 0 1 1 0-1.772.886.886 0 0 1 0 1.772Z"/></svg>
+                        <span>Reddit</span>
+                    </a>
+                    <a class="share-btn" data-share-platform="whatsapp" href="#" title="Share on WhatsApp">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.296-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.71.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                        <span>WhatsApp</span>
+                    </a>
+                    <a class="share-btn" data-share-platform="telegram" href="#" title="Share on Telegram">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0Zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212-.07-.062-.174-.041-.249-.024-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635Z"/></svg>
+                        <span>Telegram</span>
+                    </a>
+                    <a class="share-btn" data-share-platform="copylink" href="#" title="Copy link">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 0-10z"/></svg>
+                        <span data-i18n="share.copyLink">Copy link</span>
+                    </a>
+                </div>
+                <button class="share-dismiss" id="shareDismissBtn" type="button" data-i18n="share.dontShowAgain">Don't show this again</button>
+            </div>
+        </div>
+
+        <!-- End Credits Overlay — scrolls bottom-to-top while a credits song
+             plays. Triggered by Marathon game-over and PotD solve. The score
+             popup (#gameOver / #potdSolveTransition) sits in the upper third
+             on top of this; click on the credits area pauses/resumes the
+             scroll. Markup lifted from credits.txt verbatim (same class names
+             as TANTЯO so the shared CSS block works without forks). -->
+        <div class="credits-overlay" id="creditsOverlay">
+            <div class="credits-scroll" id="creditsScroll">
+                <div class="credits-content">
+                    <div class="credits-title" id="gameTitle">CIRCUITOUSNESS</div>
+
+                    <div class="credits-section">
+                        <div class="credits-row">
+                            <span class="credits-role">Game Design</span>
+                            <span class="credits-name">C. Ryan Deardorff</span>
+                        </div>
+                    </div>
+
+                    <div class="credits-section">
+                        <div class="credits-row">
+                            <span class="credits-role">Programming</span>
+                            <span class="credits-name">Claude AI (Anthropic)</span>
+                        </div>
+                        <div class="credits-row">
+                            <span class="credits-role"></span>
+                            <span class="credits-name">C. Ryan Deardorff</span>
+                        </div>
+                    </div>
+
+                    <div class="credits-section">
+                        <div class="credits-row">
+                            <span class="credits-role">Music</span>
+                            <span class="credits-name">Suno AI</span>
+                        </div>
+                        <div class="credits-row">
+                            <span class="credits-role">Credits Lyrics &amp; Styles</span>
+                            <span class="credits-name">Claude AI</span>
+                        </div>
+                    </div>
+
+                    <div class="credits-section">
+                        <div class="credits-row">
+                            <span class="credits-role">Goes to College</span>
+                            <span class="credits-name">Your Mom</span>
+                        </div>
+                    </div>
+
+                    <div class="credits-thanks">For Allison</div>
+
+                    <div class="soundtrack-section">
+                        <div class="soundtrack-heading">Soundtrack Available On</div>
+                        <!-- div class="soundtrack-title">Circuitousness (Original Motion Tiles Game Soundtrack)</div -->
+                        <div class="soundtrack-links">
+                            <a id="creditsSuno1" data-credit-link="suno-digeratist" href="https://suno.com/@digeratist" target="_blank" class="soundtrack-link">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+                                Suno
+                            </a>
+                            <!-- a id="creditsSpotify" href="https://open.spotify.com/album/2YXugrV02ZXhLL8g9rub36" target="_blank" class="soundtrack-link">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+                                Spotify
+                            </a>
+                            <a id="creditsApple" href="https://music.apple.com/us/album/tant%D1%8Fo-vol-1-original-motion-blocks-game-soundtrack/1895320675" target="_blank" class="soundtrack-link">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M23.994 6.124a9.23 9.23 0 00-.24-2.19c-.317-1.31-1.062-2.31-2.18-3.043A5.022 5.022 0 0019.7.197C18.976.044 18.245 0 17.51 0h-11c-.736 0-1.468.044-2.193.197a5.022 5.022 0 00-1.874.694C1.326 1.627.58 2.63.264 3.937a9.23 9.23 0 00-.24 2.19C.004 6.636 0 7.147 0 7.658v8.685c0 .51.004 1.02.024 1.53a9.23 9.23 0 00.24 2.19c.317 1.31 1.062 2.31 2.18 3.043.39.257.82.456 1.28.597.728.153 1.46.197 2.197.197h11c.737 0 1.47-.044 2.198-.197a5.023 5.023 0 001.28-.597c1.118-.733 1.863-1.733 2.18-3.043a9.23 9.23 0 00.24-2.19c.02-.51.024-1.02.024-1.53V7.658c0-.51-.004-1.022-.024-1.534zM16.95 17.08c0 .36-.062.71-.19 1.05a2.58 2.58 0 01-1.468 1.478 2.083 2.083 0 01-.834.168c-.15 0-.3-.015-.45-.045a2.933 2.933 0 01-.87-.334 2.093 2.093 0 01-.92-1.09 2.18 2.18 0 01-.14-.76c0-.34.066-.673.198-.998a2.52 2.52 0 011.468-1.438 2.77 2.77 0 011.134-.233c.15 0 .3.017.45.05.33.072.637.2.87.335V10.5a.448.448 0 00-.03-.17.268.268 0 00-.14-.14.64.64 0 00-.24-.06L9.608 11.28a.64.64 0 00-.24.06.268.268 0 00-.14.14.448.448 0 00-.03.17v6.36c0 .36-.062.71-.19 1.05a2.582 2.582 0 01-1.468 1.477 2.083 2.083 0 01-.834.168c-.15 0-.3-.015-.45-.045a2.933 2.933 0 01-.87-.334 2.093 2.093 0 01-.92-1.09 2.18 2.18 0 01-.14-.76c0-.34.066-.673.198-.998a2.52 2.52 0 011.468-1.438 2.77 2.77 0 011.134-.233c.15 0 .3.017.45.05.33.072.637.2.87.335V7.208c0-.28.057-.533.17-.762a1.03 1.03 0 01.498-.473 2.4 2.4 0 01.68-.192l6.7-1.2a2.4 2.4 0 01.68.008c.22.04.41.13.56.27.15.14.248.32.293.54.026.12.037.25.037.38v11.1z"/></svg>
+                                Apple Music
+                            </a -->
+                        </div>
+                    </div>
+
+                    <div class="credits-spacer"></div>
+
+                    <div class="credits-disclaimer">Only one Animal was harmed in the making of this game.<sup>*</sup></div>
+
+                    <div class="credits-spacer"></div>
+
+                    <div class="credits-copyright">© 2026 Official Intelligence</div>
+                    <a href="https://official-intelligence.art/" data-credit-link="official-intelligence" class="credits-link">https://official-intelligence.art/</a>
+
+                    <div class="credits-spacer-large"></div>
+
+                    <div class="credits-spacer-large"></div>
+
+                    <div class="credits-disclaimer">
+                        <sup>*</sup>Upon learning that <a href="https://suno.com/s/btXK4xYyXNkvTBBO" data-credit-link="imaginary-friend" target="_blank">my imaginary friend</a> refused to take part in another silly Easter egg in one of my games, a certain aforementioned Muppet
+                        went ballistic and tried to attack him.  Unfortunately for him, Jimmy knows Muay Thai.
+                    </div>
+
+                    <div class="credits-spacer-large"></div>
+
+                    <div class="credits-spacer-large"></div>
+					
+					<div class="credits-easter">You're still here?</div>
+                        
+					<div class="credits-spacer"></div>
+					
+					<div class="credits-easter">That puzzle is history.  Try solving another one!</div>
+					
+					<div class="credits-spacer-large"></div>
+
+                </div>
+            </div>
         </div>
 
         <!-- Leaderboard view (game mode only) -->
         <div id="leaderboard">
             <h2 data-i18n="marathon.leaderboards">Leaderboards</h2>
+            <!-- Tab control switches between PotD (today's per-slot board)
+                 and Marathon (cumulative per-game-type board). The shared
+                 dropdown below picks the slot/type within the active tab. -->
+            <div id="leaderboardTabs" role="tablist">
+                <button class="lbTab" type="button" data-mode="potd"
+                        data-i18n="mode.potd.name">📅 Puzzle of the Day</button>
+                <button class="lbTab" type="button" data-mode="marathon"
+                        data-i18n="mode.marathon.name">🏃 Marathon</button>
+            </div>
             <select id="leaderboardSelect"></select>
             <ol id="leaderboardEntries"></ol>
             <p id="leaderboardEmpty" data-i18n="marathon.boardEmpty" hidden>No scores yet — be the first!</p>
@@ -245,8 +515,8 @@
         <label>Bevel thickness (<span id="bevelVal">0.07</span>)
             <input type="range" id="bevelSlider" min="1" max="20" value="7">
         </label>
-        <label>Tile face opacity (<span id="faceAlphaVal">0.74</span>)
-            <input type="range" id="faceAlphaSlider" min="0" max="100" value="74">
+        <label>Tile face opacity (<span id="faceAlphaVal">0.80</span>)
+            <input type="range" id="faceAlphaSlider" min="0" max="100" value="80">
         </label>
         <label>Lit green outer (<span id="litGreenLoVal">#2d672d</span>)
             <input type="color" id="litGreenLoPicker" value="#2d672d">
@@ -283,6 +553,18 @@
         </label>
         <button type="button" id="replayBtn" hidden>Replay solve</button>
         <div id="preGenStatus">Next: idle</div>
+        <!-- DEV: wipe today's PotD state on the server (puzzles, scores,
+             sessions) AND in localStorage. Lets the dev test the fresh-
+             play flow without waiting for the UTC day to roll over. -->
+        <button type="button" id="potdResetBtn">Reset PotD (today)</button>
+        <div id="potdResetStatus" style="font-size: 0.8em; color: #aaa;"></div>
+        <!-- DEV: wipe ALL leaderboard data — both marathon (Score +
+             GameSession) and PotD (PotdScore + PotdSession), across
+             every date and type — on the server AND the local cache.
+             Does NOT delete PotdPuzzle rows; today's puzzles stay
+             playable (use Reset PotD above for those). -->
+        <button type="button" id="wipeLeaderboardsBtn">Wipe Leaderboards</button>
+        <div id="wipeLeaderboardsStatus" style="font-size: 0.8em; color: #aaa;"></div>
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
@@ -292,7 +574,7 @@
     <script>
     (function() {
         var t = Date.now();
-        var srcs = ['config.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','maze.js','gates.js','render.js','title-renderer.js','marathon.js','mode-picker.js','potd.js','game.js'];
+        var srcs = ['config.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','maze.js','gates.js','render.js','title-renderer.js','marathon.js','mode-picker.js','potd.js','game.js','dev-mode.js','tracking.js','share.js'];
         for (var i = 0; i < srcs.length; i++) {
             document.write('<script src="' + srcs[i] + '?t=' + t + '"><\/script>');
         }
@@ -398,6 +680,85 @@
         if (ccCheck) {
             ccCheck.addEventListener('change', function() {
                 if (Render && Render.setCompleteCircuits) Render.setCompleteCircuits(ccCheck.checked);
+            });
+        }
+
+        // DEV: "Reset PotD (today)" button — calls Potd.devReset() which
+        // wipes today's server-side puzzles/scores/sessions AND the
+        // browser's localStorage state, then nukes the in-memory cache.
+        // Status line shows server-reachability + outcome so the dev can
+        // tell whether the wipe actually hit the back end or only the
+        // local browser. Remove this block (and the markup + endpoint)
+        // before public release.
+        var potdResetBtn    = document.getElementById('potdResetBtn');
+        var potdResetStatus = document.getElementById('potdResetStatus');
+        if (potdResetBtn) {
+            potdResetBtn.addEventListener('click', async function() {
+                if (typeof Potd === 'undefined' || !Potd.devReset) {
+                    if (potdResetStatus) potdResetStatus.textContent = 'PotD module unavailable.';
+                    return;
+                }
+                potdResetBtn.disabled = true;
+                if (potdResetStatus) potdResetStatus.textContent = 'Resetting…';
+                try {
+                    var res = await Potd.devReset();
+                    if (potdResetStatus) {
+                        if (!res.serverReachable) {
+                            potdResetStatus.textContent = 'Local only — no API base configured.';
+                        } else if (res.serverOk) {
+                            potdResetStatus.textContent = 'Server + local reset OK at ' + new Date().toLocaleTimeString() + '.';
+                        } else {
+                            potdResetStatus.textContent = 'Local reset OK, server unreachable.';
+                        }
+                    }
+                } catch (e) {
+                    if (potdResetStatus) potdResetStatus.textContent = 'Reset failed: ' + (e && e.message ? e.message : e);
+                } finally {
+                    potdResetBtn.disabled = false;
+                }
+            });
+        }
+
+        // DEV: "Wipe Leaderboards" button — POSTs to /api/admin/wipe-
+        // leaderboards (back-end deletes all Score/GameSession/PotdScore/
+        // PotdSession rows) and clears the local leaderboard caches via
+        // Marathon.wipeLocalLeaderboards. Status line reports counts so
+        // the dev can confirm what actually got deleted. Remove this
+        // block (markup + handler + endpoint + Marathon helper) before
+        // public release.
+        var wipeLbBtn    = document.getElementById('wipeLeaderboardsBtn');
+        var wipeLbStatus = document.getElementById('wipeLeaderboardsStatus');
+        if (wipeLbBtn) {
+            wipeLbBtn.addEventListener('click', async function() {
+                wipeLbBtn.disabled = true;
+                if (wipeLbStatus) wipeLbStatus.textContent = 'Wiping…';
+                var serverResult = null;
+                var serverErr    = null;
+                try {
+                    if (AppConfig && AppConfig.GAME_API) {
+                        var resp = await fetch(AppConfig.GAME_API + '/admin/wipe-leaderboards', { method: 'POST' });
+                        if (resp.ok) serverResult = await resp.json();
+                        else         serverErr    = 'HTTP ' + resp.status;
+                    } else {
+                        serverErr = 'no API base configured';
+                    }
+                } catch (e) { serverErr = (e && e.message) || String(e); }
+                var localResult = (typeof Marathon !== 'undefined' && Marathon.wipeLocalLeaderboards)
+                    ? Marathon.wipeLocalLeaderboards()
+                    : { wiped: 0 };
+                if (wipeLbStatus) {
+                    if (serverResult) {
+                        wipeLbStatus.textContent =
+                            'Server: ' + serverResult.scores + ' marathon + ' +
+                            serverResult.potdScores + ' PotD scores (+sessions) at ' +
+                            new Date().toLocaleTimeString() +
+                            '. Local: ' + localResult.wiped + ' cache keys.';
+                    } else {
+                        wipeLbStatus.textContent =
+                            'Server: ' + serverErr + '. Local: ' + localResult.wiped + ' cache keys.';
+                    }
+                }
+                wipeLbBtn.disabled = false;
             });
         }
     })();

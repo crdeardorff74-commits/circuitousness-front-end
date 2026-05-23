@@ -106,7 +106,7 @@ const TitleRenderer = (() => {
         // brightness modulation that the player sees when paths overlap
         // in multi-path puzzles. The continuous redraw is driven by the
         // rAF loop set up below in `ensureAnimating`.
-        Render.renderSnippet(canvas, sizeCss, {
+        const litOpts = {
             widthFrac: 0.28,
             alpha:     0.66,
             color:     '#ff2424',
@@ -114,7 +114,24 @@ const TitleRenderer = (() => {
             litHi:     '#cc4040',
             litLo:     '#4a0000',
             litPulse:  true
-        });
+        };
+        Render.renderSnippet(canvas, sizeCss, litOpts);
+
+        // Mask the per-tile channel rendering's port-boundary seams by
+        // overlaying the ring as a SINGLE continuous-circle stroke. The 4
+        // elbow arcs are all on the same circle (centered at the 2×2
+        // group's geometric center, radius cs/2), so the channel is one
+        // perfect ring — but rendered per-tile, the butt-cap junctions at
+        // each shared port leave sub-pixel AA gaps that the dim pass
+        // bleeds through as visible dark lines cutting the red O. Overlay
+        // matches the per-tile gradient + pulse exactly via the shared
+        // litOpts, so visually it just replaces the per-tile lit pass
+        // with a seamless equivalent. Wall bevels (which the player
+        // wanted kept visible) sit BELOW the channel in z-order and stay
+        // unaffected.
+        if (Render.paintSnippetRingMask) {
+            Render.paintSnippetRingMask(canvas, sizeCss, litOpts);
+        }
 
         if (saved) {
             Maze.loadSnapshot(saved);

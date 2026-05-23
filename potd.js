@@ -129,6 +129,16 @@ const Potd = (() => {
     function showHud() {
         if (menuEl) menuEl.classList.remove('visible');
         if (hudEl)  hudEl.classList.add('visible');
+        // Strip any stale visual-state classes the timer container may
+        // have inherited from a prior marathon run — particularly
+        // `.urgent` (added by marathon when timeRemaining < 10s and
+        // never removed on game-over), which would otherwise paint the
+        // PotD count-up timer red.
+        const timerEl = document.getElementById('hudTimer');
+        if (timerEl) {
+            timerEl.classList.remove('urgent');
+            timerEl.classList.remove('penalty');
+        }
     }
     function hideHud() {
         if (hudEl) hudEl.classList.remove('visible');
@@ -173,6 +183,51 @@ const Potd = (() => {
         catch (e) {}
     }
 
+    // ── localStorage cache for today's puzzle SNAPSHOTS ──
+    //
+    // Snapshots are immutable per (date, slot) — once seeded, they're the
+    // canonical puzzle for that slot on that day forever. Caching them
+    // locally means a returning player loads instantly on next visit
+    // instead of paying the network round-trip + DB query (~1-3s even on
+    // paid Render) just to get back the same bytes the server gave us
+    // last time. We STILL fetch from the server in the background so
+    // newly-seeded slots get picked up — the cache just provides the
+    // fast path for slots we've already seen.
+    //
+    // Key includes the date so yesterday's cache doesn't poison today's.
+    // pruneOldPuzzleCaches walks all our potd_puzzles_* entries and drops
+    // anything that isn't today's, so localStorage doesn't grow forever.
+    function puzzlesCacheKey(date) {
+        return projectSlug() + '_potd_puzzles_' + date;
+    }
+    function loadPuzzlesCache(date) {
+        try {
+            const raw = localStorage.getItem(puzzlesCacheKey(date));
+            if (!raw) return null;
+            const data = JSON.parse(raw);
+            if (!data || data.date !== date || !data.byslot) return null;
+            return data;
+        } catch (e) { return null; }
+    }
+    function savePuzzlesCache(date, byslot) {
+        try {
+            localStorage.setItem(puzzlesCacheKey(date), JSON.stringify({ date: date, byslot: byslot }));
+        } catch (e) { /* quota exceeded — skip silently */ }
+    }
+    function pruneOldPuzzleCaches(keepDate) {
+        try {
+            const prefix = projectSlug() + '_potd_puzzles_';
+            const stale = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && k.indexOf(prefix) === 0 && k !== prefix + keepDate) {
+                    stale.push(k);
+                }
+            }
+            for (const k of stale) localStorage.removeItem(k);
+        } catch (e) {}
+    }
+
     function refreshMenuIndicators() {
         const date = puzzles ? puzzles.date : todayUTC();
         document.querySelectorAll('.menuModeBtn').forEach((btn) => {
@@ -189,19 +244,44 @@ const Potd = (() => {
     // GET /api/potd/today — always 200, possibly with a partial puzzles
     // list (cooperative seeding means the server may have, say, 3 of 8
     // until other players fill in the rest). Returns { date, byslot } or
-    // null if the server is unreachable.
+    // null if the server is unreachable or didn't respond within the
+    // timeout. The timeout matters specifically on Render's free tier
+    // — cold starts can hang for 30+ seconds with no error, and without
+    // it `ensurePuzzleAvailable`'s await on this fetch would leave the
+    // player stuck on "Loading today's puzzles…" forever rather than
+    // falling through to local generation.
+    const FETCH_TIMEOUT_MS = 8000;
     async function fetchTodaysPuzzles() {
         const base = apiBase();
         if (!base) return null;
+        const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, FETCH_TIMEOUT_MS) : null;
         try {
-            const resp = await fetch(base + '/potd/today');
+            const resp = await fetch(base + '/potd/today', ctrl ? { signal: ctrl.signal } : undefined);
             if (resp.ok) {
                 const data = await resp.json();
                 const set = { date: data.date, byslot: {} };
                 for (const p of (data.puzzles || [])) set.byslot[p.slot] = p.snapshot;
+                // Persist for instant load on next visit. Saving here
+                // (rather than at each call site) keeps the cache write
+                // in lockstep with the canonical server response, which
+                // is the safest source to trust.
+                savePuzzlesCache(set.date, set.byslot);
+                pruneOldPuzzleCaches(set.date);
                 return set;
             }
-        } catch (e) { /* network error */ }
+        } catch (e) {
+            // Logger.warn so a hung fetch (cold-start timeout, CORS,
+            // offline) surfaces in the console — the silent null return
+            // made these very hard to diagnose.
+            if (typeof Logger !== 'undefined') {
+                Logger.warn('PotD: /today fetch failed', e && e.name === 'AbortError'
+                    ? 'timeout after ' + FETCH_TIMEOUT_MS + 'ms'
+                    : (e && e.message) || e);
+            }
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
         return null;
     }
 
@@ -284,13 +364,28 @@ const Potd = (() => {
     let queue              = [];          // ordered slots awaiting gen; queue[0] is in-flight when inFlight=true
     let inFlight           = false;
     let slotWaiters        = new Map();   // slot → [resolve, …] callbacks
-    let serverFetchAttempted = false;
+    // serverFetchPromise: the in-flight (or resolved) fetch promise for
+    // today's puzzles. Multiple callers (player click, dev-mode boot
+    // seed) share this single promise so a slow Render cold start
+    // doesn't trigger a redundant fetch — and crucially, callers can
+    // `await` it instead of skipping the load step just because someone
+    // ELSE started the fetch. null = never started; non-null = either
+    // pending or settled (either way, await is safe and cheap).
+    let serverFetchPromise = null;
 
     // Dedicated worker — independent Maze instance, no collision with
-    // marathon's pre-gen worker. Lazily spun up on first need.
-    let potdWorker         = null;
+    // marathon's pre-gen worker. Lazily spun up on first need. Stays
+    // recoverable: a single error nulls the reference so the next call
+    // tries a fresh worker; after MAX_WORKER_FAILURES consecutive
+    // failures we give up permanently and fall through to main-thread
+    // generation. Without this resilience a long-lived dev page that
+    // hit one transient worker hiccup would freeze the UI on every
+    // subsequent generation for the rest of the session.
+    const MAX_WORKER_FAILURES = 3;
+    let potdWorker          = null;
     let potdWorkerAvailable = true;
-    let potdWorkerNextId   = 0;
+    let potdWorkerFailures  = 0;
+    let potdWorkerNextId    = 0;
     let potdWorkerCallbacks = new Map();  // id → { resolve, reject }
 
     function ensurePotdWorker() {
@@ -299,6 +394,10 @@ const Potd = (() => {
             potdWorker = new Worker('maze-worker.js?t=' + Date.now());
             potdWorker.onmessage = function (e) {
                 if (!e.data || e.data.type !== 'ready') return;
+                // Successful response — clear the failure counter so
+                // transient hiccups don't accumulate into a permanent
+                // disable across long sessions.
+                potdWorkerFailures = 0;
                 const id = e.data.id;
                 const cb = potdWorkerCallbacks.get(id);
                 if (cb) {
@@ -307,13 +406,44 @@ const Potd = (() => {
                 }
             };
             potdWorker.onerror = function (err) {
-                potdWorkerAvailable = false;
+                potdWorkerFailures++;
+                // ErrorEvent fields are the only useful detail (the
+                // event object itself stringifies to "Event" — useless
+                // for diagnosis). filename/lineno point at the failing
+                // line inside the worker; .message describes what blew.
+                const detail = {
+                    message:  err && err.message,
+                    filename: err && err.filename,
+                    line:     err && err.lineno,
+                    col:      err && err.colno,
+                    fails:    potdWorkerFailures,
+                };
+                if (typeof Logger !== 'undefined') {
+                    Logger.warn('PotD worker error', detail);
+                }
+                // Discard this worker instance — next ensurePotdWorker()
+                // call spins up a fresh one. Only permanently disable
+                // after multiple consecutive failures so a one-off doesn't
+                // condemn the rest of the session to main-thread builds.
                 potdWorker = null;
-                // Reject all pending callbacks so awaits unwind cleanly.
+                if (potdWorkerFailures >= MAX_WORKER_FAILURES) {
+                    potdWorkerAvailable = false;
+                    if (typeof Logger !== 'undefined') {
+                        Logger.warn('PotD worker: ' + potdWorkerFailures +
+                            ' consecutive failures — falling back to main-thread generation');
+                    }
+                }
+                // Reject pending callbacks so awaits unwind cleanly.
                 for (const [, cb] of potdWorkerCallbacks) cb.reject(err);
                 potdWorkerCallbacks.clear();
             };
         } catch (e) {
+            // Synchronous construction error (file:// origin, blocked
+            // by CSP, etc) — these don't get a chance to recover, so
+            // disable permanently right away.
+            if (typeof Logger !== 'undefined') {
+                Logger.warn('PotD worker: construction failed', e && e.message);
+            }
             potdWorkerAvailable = false;
             potdWorker = null;
         }
@@ -449,7 +579,16 @@ const Potd = (() => {
                     ? await generateOneViaWorker(slot)
                     : await generateOneOnMain(slot);
             } catch (e) {
-                if (typeof Logger !== 'undefined') Logger.warn('PotD gen failed', slot, e);
+                // ErrorEvent stringifies to "Event" so log the useful
+                // fields explicitly — without this, the only message
+                // reaching the console was unhelpful in diagnosing
+                // why a generation actually failed.
+                if (typeof Logger !== 'undefined') {
+                    const detail = (e && e.message)
+                        ? { slot: slot, message: e.message, filename: e.filename, line: e.lineno }
+                        : { slot: slot, error: e };
+                    Logger.warn('PotD gen failed', detail);
+                }
             }
             queue.shift();
             if (snap) {
@@ -508,27 +647,53 @@ const Potd = (() => {
         // Date rolled over since the cache was built — reset everything.
         if (puzzles && puzzles.date !== wantDate) {
             puzzles               = null;
-            serverFetchAttempted  = false;
+            serverFetchPromise    = null;
             queue                 = [];
             slotWaiters.clear();
         }
-        if (!puzzles) puzzles = { date: wantDate, byslot: {} };
-        if (puzzles.byslot[slot]) return puzzles.byslot[slot];
-
-        // First request of the session: try the server. The response is
-        // always 200 — possibly with a partial puzzles list. Whatever's
-        // already seeded we use directly; missing slots get generated +
-        // seeded by us cooperatively (other players will do the same).
-        if (!serverFetchAttempted) {
-            serverFetchAttempted = true;
-            showBanner('Loading today\'s puzzles…');
-            await maybeServerReset();
-            const fetched = await fetchTodaysPuzzles();
-            if (fetched) {
-                puzzles = fetched;
-                if (puzzles.byslot[slot]) return puzzles.byslot[slot];
-            }
+        // Seed from localStorage cache if available — gives an instant
+        // first click without waiting for the network round-trip. The
+        // background fetch below still updates `puzzles` if the server
+        // has slots we didn't have cached (e.g., a slot another player
+        // seeded after our last visit).
+        if (!puzzles) {
+            const cached = loadPuzzlesCache(wantDate);
+            puzzles = cached || { date: wantDate, byslot: {} };
         }
+        if (puzzles.byslot[slot]) {
+            // Even on cache hit, kick the server fetch in the background
+            // so other slots' cache stays warm. Fire-and-forget — no
+            // await, no banner.
+            if (!serverFetchPromise) {
+                serverFetchPromise = fetchTodaysPuzzles().then(function (fetched) {
+                    if (fetched) {
+                        // Merge: server-known slots beat cached ones (they're
+                        // canonical), but we keep any cached slots the server
+                        // hasn't reported yet (cooperative seeding may not
+                        // have completed for them).
+                        for (const k in fetched.byslot) puzzles.byslot[k] = fetched.byslot[k];
+                    }
+                });
+            }
+            return puzzles.byslot[slot];
+        }
+
+        // Cache miss for THIS slot. Now we genuinely need the server
+        // (it might have what we don't). Share the in-flight promise so
+        // a player click that happens WHILE devSeedAllSlots's fetch is
+        // still pending awaits the same result instead of skipping the
+        // load step (which would show "Generating…" while actually
+        // waiting on the server).
+        if (!serverFetchPromise) {
+            serverFetchPromise = fetchTodaysPuzzles().then(function (fetched) {
+                if (fetched) {
+                    for (const k in fetched.byslot) puzzles.byslot[k] = fetched.byslot[k];
+                }
+            });
+        }
+        if (!puzzles.byslot[slot]) showBanner('Loading today\'s puzzles…');
+        await serverFetchPromise;
+        if (puzzles.byslot[slot]) return puzzles.byslot[slot];
 
         showBanner('Generating today\'s puzzle…');
         return prioritizeAndAwait(slot);
@@ -548,6 +713,14 @@ const Potd = (() => {
         // ensurePuzzleAvailable owns the banner text — it knows whether
         // we're fetching from the server or generating locally.
         if (menuEl) menuEl.classList.remove('visible');
+
+        // Wipe whatever was last painted on the canvas (e.g. a Marathon
+        // puzzle from before the player switched modes) so the
+        // "Generating…" banner doesn't show over the prior game's tiles.
+        // Mode-picker doesn't itself clear, and switching modes from
+        // marathon's game-over state leaves the canvas intact.
+        if (typeof Maze !== 'undefined' && Maze.clear) Maze.clear();
+        if (typeof Render !== 'undefined' && Render.draw) Render.draw();
 
         let snapshot;
         try {
@@ -624,6 +797,16 @@ const Potd = (() => {
         puzzleStartMs = Date.now();
         startTimerDisplay();
 
+        // Music kicks in once the puzzle is actually loaded and about to be
+        // playable — matches marathon.js's "music starts at game-start"
+        // pattern. Music.stop() lives in quitToMenu so PotD's solve→menu
+        // transition silences playback cleanly.
+        if (typeof Music !== 'undefined' && Music.start) Music.start();
+        // Engagement tracking: one start per PotD slot. The slot string
+        // (s1..s4, q1..q4) goes into the gameType column so the admin
+        // breakdown can distinguish PotD plays of each type.
+        if (typeof Tracking !== 'undefined' && Tracking.recordStart) Tracking.recordStart('potd', slot);
+
         // Hide menu first (showHud removes .visible from menuEl), THEN hide
         // the banner. Reverse order would briefly expose the menu in the
         // gap between banner-down and menu-down.
@@ -678,6 +861,17 @@ const Potd = (() => {
         const submittedOk    = !!(result && result.eligible !== false);
         const wasOffline     = !sessionToken;
         await new Promise((res) => setTimeout(res, 250));
+        // Stop gameplay music and roll the end-credits sequence behind the
+        // solve modal. Credits.start kicks the credits track on a delay so
+        // the music swap doesn't feel abrupt; the solve modal positions
+        // itself in the upper third via body.credits-rolling.
+        if (typeof Music !== 'undefined' && Music.stop) Music.stop();
+        if (typeof Credits !== 'undefined' && Credits.start) Credits.start();
+        // Engagement tracking: solving a PotD = "finished a puzzle". Same
+        // sticky-server-side behavior as marathon gameOver.
+        if (typeof Tracking !== 'undefined' && Tracking.recordFinish) Tracking.recordFinish();
+        // Share popup gate (Share module owns dismissal + threshold).
+        if (typeof Share !== 'undefined' && Share.maybeShowPopup) Share.maybeShowPopup();
         await showSolveModal({ timeMs, rank, submittedOk, wasOffline });
         quitToMenu();
     }
@@ -774,6 +968,12 @@ const Potd = (() => {
         state = STATE.MENU;
         currentSlot = null;
         sessionToken = null;
+        if (typeof Music !== 'undefined' && Music.stop) Music.stop();
+        // Tear the credits down before returning to menu. Covers both the
+        // post-solve dismiss path (modal tap → quitToMenu) and the in-game
+        // Quit button (which doesn't trigger credits, but Credits.stop is
+        // a safe no-op when nothing's rolling).
+        if (typeof Credits !== 'undefined' && Credits.stop) Credits.stop();
         Maze.clear();
         Render.draw();  // wipe the canvas so the menu doesn't paint over a stale puzzle
         showMenu();
@@ -791,14 +991,13 @@ const Potd = (() => {
 
     // ── Init ──
 
-    // DEV: when true, every page load wipes PotD state — locally AND on
-    // the server (via POST /api/potd/dev-reset). Lets the dev test the
-    // fresh-play flow repeatedly without waiting for the UTC day to roll
-    // over. Flip to false (and remove the back-end's /api/potd/dev-reset
-    // route) before public release.
-    const RESET_ON_LOAD = true;
-    let serverResetDone = false;   // single-flight per page load
-
+    // DEV: manual reset wired to the debug page's "Reset PotD (today)"
+    // button. Wipes localStorage's PotD state AND today's server-side
+    // PotdPuzzle / PotdScore / PotdSession rows, then nukes the
+    // in-memory cache so the next slot click re-fetches from scratch.
+    // Lets the dev test the fresh-play flow without waiting for the
+    // UTC day to roll over. Remove the back-end's /api/potd/dev-reset
+    // route + this function + the debug button before public release.
     function resetLocalState() {
         try {
             const slug = projectSlug();
@@ -818,23 +1017,31 @@ const Potd = (() => {
         } catch (e) { /* private mode — silent */ }
     }
 
-    // Fire the back-end's dev-reset endpoint once per page load before the
-    // first /api/potd/today call. Wipes today's PotdPuzzle / PotdScore /
-    // PotdSession rows so the GET returns 404 and the front-end regenerates
-    // a fresh set. No-op if the endpoint isn't deployed or unreachable.
-    async function maybeServerReset() {
-        if (!RESET_ON_LOAD || serverResetDone) return;
-        serverResetDone = true;
+    // Public dev hook. Returns a small status object the caller can
+    // surface in the debug UI. Any in-flight background generation is
+    // left to drain naturally — its seed POST will just land in the
+    // post-reset (empty) server set, which is benign.
+    async function devReset() {
         const base = apiBase();
-        if (!base) return;
-        try {
-            await fetch(base + '/potd/dev-reset', { method: 'POST' });
-        } catch (e) { /* offline / endpoint missing — silent */ }
+        let serverOk = false;
+        if (base) {
+            try {
+                const resp = await fetch(base + '/potd/dev-reset', { method: 'POST' });
+                serverOk = resp.ok;
+            } catch (e) { /* offline / endpoint missing — leave serverOk false */ }
+        }
+        resetLocalState();
+        // In-memory cache wipe — so the next slot click re-fetches and,
+        // finding nothing, regenerates fresh puzzles + reseeds the server.
+        puzzles              = null;
+        serverFetchPromise   = null;
+        queue                = [];
+        slotWaiters.clear();
+        refreshMenuIndicators();
+        return { serverOk: serverOk, serverReachable: !!base };
     }
 
     function init() {
-        if (RESET_ON_LOAD) resetLocalState();
-
         menuEl        = document.getElementById('menu');
         hudEl         = document.getElementById('hud');
         buildBannerEl = document.getElementById('buildingBanner');
@@ -871,6 +1078,69 @@ const Potd = (() => {
         init();
     }
 
+    // Dev-mode hook (used by dev-mode.js's daily watcher in ?dev=true
+    // sessions). Quiet variant of ensurePuzzleAvailable that processes
+    // all 8 slots without showing a player-facing banner: silently
+    // fetches whatever's already seeded from the server, queues the
+    // missing slots, and awaits the queue draining. Each generated slot
+    // self-seeds via the existing runQueue path (POST /api/potd/seed),
+    // so by the time this resolves all 8 are on the server.
+    async function devSeedAllSlots() {
+        const wantDate = todayUTC();
+        // Date rolled — same reset the player-facing path does.
+        if (puzzles && puzzles.date !== wantDate) {
+            puzzles               = null;
+            serverFetchPromise    = null;
+            queue                 = [];
+            slotWaiters.clear();
+        }
+        // Seed from local cache first so a session that already knows
+        // about today's puzzles doesn't burn worker cycles re-generating
+        // them. Cached slots were obtained from the server at some point
+        // (they only enter the cache via a successful fetchTodaysPuzzles
+        // write), and PotD snapshots are immutable per date+slot, so a
+        // cache hit reliably means "the server has this slot".
+        if (!puzzles) {
+            const cached = loadPuzzlesCache(wantDate);
+            puzzles = cached || { date: wantDate, byslot: {} };
+        }
+
+        // Share the in-flight fetch with ensurePuzzleAvailable — if a
+        // player clicks a slot WHILE this fetch is pending, they'll
+        // await the same promise instead of triggering a duplicate
+        // request (or worse, skipping the load + queueing a redundant
+        // generation that the server would 409 on).
+        if (!serverFetchPromise) {
+            if (typeof Logger !== 'undefined') Logger.info('[dev] PotD ' + wantDate + ': fetching server-seeded set…');
+            serverFetchPromise = fetchTodaysPuzzles().then(function (fetched) {
+                if (fetched) puzzles = fetched;
+            });
+        }
+        await serverFetchPromise;
+
+        const missing = SLOTS.filter((s) => !puzzles.byslot[s]);
+        if (typeof Logger !== 'undefined') {
+            Logger.info('[dev] PotD ' + wantDate + ': ' +
+                (SLOTS.length - missing.length) + '/' + SLOTS.length +
+                ' already seeded' +
+                (missing.length ? '; generating ' + missing.join(', ') : ''));
+        }
+        if (missing.length === 0) return;
+
+        const tasks = missing.map((slot) => {
+            if (queue.indexOf(slot) < 0) queue.push(slot);
+            return new Promise((resolve) => {
+                if (!slotWaiters.has(slot)) slotWaiters.set(slot, []);
+                slotWaiters.get(slot).push(resolve);
+            });
+        });
+        runQueue();
+        await Promise.all(tasks);
+        if (typeof Logger !== 'undefined') {
+            Logger.info('[dev] PotD ' + wantDate + ': all ' + SLOTS.length + ' slots seeded');
+        }
+    }
+
     return {
         startPuzzle,
         onSolve,
@@ -882,6 +1152,8 @@ const Potd = (() => {
         confirmHintUse,
         noteHintUsed,
         refreshMenuIndicators,
+        devReset,
+        devSeedAllSlots,
         get SLOTS() { return SLOTS.slice(); },
     };
 })();

@@ -31,7 +31,7 @@ const Render = (() => {
     // --- DEBUG: live-tunable via debug-panel sliders in index.html ---
     let GROOVE_FRAC      = 0.18;   // groove width as a fraction of cell
     let BEVEL_FRAC       = 0.07;   // bevel thickness as a fraction of cell
-    let TILE_FACE_ALPHA  = 0.74;   // opacity of the inner tile-face fill (bevels stay opaque)
+    let TILE_FACE_ALPHA  = 0.80;   // opacity of the inner tile-face fill (bevels stay opaque)
     let LOCK_FACE_COLOR  = '#ffffff'; // face color for player-locked tiles (bevels stay normal)
     let COMPLETE_CIRCUITS = true;  // false = entry/exit just stretch to canvas edges (no perimeter wrap)
     function setCompleteCircuits(on) {
@@ -1880,19 +1880,21 @@ const Render = (() => {
         ctx.restore();
     }
 
-    // Draw all gates from the Gates module's current state. Each gate is
-    // base square + prong pentagon, both beveled in the gate palette. Prong
-    // first so the base sits visually on top, matching the mockup silhouette.
-    // withGateRotation wraps each gate's draw so an in-flight rotation
-    // animation smoothly interpolates from the old orientation to the new.
+    // Draw all gates from the Gates module's current state. Each gate is a
+    // single merged silhouette polygon (square base + shaft + tip) so the
+    // bevel runs continuously around the entire shape — no visible seam
+    // where the prong meets the base, which earlier separate-polygon
+    // rendering produced. withGateRotation wraps each gate's draw so an
+    // in-flight rotation animation smoothly interpolates from the old
+    // orientation to the new.
     //
     // Opaque face-color underlay before the beveled rendering: without it,
     // the canvas anti-aliasing at the bevel's OUTER edge blends bevel-color
     // with whatever sits on the canvas just outside the gate (a dark tile
     // or channel), producing a translucent-looking halo along the gate
-    // silhouette. Pre-filling the outer polygons at face color means the
-    // bevel-edge AA blends bevel-with-face — a smooth red-on-red transition
-    // that reads as fully opaque.
+    // silhouette. Pre-filling the outline at face color means the bevel-edge
+    // AA blends bevel-with-face — a smooth red-on-red transition that reads
+    // as fully opaque.
     function drawGates() {
         if (typeof Gates === 'undefined') return;
         const list = Gates.list;
@@ -1913,10 +1915,8 @@ const Render = (() => {
             withGateRotation(gate, function () {
                 ctx.globalAlpha = 1;
                 ctx.fillStyle = polys.palette.face;
-                fillOuter(polys.prong);
-                fillOuter(polys.base);
-                drawBeveledPolygon(polys.prong, polys.palette, null, null, gateBevel);
-                drawBeveledPolygon(polys.base,  polys.palette, null, null, gateBevel);
+                fillOuter(polys.outline);
+                drawBeveledPolygon(polys.outline, polys.palette, null, null, gateBevel);
             });
         }
     }
@@ -1954,8 +1954,13 @@ const Render = (() => {
         const dprLocal = window.devicePixelRatio || 1;
         targetCanvas.width  = Math.round(sizeCss * dprLocal);
         targetCanvas.height = Math.round(sizeCss * dprLocal);
-        targetCanvas.style.width  = sizeCss + 'px';
-        targetCanvas.style.height = sizeCss + 'px';
+        // Deliberately NOT setting targetCanvas.style.width / .height here.
+        // The title-O canvas has CSS `width:100%; height:100%` so its display
+        // size tracks its parent (.titleMazeO at 1.14em). Setting an inline
+        // px width would override that and pin the canvas at whatever size
+        // was measured on the first paint — if the title was briefly small
+        // (font still loading, viewport mid-resize), the canvas would stay
+        // small forever. Drawing buffer alone is enough; CSS handles display.
 
         canvas = targetCanvas;
         ctx    = canvas.getContext('2d');
@@ -2002,6 +2007,70 @@ const Render = (() => {
         offCanvas = sOffCanvas;
         offCtx    = sOffCtx;
         dpr       = sDpr;
+    }
+
+    // After renderSnippet, paint a SINGLE continuous lit-stripe circle on
+    // top of the target canvas. The per-tile snippet render produces
+    // visible boundary seams between adjacent elbow tiles' arc-strokes at
+    // each shared port (sub-pixel AA on butt caps lets the dim pass bleed
+    // through as a thin dark line where two arcs meet). The title-O case
+    // is special — all 4 elbows share the same arc center (the 2×2 group
+    // center) and radius, so the channel is geometrically a perfect
+    // circle. Drawing that circle as ONE stroke per stripe overlays the
+    // per-tile rendering with a seamless version and masks the seams.
+    // Uses litStripes' actual widths + colors (temporarily entering
+    // snippet mode so the litColor/Hi/Lo/Pulse overrides are picked up by
+    // litPalette) so the overlay matches the per-tile render exactly.
+    // Hardcoded 2×2 geometry — only the title-O calls this; if more
+    // snippet shapes need masking later, generalize the geometry.
+    function paintSnippetRingMask(targetCanvas, sizeCss, opts) {
+        if (!targetCanvas || sizeCss <= 0) return;
+        const dprLocal = window.devicePixelRatio || 1;
+        const tctx     = targetCanvas.getContext('2d');
+        const cs       = sizeCss / 2;
+        const widthFrac = (opts && opts.widthFrac != null) ? opts.widthFrac : GROOVE_FRAC;
+        const w        = Math.max(4, Math.floor(cs * widthFrac));
+        const rim      = Math.max(1, Math.floor(cs * GROOVE_RIM_FRAC));
+        const cx       = sizeCss / 2;
+        const cy       = sizeCss / 2;
+        const radius   = cs / 2;
+        // Temporarily enter snippet mode so litPalette (called by
+        // litStripes) picks up the lit overrides + pulse exactly as
+        // renderSnippet did, keeping the overlay's gradient in lockstep
+        // with the underlying per-tile render.
+        const prev = {
+            sm:  snippetMode,
+            lc:  snippetLitColor,
+            lh:  snippetLitHi,
+            ll:  snippetLitLo,
+            lp:  snippetLitPulse,
+        };
+        snippetMode     = true;
+        snippetLitColor = (opts && opts.litColor) || null;
+        snippetLitHi    = (opts && opts.litHi)    || null;
+        snippetLitLo    = (opts && opts.litLo)    || null;
+        snippetLitPulse = !!(opts && opts.litPulse);
+        let stripes;
+        try {
+            stripes = litStripes(w, rim, 0);
+        } finally {
+            snippetMode     = prev.sm;
+            snippetLitColor = prev.lc;
+            snippetLitHi    = prev.lh;
+            snippetLitLo    = prev.ll;
+            snippetLitPulse = prev.lp;
+        }
+        tctx.save();
+        tctx.setTransform(dprLocal, 0, 0, dprLocal, 0, 0);
+        tctx.lineCap = 'butt';
+        for (const s of stripes) {
+            tctx.strokeStyle = s.color;
+            tctx.lineWidth   = s.width;
+            tctx.beginPath();
+            tctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+            tctx.stroke();
+        }
+        tctx.restore();
     }
 
     // Partial-redraw used during a pure rotation animation: only the
@@ -2200,7 +2269,7 @@ const Render = (() => {
              setPathWidth, setBevelThickness, setTileFaceAlpha,
              setLitGreenLo, setLitGreenHi, setLitGoldLo, setLitGoldHi,
              setLockFaceColor, setCompleteCircuits, setGridSize,
-             flashTwinPair, renderSnippet,
+             flashTwinPair, renderSnippet, paintSnippetRingMask,
              setAnimateRotations, animateRotationAt,
              hasJoinedLanes,    // game.js polls this for the overlap-SFX state machine
              fadeLanes, clearFadingLanes,  // broken-chain fade triggered alongside the twin-break SFX

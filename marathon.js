@@ -65,7 +65,14 @@ const Marathon = (() => {
     let solveHeadline, solveBanked;
     let gameOverScore, gameOverTime, gameOverRank, gameOverName, gameOverSave, gameOverMenu, gameOverNameRow;
     let leaderboardSelect, leaderboardEntries, leaderboardEmpty, leaderboardClose, menuLeaderboardBtn;
+    let leaderboardTabsEl;
     let replayLabel, replayStopBtn;
+
+    // Which mode's leaderboard the user is currently viewing. Drives both
+    // the dropdown's option labels (same slot set, different naming
+    // convention) and the API + cache routing in fetch/render. Defaults
+    // to whatever ModePicker says is active when the leaderboard opens.
+    let leaderboardMode = 'marathon';
 
     // After a save, the leaderboard view marks the player's just-saved entry
     // with .lbHighlight so they can find it at a glance. Set by saveScore
@@ -84,7 +91,7 @@ const Marathon = (() => {
     // Click-quiet gate: advance() ignores taps until Date.now() >= this.
     // Each tap (including ignored ones) pushes it out by TRANSITION_QUIET_MS,
     // so a click-cascade from solving by mashing can't skip the transition.
-    const TRANSITION_QUIET_MS = 1000;
+    const TRANSITION_QUIET_MS = 333;
     let transitionQuietUntil = 0;
 
     function $(id) { return document.getElementById(id); }
@@ -120,6 +127,7 @@ const Marathon = (() => {
         leaderboardEmpty   = $('leaderboardEmpty');
         leaderboardClose   = $('leaderboardCloseBtn');
         menuLeaderboardBtn = $('menuLeaderboardBtn');
+        leaderboardTabsEl  = $('leaderboardTabs');
 
         replayLabel   = $('replayLabel');
         replayStopBtn = $('replayStopBtn');
@@ -158,6 +166,13 @@ const Marathon = (() => {
         });
         if (leaderboardClose)   leaderboardClose.addEventListener('click', goToMenu);
         if (leaderboardSelect)  leaderboardSelect.addEventListener('change', renderLeaderboard);
+        // Tab click handlers — switch the active leaderboard mode and
+        // re-render with the new mode's fetch + render branch.
+        if (leaderboardTabsEl) {
+            leaderboardTabsEl.querySelectorAll('.lbTab').forEach((btn) => {
+                btn.addEventListener('click', () => setLeaderboardMode(btn.dataset.mode));
+            });
+        }
         if (replayStopBtn)      replayStopBtn.addEventListener('click', stopReplay);
         // Tap the popup to advance to the next puzzle. The canvas does NOT
         // route here — see comment on the inTransition declaration above.
@@ -244,14 +259,54 @@ const Marathon = (() => {
         state = STATE.MENU;
         stopTimer();
         clearTransition();
+        // Tear the credits down before returning to menu — covers every exit
+        // path from the game-over screen (Back to menu, Save, leaderboard).
+        if (typeof Credits !== 'undefined' && Credits.stop) Credits.stop();
         pendingHighlight = null;   // leaving the leaderboard drops the highlight
         showOnly(menuEl);
     }
 
     function showLeaderboard() {
+        // Returning from a replay (state was REPLAYING) preserves the
+        // tab the user was viewing before they hit Watch. Every other
+        // entry path (menu button, save-score → leaderboard) defaults
+        // the tab to whatever mode the player has selected in the main
+        // menu's MODE chip — avoids dumping a PotD-player onto a
+        // Marathon board and vice versa.
+        const fromReplay = state === STATE.REPLAYING;
         state = STATE.LEADERBOARD;
+        // Save-score → leaderboard leaves credits rolling unless we tear
+        // them down here; the leaderboard view would otherwise sit on top
+        // of the scrolling overlay.
+        if (typeof Credits !== 'undefined' && Credits.stop) Credits.stop();
+        if (!fromReplay) {
+            const initialMode = (typeof ModePicker !== 'undefined' && ModePicker.getMode)
+                ? ModePicker.getMode()
+                : 'marathon';
+            applyLeaderboardMode(initialMode, /*render=*/false);
+        }
         renderLeaderboard();
         showOnly(leaderboardEl);
+    }
+
+    function setLeaderboardMode(mode) {
+        if (mode !== 'potd' && mode !== 'marathon') return;
+        if (mode === leaderboardMode) return;
+        applyLeaderboardMode(mode, /*render=*/true);
+    }
+
+    // Internal: update mode state + tab highlighting; optionally trigger a
+    // re-render. Called by both setLeaderboardMode (user clicked a tab,
+    // wants the new mode's data) and showLeaderboard (just entering the
+    // view, render happens separately).
+    function applyLeaderboardMode(mode, render) {
+        leaderboardMode = mode;
+        if (leaderboardTabsEl) {
+            leaderboardTabsEl.querySelectorAll('.lbTab').forEach((btn) => {
+                btn.classList.toggle('active', btn.dataset.mode === mode);
+            });
+        }
+        if (render) renderLeaderboard();
     }
 
     // ----- Game flow -----
@@ -333,6 +388,8 @@ const Marathon = (() => {
         pendingHighlight = null;  // any prior-game highlight is stale once a new run begins
         growthSequence   = [];    // fresh random row/col growth sequence per game
         if (typeof Music !== 'undefined' && Music.start) Music.start();
+        // Engagement tracking: one start per game (not per puzzle).
+        if (typeof Tracking !== 'undefined' && Tracking.recordStart) Tracking.recordStart('marathon', type);
         // Fire-and-forget: ask the server for a cheat-proof timing token.
         // Game continues regardless — if the request fails (offline / cold
         // back-end / network blip) we stay with sessionToken=null and the
@@ -524,7 +581,15 @@ const Marathon = (() => {
         stopTimer();
         clearTransition();
         if (callbacks.quit) callbacks.quit();
+        // Stop gameplay music; the end-credits sequence will start its own
+        // credits track a beat later (Credits.start schedules the music swap).
         if (typeof Music !== 'undefined' && Music.stop) Music.stop();
+        // Engagement tracking: finish fires on game-over (time runs out
+        // or zero-solve quit triggers it). Sticky server-side — only the
+        // first finish per visit lands in the funnel.
+        if (typeof Tracking !== 'undefined' && Tracking.recordFinish) Tracking.recordFinish();
+        // Share popup gate (Share module owns the dismissal + count).
+        if (typeof Share !== 'undefined' && Share.maybeShowPopup) Share.maybeShowPopup();
         // Zero-solve game-overs aren't eligible to rank, so fire the
         // "no rank" SFX immediately. For non-zero scores we wait for
         // the leaderboard fetch in renderGameOver — the right SFX
@@ -532,17 +597,24 @@ const Marathon = (() => {
         if (typeof Sfx !== 'undefined') {
             Sfx.stopLoop('glitch_overlap');
             if (solvedCount === 0) {
-                Sfx.play(['fail_long', 'audience_boo', 'audience_disappointed']);
+                Sfx.play(['fail_long', 'audience_disappointed']);
             }
         }
         renderGameOver();
         showOnly(gameOverEl);
+        // Roll the end credits behind the game-over card. body.credits-rolling
+        // (set by Credits.start) repositions #gameOver into the upper third
+        // and strips its full-screen backdrop so the scroll is visible.
+        if (typeof Credits !== 'undefined' && Credits.start) Credits.start();
     }
 
     function quitToMenu() {
         clearTransition();
         if (callbacks.quit) callbacks.quit();
         if (typeof Music !== 'undefined' && Music.stop) Music.stop();
+        // If the player quit mid-game-over (or credits were rolling for any
+        // other reason), tear the credits down before returning to menu.
+        if (typeof Credits !== 'undefined' && Credits.stop) Credits.stop();
         goToMenu();
     }
 
@@ -643,7 +715,7 @@ const Marathon = (() => {
         } else if (typeof Sfx !== 'undefined') {
             // Ineligible: same SFX as the zero-solve path. Leaves the row
             // hidden / no rank text — the player still sees score + time.
-            Sfx.play(['fail_long', 'audience_boo', 'audience_disappointed']);
+            Sfx.play(['fail_long', 'audience_disappointed']);
         }
     }
 
@@ -655,10 +727,28 @@ const Marathon = (() => {
     // Reads paint the local cache first for instant UX, then refresh from the
     // server in the background.
 
-    function boardKey(type)  { return PROJECT_SLUG + '_lb_' + type; }
+    function boardKey(mode, type) {
+        // Marathon's key is per-type only (cumulative all-time board).
+        // PotD's key is per-date + type so a stale yesterday board
+        // doesn't paint over an empty fresh-today one.
+        if (mode === 'potd') {
+            return PROJECT_SLUG + '_potd_lb_' + potdTodayUTC() + '_' + type;
+        }
+        return PROJECT_SLUG + '_lb_' + type;
+    }
     function pendingKey()    { return PROJECT_SLUG + '_lb_pending'; }
     function sessionIdKey()  { return PROJECT_SLUG + '_session_id'; }
     function ownRecKey(type) { return PROJECT_SLUG + '_own_rec_' + type; }
+
+    // Same UTC-date format PotD uses server-side for its date keys; kept
+    // local here so this module doesn't have to reach into the Potd
+    // module just to format a board cache key.
+    function potdTodayUTC() {
+        const d = new Date();
+        const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        return d.getUTCFullYear() + '-' + m + '-' + day;
+    }
 
     // Stash the player's just-saved recording locally, keyed by the server's
     // score id. The painter cross-references this so the Watch button works
@@ -679,16 +769,20 @@ const Marathon = (() => {
         } catch (e) { return null; }
     }
 
-    function loadBoard(type) {
+    function loadBoard(mode, type) {
+        // Backwards-compat shim: callers from the submit/flush paths
+        // pass only the type and operate on marathon boards.
+        if (typeof type === 'undefined') { type = mode; mode = 'marathon'; }
         try {
-            const raw = localStorage.getItem(boardKey(type));
+            const raw = localStorage.getItem(boardKey(mode, type));
             if (!raw) return [];
             const parsed = JSON.parse(raw);
             return Array.isArray(parsed) ? parsed : [];
         } catch (e) { return []; }
     }
-    function saveBoard(type, board) {
-        try { localStorage.setItem(boardKey(type), JSON.stringify(board)); }
+    function saveBoard(mode, type, board) {
+        if (typeof board === 'undefined') { board = type; type = mode; mode = 'marathon'; }
+        try { localStorage.setItem(boardKey(mode, type), JSON.stringify(board)); }
         catch (e) { Logger.warn('Marathon: failed to save leaderboard', e); }
     }
 
@@ -750,11 +844,21 @@ const Marathon = (() => {
         return resp.json();
     }
 
-    async function fetchBoardFromServer(type) {
+    async function fetchBoardFromServer(mode, type) {
+        // Backwards-compat: submit/flush paths pass only the type.
+        if (typeof type === 'undefined') { type = mode; mode = 'marathon'; }
         const base = apiBase();
         if (!base) throw new Error('No GAME_API configured');
-        const resp = await fetch(base + '/leaderboards/' + encodeURIComponent(type)
-                                 + '?limit=' + MARATHON.LEADERBOARD_TOP_N);
+        let url;
+        if (mode === 'potd') {
+            url = base + '/potd/board?date=' + encodeURIComponent(potdTodayUTC())
+                + '&slot=' + encodeURIComponent(type)
+                + '&limit=' + MARATHON.LEADERBOARD_TOP_N;
+        } else {
+            url = base + '/leaderboards/' + encodeURIComponent(type)
+                + '?limit=' + MARATHON.LEADERBOARD_TOP_N;
+        }
+        const resp = await fetch(url);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
         return Array.isArray(data.entries) ? data.entries : [];
@@ -886,7 +990,8 @@ const Marathon = (() => {
             && entry.totalMs === pendingHighlight.totalMs;
     }
 
-    function paintLeaderboard(board) {
+    function paintLeaderboard(board, mode) {
+        if (typeof mode === 'undefined') mode = leaderboardMode;
         leaderboardEntries.innerHTML = '';
         if (board.length === 0) {
             leaderboardEmpty.hidden = false;
@@ -895,24 +1000,38 @@ const Marathon = (() => {
         leaderboardEmpty.hidden = true;
         // Cross-reference for the player's own recording — keyed by score
         // id. Lets the Watch button work on the player's own entry even
-        // when the server doesn't return events on this entry.
+        // when the server doesn't return events on this entry. PotD has
+        // no per-mode own-recording stash today (the recording always
+        // travels with the entry from the server), so just skip the
+        // cross-ref there.
         const boardType    = (leaderboardSelect && leaderboardSelect.value) || MARATHON.TYPES[0];
-        const ownRecording = loadOwnRecording(boardType);
+        const ownRecording = mode === 'potd' ? null : loadOwnRecording(boardType);
         let highlightedEl = null;
         board.forEach((entry, i) => {
             const li     = document.createElement('li');
-            if (entryMatchesHighlight(entry)) {
+            if (mode !== 'potd' && entryMatchesHighlight(entry)) {
                 li.classList.add('lbHighlight');
                 highlightedEl = li;
             }
-            const rank   = document.createElement('span'); rank.className   = 'lbRank';   rank.textContent   = '#' + (i + 1);
-            const name   = document.createElement('span'); name.className   = 'lbName';   name.textContent   = entry.name;
-            const solved = document.createElement('span'); solved.className = 'lbSolved'; solved.textContent = entry.solved + ' solved';
-            const time   = document.createElement('span'); time.className   = 'lbTime';   time.textContent   = fmtTimePrecise(entry.totalMs);
+            const rank = document.createElement('span'); rank.className = 'lbRank'; rank.textContent = '#' + (i + 1);
+            const name = document.createElement('span'); name.className = 'lbName'; name.textContent = entry.name;
             li.appendChild(rank);
             li.appendChild(name);
-            li.appendChild(solved);
-            li.appendChild(time);
+            // Marathon entries carry a `solved` count (puzzles cleared in
+            // the run) + a `totalMs` total run time. PotD entries are a
+            // single-puzzle solve — `timeMs` is the only metric, no
+            // count column.
+            if (mode === 'potd') {
+                const time = document.createElement('span');
+                time.className   = 'lbTime';
+                time.textContent = fmtTimePrecise(entry.timeMs);
+                li.appendChild(time);
+            } else {
+                const solved = document.createElement('span'); solved.className = 'lbSolved'; solved.textContent = entry.solved + ' solved';
+                const time   = document.createElement('span'); time.className   = 'lbTime';   time.textContent   = fmtTimePrecise(entry.totalMs);
+                li.appendChild(solved);
+                li.appendChild(time);
+            }
             // Watch button on any entry with a replayable recording. Sources,
             // in priority order:
             //   1. ownEvents — player's own recording stashed locally by id
@@ -941,7 +1060,14 @@ const Marathon = (() => {
                     watch.addEventListener('click', () => startReplayWithEvents(evCopy, name));
                 } else {
                     const id = entry.id;
-                    watch.addEventListener('click', () => startReplay(id));
+                    // PotD recordings live at a different endpoint than
+                    // marathon's. Branch the fetcher so Watch works on
+                    // both boards.
+                    if (mode === 'potd') {
+                        watch.addEventListener('click', () => startPotdReplay(id));
+                    } else {
+                        watch.addEventListener('click', () => startReplay(id));
+                    }
                 }
                 li.appendChild(watch);
             }
@@ -958,17 +1084,21 @@ const Marathon = (() => {
 
     async function renderLeaderboard() {
         const type = (leaderboardSelect && leaderboardSelect.value) || MARATHON.TYPES[0];
+        const mode = leaderboardMode;
 
-        // Paint local cache immediately so the UI is never blank.
-        paintLeaderboard(loadBoard(type));
+        // Paint local cache immediately so the UI is never blank. Each
+        // mode has its own cache namespace.
+        paintLeaderboard(loadBoard(mode, type), mode);
 
-        // Refresh from server; update cache + re-render if user is still on this board.
+        // Refresh from server; update cache + re-render if user is still
+        // on this (mode, type) pair when the fetch resolves.
         try {
-            const fresh = await fetchBoardFromServer(type);
-            saveBoard(type, fresh);
+            const fresh = await fetchBoardFromServer(mode, type);
+            saveBoard(mode, type, fresh);
             if (state === STATE.LEADERBOARD &&
+                leaderboardMode === mode &&
                 leaderboardSelect && leaderboardSelect.value === type) {
-                paintLeaderboard(fresh);
+                paintLeaderboard(fresh, mode);
             }
         } catch (e) {
             // Stay with the cached view painted above.
@@ -998,6 +1128,78 @@ const Marathon = (() => {
         }
         const events = Array.isArray(data.events) ? data.events : [];
         await startReplayWithEvents(events, data.name || '');
+    }
+
+    // PotD-board Watch buttons route here. Different from marathon's
+    // /api/scores/<id>/recording in shape: marathon submits `events` as
+    // an ARRAY OF FULL RECORDINGS (one per puzzle in the run), while
+    // PotD submits `events` as a FLAT MOVES ARRAY for the single
+    // puzzle. So we have to reconstruct a recording on the client by
+    // fetching the puzzle snapshot for the score's (date, slot) and
+    // pairing it with the moves before handing off to Game.replayAll
+    // (which wants the marathon shape: array of recordings).
+    async function startPotdReplay(scoreId) {
+        if (state === STATE.REPLAYING) return;
+        const base = apiBase();
+        if (!base) return;
+
+        let rec;
+        try {
+            const resp = await fetch(base + '/potd/scores/' + encodeURIComponent(scoreId) + '/recording');
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            rec = await resp.json();
+        } catch (e) {
+            Logger.warn('Marathon: failed to fetch PotD recording', e);
+            return;
+        }
+
+        // Today-only for now — /api/potd/today/<slot> only serves the
+        // current UTC date's snapshot. The leaderboard view also only
+        // shows today's scores, so a replay request should always be
+        // for today; bail loudly if it isn't (older history needs a
+        // date-aware endpoint).
+        if (rec.date !== potdTodayUTC()) {
+            Logger.warn('Marathon: PotD replay for non-today date not supported', rec.date);
+            return;
+        }
+
+        const slot = rec.slot;
+        if (!slot) {
+            Logger.warn('Marathon: PotD recording missing slot', rec);
+            return;
+        }
+        let puzzle;
+        try {
+            const resp = await fetch(base + '/potd/today/' + encodeURIComponent(slot));
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            puzzle = await resp.json();
+        } catch (e) {
+            Logger.warn('Marathon: failed to fetch PotD puzzle snapshot for replay', e);
+            return;
+        }
+        if (!puzzle || !puzzle.snapshot || !puzzle.snapshot.maze) {
+            Logger.warn('Marathon: PotD puzzle snapshot missing maze data', puzzle);
+            return;
+        }
+
+        // Build a full recording matching Game.replayAll's expectations.
+        // slot is 's1'..'s4' / 'q1'..'q4' — leading char encodes quad
+        // mode, trailing digit is the path count.
+        const quadMode  = slot[0] === 'q';
+        const pathCount = parseInt(slot[1], 10) || 1;
+        const moves     = Array.isArray(rec.events) ? rec.events : [];
+        const reconstructed = {
+            quadMode:     quadMode,
+            pathCount:    pathCount,
+            initialState: puzzle.snapshot.maze,
+            gates:        puzzle.snapshot.gates || null,
+            moves:        moves,
+        };
+
+        // Wrap in a one-element array so the puzzle-counter reads 1/1
+        // (not 1/<num-moves>) and replayAll's per-puzzle loop fires
+        // exactly once.
+        await startReplayWithEvents([reconstructed], rec.name || '');
     }
 
     // Local-events variant — used by the Watch button on entries whose
@@ -1033,6 +1235,48 @@ const Marathon = (() => {
     function isInTransition()  { return inTransition; }
     function isReplaying()     { return state === STATE.REPLAYING; }
 
+    // DEV: drops all leaderboard-related localStorage entries so the
+    // next render shows whatever the server is currently holding.
+    // Paired with the back-end's /api/admin/wipe-leaderboards
+    // endpoint by the debug-panel button; either one without the
+    // other only fixes half the picture. Wipes: cached marathon boards
+    // (_lb_<type>), cached PotD boards (_potd_lb_<date>_<type>),
+    // pending offline submissions (_lb_pending), per-type own-recording
+    // bookkeeping (_own_rec_<type>), and the player's last-saved name
+    // (_lastPlayerName) since that's a leaderboard-adjacent value.
+    function wipeLocalLeaderboards() {
+        try {
+            const prefixes = [
+                PROJECT_SLUG + '_lb_',
+                PROJECT_SLUG + '_potd_lb_',
+                PROJECT_SLUG + '_own_rec_',
+            ];
+            const exactKeys = [
+                PROJECT_SLUG + '_lastPlayerName',
+            ];
+            const stale = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (!k) continue;
+                if (exactKeys.indexOf(k) >= 0) { stale.push(k); continue; }
+                for (const p of prefixes) {
+                    if (k.indexOf(p) === 0) { stale.push(k); break; }
+                }
+            }
+            for (const k of stale) localStorage.removeItem(k);
+            // Re-render any open leaderboard view so the wipe is visible
+            // immediately (otherwise the user still sees the stale list).
+            if (typeof leaderboardEl !== 'undefined' && leaderboardEl &&
+                leaderboardEl.classList.contains('visible')) {
+                renderLeaderboard();
+            }
+            return { wiped: stale.length };
+        } catch (e) {
+            return { wiped: 0, error: e && e.message || String(e) };
+        }
+    }
+
     return { init, onSolve, onHintUsed, onPuzzleReady, advance, isPlaying, isMenuVisible, isInTransition, isReplaying, upcomingDims,
+             wipeLocalLeaderboards,
              getSolvedCount: () => solvedCount };
 })();

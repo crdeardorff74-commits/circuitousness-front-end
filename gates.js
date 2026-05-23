@@ -26,7 +26,11 @@
  *   checks this before stepping into a neighbor.
  *
  * Rendering helpers:
- *   Gates.polygonsFor(gate, cellSize, cx, cy) → { base, prong, palette }
+ *   Gates.polygonsFor(gate, cellSize, cx, cy) → { outline, palette }
+ *     outline = single CW vertex loop tracing the gate's full silhouette
+ *     (square base + shaft + tip merged into one polygon). Rendering it as
+ *     one polygon gives a continuous bevel around the entire shape rather
+ *     than two visible bevel seams where the prong meets the base.
  *   Gates.hitTest(gate, cellSize, cx, cy, x, y) → boolean
  *
  * Worker-safe: the maze-worker context doesn't load this module; maze.js
@@ -176,33 +180,38 @@ const Gates = (() => {
         return         { x: cx + dy, y: cy - dx };
     }
 
-    // Build the two polygons (base + prong) for a gate in canvas coords,
+    // Build the merged silhouette polygon for a gate in canvas coords,
     // oriented by currentDir(). Baseline points N (prong toward -Y); a CW
     // rotation by `dir` 90° steps maps N→E→S→W.
+    //
+    // The outline is a single CW loop in screen y-down coords, traced from
+    // the top-left of the square base, up around the prong+tip, back to
+    // the top-right of the base, then around the base's right/bottom/left
+    // sides. Two concave corners — where the narrow prong meets the wider
+    // base on each side — are within insetPolygon's tolerance for the
+    // small bevel widths gates use, so a single drawBeveledPolygon call
+    // produces a continuous, seamless bevel around the full silhouette.
     function polygonsFor(gate, cellSize, cx, cy) {
         const B = cellSize * BASE_FRAC / 2;
         const S = cellSize * SHAFT_WIDTH_FRAC / 2;
         const L = cellSize * SHAFT_LENGTH_FRAC;
         const T = cellSize * TIP_LENGTH_FRAC;
 
-        const baseN = [
-            { x: cx - B, y: cy - B },
-            { x: cx + B, y: cy - B },
-            { x: cx + B, y: cy + B },
-            { x: cx - B, y: cy + B }
-        ];
-        const prongN = [
-            { x: cx - S, y: cy - B },
-            { x: cx - S, y: cy - B - L },
-            { x: cx,     y: cy - B - L - T },
-            { x: cx + S, y: cy - B - L },
-            { x: cx + S, y: cy - B }
+        const outlineN = [
+            { x: cx - B, y: cy - B         },   // 1. base top-left
+            { x: cx - S, y: cy - B         },   // 2. base top → prong left  (concave)
+            { x: cx - S, y: cy - B - L     },   // 3. shaft top-left
+            { x: cx,     y: cy - B - L - T },   // 4. tip point
+            { x: cx + S, y: cy - B - L     },   // 5. shaft top-right
+            { x: cx + S, y: cy - B         },   // 6. prong right → base top (concave)
+            { x: cx + B, y: cy - B         },   // 7. base top-right
+            { x: cx + B, y: cy + B         },   // 8. base bottom-right
+            { x: cx - B, y: cy + B         }    // 9. base bottom-left
         ];
 
         const r = currentDir(gate);
         return {
-            base:    baseN.map((p) => rotateCW(p, cx, cy, r)),
-            prong:   prongN.map((p) => rotateCW(p, cx, cy, r)),
+            outline: outlineN.map((p) => rotateCW(p, cx, cy, r)),
             palette: PALETTE
         };
     }
