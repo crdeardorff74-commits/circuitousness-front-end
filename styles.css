@@ -648,82 +648,6 @@ html.mode-debug #introOverlay { display: none !important; }
     overflow: auto;
     -webkit-overflow-scrolling: touch;  /* momentum scroll on iOS */
 }
-/* Tablet-class touch devices (≤1080px tall, above the 500px compact-phone
-   breakpoint that lives in its own block below). Scoped to (pointer: coarse)
-   so desktop laptops in this height range — 1366×768, 1440×900 — don't
-   pick up the aggressive shrinking; they stay on the desktop defaults
-   where mouse precision makes larger cards fine. The 1080 ceiling
-   catches iPad Pro 12.9" (1024px tall landscape) along with smaller
-   iPads (768-820px). Two adjustments together get everything visible:
-     1. Anchor #menu to flex-start so overflow only goes downward
-        (centered overflow would clip the top, which isn't
-        scroll-reachable on iOS).
-     2. Shrink the mode cards + section chrome so the whole stack
-        fits in the tablet's usable height — without this, the
-        LEADERBOARDS button gets pushed off the bottom even after
-        the title is unclipped.
-   Values are tighter than desktop but less aggressive than the
-   compact-phone block at max-height:500px. */
-@media (max-height: 1080px) and (min-height: 501px) and (pointer: coarse) {
-    #menu {
-        justify-content: flex-start;
-        gap: 0.3rem;
-        /* Top padding respects iOS status-bar / dynamic-island safe-area
-           in PWA fullscreen so the title doesn't tuck under it. The base
-           clamp() floor (0.5rem) governs desktop and Android. */
-        padding-top: max(clamp(0.5rem, 2vh, 1.5rem), env(safe-area-inset-top));
-        padding-left:  max(clamp(0.5rem, 2vw, 1.5rem), env(safe-area-inset-left));
-        padding-right: max(clamp(0.5rem, 2vw, 1.5rem), env(safe-area-inset-right));
-        padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
-    }
-    /* Title — cap lower so it doesn't dominate the shorter viewport. */
-    .titleFrame {
-        font-size: clamp(1.6rem, 4.5vh, 2.5rem);
-    }
-    /* Mode picker chip + subtitle — tighter vertical rhythm. */
-    #menu .menuSubtitle {
-        font-size: clamp(0.8rem, 1.5vw, 0.95rem);
-        margin: max(0.3vh, 3px) 0 max(0.5vh, 5px);
-    }
-    .menuSection {
-        padding: 0.4rem 0.8rem;
-        gap: 0.3rem;
-    }
-    .menuSection h2 {
-        font-size: clamp(0.8rem, 1.8vh, 0.95rem);
-        margin-bottom: 0;
-    }
-    .menuModeRow { gap: 0.35rem; }
-    .menuModeBtn {
-        padding: 0.3rem 0.4rem;
-        font-size: clamp(0.75rem, 1.5vh, 0.9rem);
-        gap: 0.2rem;
-        min-width: 4.5rem;
-    }
-    /* Thumbnails: switch to vh-based sizing so they shrink with
-       viewport height (the actual constraint here). On a 768px-tall
-       iPad, 8.5vh ≈ 4.2rem; on a 820px iPad Pro, ≈ 4.5rem. Cap kept
-       low so the cards fit even after status-bar + safe-area eat
-       into the usable height on PWA fullscreen iPads. */
-    .menuModeBtn .modeThumb {
-        width: clamp(2.8rem, 8.5vh, 5rem);
-        height: clamp(2.8rem, 8.5vh, 5rem);
-    }
-    /* PotD slot badges: scale down with the smaller thumbnail. */
-    .menuModeBtn.potd-solved::after,
-    .menuModeBtn.potd-started:not(.potd-solved)::after {
-        width: 1rem;
-        height: 1rem;
-        font-size: 0.75rem;
-        top: 0.2rem;
-        right: 0.25rem;
-    }
-    #menuLeaderboardBtn {
-        margin-top: 0.2rem;
-        padding: 0.35rem 1.2rem;
-        font-size: clamp(0.75rem, 1.6vh, 0.9rem);
-    }
-}
 /* Title frame — small viewfinder-style corner brackets. Tighter padding
    pulls them in close to the text; slightly thicker borders give them more
    visual presence at small sizes. */
@@ -1106,6 +1030,87 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
         background: rgba(60, 40, 70, 0.9);
         border-color: rgba(255, 215, 0, 0.75);
         color: #FFD700;
+    }
+}
+
+/* Tablet-class viewports (≤1080px tall, above the 500px compact-phone
+   breakpoint that lives in its own block below). Catches iPad Pro
+   12.9" (1024px tall landscape) along with smaller iPads (768-820px).
+   IMPORTANT: this block MUST live below all the base menu styles
+   (#menu, .titleFrame, .menuSection, .menuModeBtn, .menuModeBtn
+   .modeThumb, #menuLeaderboardBtn). At equal specificity CSS resolves
+   ties by source order — the base styles right above would otherwise
+   override this @media's same-specificity rules even when the media
+   condition matches. (Earlier this block lived right after #menu and
+   the overrides silently no-op'd on iPad despite the media matching.)
+   Two adjustments together get everything visible:
+     1. Anchor #menu to flex-start so overflow only goes downward
+        (centered overflow would clip the top, which isn't
+        scroll-reachable on iOS).
+     2. Shrink the mode cards + section chrome so the whole stack
+        fits in the tablet's usable height — without this, the
+        LEADERBOARDS button gets pushed off the bottom even after
+        the title is unclipped.
+   Values are tighter than desktop but less aggressive than the
+   compact-phone block at max-height:500px. */
+@media (max-height: 1080px) and (min-height: 501px) {
+    #menu {
+        justify-content: flex-start;
+        gap: 0.3rem;
+        /* Top padding respects iOS status-bar / dynamic-island safe-area
+           in PWA fullscreen so the title doesn't tuck under it. The base
+           clamp() floor (0.5rem) governs desktop and Android. */
+        padding-top: max(clamp(0.5rem, 2vh, 1.5rem), env(safe-area-inset-top));
+        padding-left:  max(clamp(0.5rem, 2vw, 1.5rem), env(safe-area-inset-left));
+        padding-right: max(clamp(0.5rem, 2vw, 1.5rem), env(safe-area-inset-right));
+        padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+    }
+    /* Title — cap lower so it doesn't dominate the shorter viewport. */
+    .titleFrame {
+        font-size: clamp(1.6rem, 4.5vh, 2.5rem);
+    }
+    /* Mode picker chip + subtitle — tighter vertical rhythm. */
+    #menu .menuSubtitle {
+        font-size: clamp(0.8rem, 1.5vw, 0.95rem);
+        margin: max(0.3vh, 3px) 0 max(0.5vh, 5px);
+    }
+    .menuSection {
+        padding: 0.4rem 0.8rem;
+        gap: 0.3rem;
+    }
+    .menuSection h2 {
+        font-size: clamp(0.8rem, 1.8vh, 0.95rem);
+        margin-bottom: 0;
+    }
+    .menuModeRow { gap: 0.35rem; }
+    .menuModeBtn {
+        padding: 0.3rem 0.4rem;
+        font-size: clamp(0.75rem, 1.5vh, 0.9rem);
+        gap: 0.2rem;
+        min-width: 4.5rem;
+    }
+    /* Thumbnails: switch to vh-based sizing so they shrink with
+       viewport height (the actual constraint here). On a 768px-tall
+       iPad, 8.5vh ≈ 4.2rem; on a 820px iPad Pro, ≈ 4.5rem. Cap kept
+       low so the cards fit even after status-bar + safe-area eat
+       into the usable height on PWA fullscreen iPads. */
+    .menuModeBtn .modeThumb {
+        width: clamp(2.8rem, 8.5vh, 5rem);
+        height: clamp(2.8rem, 8.5vh, 5rem);
+    }
+    /* PotD slot badges: scale down with the smaller thumbnail. */
+    .menuModeBtn.potd-solved::after,
+    .menuModeBtn.potd-started:not(.potd-solved)::after {
+        width: 1rem;
+        height: 1rem;
+        font-size: 0.75rem;
+        top: 0.2rem;
+        right: 0.25rem;
+    }
+    #menuLeaderboardBtn {
+        margin-top: 0.2rem;
+        padding: 0.35rem 1.2rem;
+        font-size: clamp(0.75rem, 1.6vh, 0.9rem);
     }
 }
 
