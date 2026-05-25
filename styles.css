@@ -1033,84 +1033,90 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
     }
 }
 
-/* Tablet-class viewports (≤1080px tall, above the 500px compact-phone
-   breakpoint that lives in its own block below). Catches iPad Pro
-   12.9" (1024px tall landscape) along with smaller iPads (768-820px).
+/* Tablet-class touch viewports (≤1080px tall, above the 500px compact-
+   phone breakpoint that lives in its own block below). Scoped to
+   (pointer: coarse) so small-height desktop laptops (1366×768,
+   1440×900) and resized desktop windows DON'T pick up this shrink —
+   only touch devices that genuinely benefit from the compact layout
+   (iPad Mini 768, iPad Air 820, iPad Pro 11" 834, iPad Pro 12.9" 1024).
    IMPORTANT: this block MUST live below all the base menu styles
    (#menu, .titleFrame, .menuSection, .menuModeBtn, .menuModeBtn
    .modeThumb, #menuLeaderboardBtn). At equal specificity CSS resolves
-   ties by source order — the base styles right above would otherwise
-   override this @media's same-specificity rules even when the media
-   condition matches. (Earlier this block lived right after #menu and
-   the overrides silently no-op'd on iPad despite the media matching.)
-   Two adjustments together get everything visible:
+   ties by source order — the base styles above would otherwise override
+   this @media's same-specificity rules even when the media matches.
+   Two adjustments together get everything visible on tablets:
      1. Anchor #menu to flex-start so overflow only goes downward
         (centered overflow would clip the top, which isn't
         scroll-reachable on iOS).
-     2. Shrink the mode cards + section chrome so the whole stack
-        fits in the tablet's usable height — without this, the
-        LEADERBOARDS button gets pushed off the bottom even after
-        the title is unclipped.
-   Values are tighter than desktop but less aggressive than the
-   compact-phone block at max-height:500px. */
-@media (max-height: 1080px) and (min-height: 501px) {
+     2. Shrink the mode cards + section chrome moderately so the
+        whole stack fits in the tablet's usable height. Earlier
+        values (4.5vh title, 8.5vh thumbs) shrank too far and the
+        user reported the result felt cramped; current values are
+        a middle tier closer to desktop defaults.
+   Intro screen's .introTitleFrame is NOT touched here — it has its
+   own font-size rule with higher source-order precedence further up,
+   so the intro title stays at its dramatic size; this block only
+   adjusts the menu title via #menu .titleFrame. */
+@media (max-height: 1080px) and (min-height: 501px) and (pointer: coarse) {
     #menu {
         justify-content: flex-start;
-        gap: 0.3rem;
+        gap: 0.4rem;
         /* Top padding respects iOS status-bar / dynamic-island safe-area
            in PWA fullscreen so the title doesn't tuck under it. The base
            clamp() floor (0.5rem) governs desktop and Android. */
-        padding-top: max(clamp(0.5rem, 2vh, 1.5rem), env(safe-area-inset-top));
-        padding-left:  max(clamp(0.5rem, 2vw, 1.5rem), env(safe-area-inset-left));
-        padding-right: max(clamp(0.5rem, 2vw, 1.5rem), env(safe-area-inset-right));
-        padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+        padding-top: max(clamp(0.8rem, 3vh, 2rem), env(safe-area-inset-top));
+        padding-left:  max(clamp(0.8rem, 3vw, 2rem), env(safe-area-inset-left));
+        padding-right: max(clamp(0.8rem, 3vw, 2rem), env(safe-area-inset-right));
+        padding-bottom: max(0.8rem, env(safe-area-inset-bottom));
     }
-    /* Title — cap lower so it doesn't dominate the shorter viewport. */
-    .titleFrame {
-        font-size: clamp(1.6rem, 4.5vh, 2.5rem);
+    /* Menu title — cap lower so it doesn't dominate the shorter
+       viewport, but stay readable. #menu .titleFrame instead of bare
+       .titleFrame so the dramatic intro title (.introTitleFrame, in
+       #introOverlay) keeps its own larger sizing. */
+    #menu .titleFrame {
+        font-size: clamp(2.2rem, 5.5vh, 3.2rem);
     }
-    /* Mode picker chip + subtitle — tighter vertical rhythm. */
+    /* Mode picker chip + subtitle — slightly tighter vertical rhythm. */
     #menu .menuSubtitle {
-        font-size: clamp(0.8rem, 1.5vw, 0.95rem);
-        margin: max(0.3vh, 3px) 0 max(0.5vh, 5px);
+        font-size: clamp(0.9rem, 1.7vw, 1.05rem);
+        margin: max(0.5vh, 5px) 0 max(0.8vh, 8px);
     }
     .menuSection {
-        padding: 0.4rem 0.8rem;
-        gap: 0.3rem;
+        padding: 0.6rem 1rem;
+        gap: 0.45rem;
     }
     .menuSection h2 {
-        font-size: clamp(0.8rem, 1.8vh, 0.95rem);
-        margin-bottom: 0;
+        font-size: clamp(0.95rem, 2.1vh, 1.15rem);
+        margin-bottom: 0.1rem;
     }
-    .menuModeRow { gap: 0.35rem; }
+    .menuModeRow { gap: 0.45rem; }
     .menuModeBtn {
-        padding: 0.3rem 0.4rem;
-        font-size: clamp(0.75rem, 1.5vh, 0.9rem);
-        gap: 0.2rem;
-        min-width: 4.5rem;
+        padding: 0.45rem 0.55rem;
+        font-size: clamp(0.85rem, 1.7vh, 1rem);
+        gap: 0.3rem;
+        min-width: 5.5rem;
     }
     /* Thumbnails: switch to vh-based sizing so they shrink with
-       viewport height (the actual constraint here). On a 768px-tall
-       iPad, 8.5vh ≈ 4.2rem; on a 820px iPad Pro, ≈ 4.5rem. Cap kept
-       low so the cards fit even after status-bar + safe-area eat
-       into the usable height on PWA fullscreen iPads. */
+       viewport height. On a 768px-tall iPad, 11vh ≈ 5.3rem; on a
+       820px iPad Pro, ≈ 5.7rem. Cap at 7rem so larger iPads in this
+       band still get reasonable cards (vs the desktop default 9rem). */
     .menuModeBtn .modeThumb {
-        width: clamp(2.8rem, 8.5vh, 5rem);
-        height: clamp(2.8rem, 8.5vh, 5rem);
+        width: clamp(4rem, 11vh, 7rem);
+        height: clamp(4rem, 11vh, 7rem);
     }
     /* PotD slot badges: scale down with the smaller thumbnail. */
     .menuModeBtn.potd-solved::after,
     .menuModeBtn.potd-started:not(.potd-solved)::after {
-        width: 1rem;
-        height: 1rem;
-        font-size: 0.75rem;
-        top: 0.2rem;
-        right: 0.25rem;
+        width: 1.15rem;
+        height: 1.15rem;
+        font-size: 0.85rem;
+        top: 0.25rem;
+        right: 0.3rem;
     }
     #menuLeaderboardBtn {
-        margin-top: 0.2rem;
-        padding: 0.35rem 1.2rem;
-        font-size: clamp(0.75rem, 1.6vh, 0.9rem);
+        margin-top: 0.3rem;
+        padding: 0.45rem 1.4rem;
+        font-size: clamp(0.85rem, 1.8vh, 1.05rem);
     }
 }
 
