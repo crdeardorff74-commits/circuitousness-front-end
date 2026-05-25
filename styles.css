@@ -647,15 +647,69 @@ html.mode-debug #introOverlay { display: none !important; }
    compact-phone breakpoint that lives in its own block below). The
    menu's content (title + mode picker + subtitle + 2 sections × 4
    mode cards + leaderboard button) is taller than 768px on these
-   devices, and #menu's justify-content: center pushed the title off
-   the top of the screen AND the LEADERBOARDS button off the bottom
-   on iPad Safari — the top-clipped area isn't reachable via scroll
-   because of the centering. Anchor to flex-start instead so overflow
-   only goes downward, where the existing overflow:auto + momentum
-   scroll lets the player reach the LEADERBOARDS button. */
+   devices. Two adjustments together get everything visible:
+     1. Anchor #menu to flex-start so overflow only goes downward
+        (centered overflow would clip the top, which isn't
+        scroll-reachable on iOS).
+     2. Shrink the mode cards + section chrome so the whole stack
+        fits in the iPad's ~720-800px usable height — without this,
+        the LEADERBOARDS button still gets pushed off the bottom
+        even after the title is unclipped.
+   Values are tighter than desktop but less aggressive than the
+   compact-phone block at max-height:500px — a middle tier sized
+   for the 768-820px iPad band. */
 @media (max-height: 900px) and (min-height: 501px) {
     #menu {
         justify-content: flex-start;
+        gap: 0.4rem;
+        padding-top: clamp(1rem, 3vh, 2rem);
+    }
+    /* Title — cap lower so it doesn't dominate the shorter viewport. */
+    .titleFrame {
+        font-size: clamp(1.8rem, 5.5vh, 3rem);
+    }
+    /* Mode picker chip + subtitle — tighter vertical rhythm. */
+    #menu .menuSubtitle {
+        font-size: clamp(0.85rem, 1.7vw, 1rem);
+        margin: max(0.6vh, 6px) 0 max(0.8vh, 8px);
+    }
+    .menuSection {
+        padding: 0.6rem 0.9rem;
+        gap: 0.4rem;
+    }
+    .menuSection h2 {
+        font-size: clamp(0.85rem, 2vh, 1.05rem);
+        margin-bottom: 0.1rem;
+    }
+    .menuModeRow { gap: 0.4rem; }
+    .menuModeBtn {
+        padding: 0.4rem 0.5rem;
+        font-size: clamp(0.8rem, 1.6vh, 0.95rem);
+        gap: 0.25rem;
+        min-width: 5rem;
+    }
+    /* Thumbnails: switch to vh-based sizing so they shrink with
+       viewport height (the actual constraint here). On a 768px-tall
+       iPad, 11vh ≈ 5.3rem; on a 820px iPad Pro, ≈ 5.7rem. Cap at
+       6.5rem so larger landscape laptops in this band don't get
+       the desktop's 9rem cards. */
+    .menuModeBtn .modeThumb {
+        width: clamp(3.5rem, 11vh, 6.5rem);
+        height: clamp(3.5rem, 11vh, 6.5rem);
+    }
+    /* PotD slot badges: scale down with the smaller thumbnail. */
+    .menuModeBtn.potd-solved::after,
+    .menuModeBtn.potd-started:not(.potd-solved)::after {
+        width: 1.1rem;
+        height: 1.1rem;
+        font-size: 0.85rem;
+        top: 0.25rem;
+        right: 0.3rem;
+    }
+    #menuLeaderboardBtn {
+        margin-top: 0.3rem;
+        padding: 0.4rem 1.4rem;
+        font-size: clamp(0.8rem, 1.8vh, 1rem);
     }
 }
 /* Title frame — small viewfinder-style corner brackets. Tighter padding
