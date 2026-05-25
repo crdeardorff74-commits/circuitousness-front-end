@@ -641,6 +641,22 @@ html.mode-debug #introOverlay { display: none !important; }
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     overflow: auto;
+    -webkit-overflow-scrolling: touch;  /* momentum scroll on iOS */
+}
+/* iPad-class landscape viewports (≤900px tall, but above the 500px
+   compact-phone breakpoint that lives in its own block below). The
+   menu's content (title + mode picker + subtitle + 2 sections × 4
+   mode cards + leaderboard button) is taller than 768px on these
+   devices, and #menu's justify-content: center pushed the title off
+   the top of the screen AND the LEADERBOARDS button off the bottom
+   on iPad Safari — the top-clipped area isn't reachable via scroll
+   because of the centering. Anchor to flex-start instead so overflow
+   only goes downward, where the existing overflow:auto + momentum
+   scroll lets the player reach the LEADERBOARDS button. */
+@media (max-height: 900px) and (min-height: 501px) {
+    #menu {
+        justify-content: flex-start;
+    }
 }
 /* Title frame — small viewfinder-style corner brackets. Tighter padding
    pulls them in close to the text; slightly thicker borders give them more

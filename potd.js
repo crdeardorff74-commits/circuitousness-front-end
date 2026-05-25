@@ -1128,9 +1128,25 @@ const Potd = (() => {
         // pattern. Music.stop() lives in quitToMenu so PotD's solve→menu
         // transition silences playback cleanly. Phase switch makes next
         // pickNext draw from the intro/shuffle pool instead of menu_only.
+        //
+        // Stop+start when a menu song is still playing: setMenuPhase only
+        // flips a flag — it doesn't actively change the currently-playing
+        // song. On most browsers Music.start() falls through to
+        // advanceToNext (the audio element is .paused === false because
+        // music's been playing) and picks a fresh song from the new pool.
+        // But iPad Safari can leave the audio briefly paused by the time
+        // we get here (after several seconds of ensurePuzzleAvailable +
+        // postStart async work), which makes Music.start() take its
+        // resume branch and simply un-pause the SAME menu song — the
+        // player keeps hearing menu music throughout the puzzle. Forcing
+        // a stop+start when isMenuSongPlaying() reports true clears the
+        // audio src so the next start() advances to a game-pool song.
+        // Mirrors the inverse pattern used by quitToMenu (game→menu).
         if (typeof Music !== 'undefined') {
             if (Music.setMenuPhase) Music.setMenuPhase(false);
-            if (Music.start)        Music.start();
+            const stillMenu = Music.isMenuSongPlaying && Music.isMenuSongPlaying();
+            if (stillMenu && Music.stop) Music.stop();
+            if (Music.start) Music.start();
         }
         // Engagement tracking: one start per PotD slot. The slot string
         // (s1..s4, q1..q4) goes into the gameType column so the admin

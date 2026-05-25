@@ -520,9 +520,23 @@ const Marathon = (() => {
         // pool instead of the menu_only pool. start() is still called so
         // music kicks in if it wasn't already (e.g. player toggled music
         // on for the first time at game start, after declining at intro).
+        // Stop+start when a menu song is still playing: setMenuPhase only
+        // flips a flag — it doesn't actively change the currently-playing
+        // song. On most browsers Music.start() falls through to
+        // advanceToNext (audio.paused === false because music's been
+        // playing) and picks a fresh game-pool song. But iPad Safari can
+        // leave the audio briefly paused by the time we get here, which
+        // makes Music.start() take its resume branch and just un-pause
+        // the SAME menu song — the player keeps hearing menu music
+        // throughout the game. Forcing a stop+start when
+        // isMenuSongPlaying() reports true clears the audio src so the
+        // next start() advances. Mirrors the inverse pattern used by
+        // goToMenu (game→menu).
         if (typeof Music !== 'undefined') {
             if (Music.setMenuPhase) Music.setMenuPhase(false);
-            if (Music.start)        Music.start();
+            const stillMenu = Music.isMenuSongPlaying && Music.isMenuSongPlaying();
+            if (stillMenu && Music.stop) Music.stop();
+            if (Music.start) Music.start();
         }
         // Engagement tracking: one start per game (not per puzzle).
         if (typeof Tracking !== 'undefined' && Tracking.recordStart) Tracking.recordStart('marathon', type);
