@@ -685,9 +685,9 @@ html.mode-debug #introOverlay { display: none !important; }
    .is-safari is set in index.html's early Safari-detect script;
    non-WebKit browsers fall through to the base rules above. */
 html.is-safari .titleFrame .bracket-tl { left:  -0.08em; }
-html.is-safari .titleFrame .bracket-tr { right: -0.06em; }
+html.is-safari .titleFrame .bracket-tr { right: -0.10em; }
 html.is-safari .titleFrame .bracket-bl { left:  -0.08em; }
-html.is-safari .titleFrame .bracket-br { right: -0.06em; }
+html.is-safari .titleFrame .bracket-br { right: -0.10em; }
 /* Matching Safari-only adjustment to the leading C — its inline
    style sets left: 0.12em (shifts C right toward I). On WebKit
    that puts C atop the I; the rule below wins because the inline
@@ -703,6 +703,20 @@ html.is-safari .titleFrame .bracket-br { right: -0.06em; }
 html.is-safari #menuTitle .titleInitial,
 html.is-safari #introTitle .titleInitial {
     transform: scaleX(0.78) translateX(-0.20em);
+}
+/* Matching Safari-only rightward shift for the trailing USNESS span.
+   Same trick as the C above: inline `left: -0.12em` (shifts USNESS
+   left toward the maze-O) can't be overridden by CSS without
+   !important, so we compose a translateX into the existing scaleX
+   transform instead. The +0.04em visual shift opens the gap between
+   the maze-O's right edge and the U so the U stops overlapping
+   the O tile on WebKit's tighter font rendering.
+   Selector `.titleMazeO + .titleWord` targets ONLY the USNESS span —
+   the IRCUIT span is a .titleWord too but appears BEFORE .titleMazeO
+   in the DOM, so the adjacent-sibling combinator filters it out. */
+html.is-safari #menuTitle .titleMazeO + .titleWord,
+html.is-safari #introTitle .titleMazeO + .titleWord {
+    transform: scaleX(0.78) translateX(0.04em);
 }
 /* The intro screen's title gets a modest size bump over the menu's
    title — same shape and proportions (every em-based child scales with
