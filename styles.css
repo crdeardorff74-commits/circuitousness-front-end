@@ -684,10 +684,10 @@ html.mode-debug #introOverlay { display: none !important; }
        box, which the 0.06em padding accommodates).
    .is-safari is set in index.html's early Safari-detect script;
    non-WebKit browsers fall through to the base rules above. */
-html.is-safari .titleFrame .bracket-tl { left:  -0.04em; }
-html.is-safari .titleFrame .bracket-tr { right: -0.02em; }
-html.is-safari .titleFrame .bracket-bl { left:  -0.04em; }
-html.is-safari .titleFrame .bracket-br { right: -0.02em; }
+html.is-safari .titleFrame .bracket-tl { left:  -0.06em; }
+html.is-safari .titleFrame .bracket-tr { right: -0.04em; }
+html.is-safari .titleFrame .bracket-bl { left:  -0.06em; }
+html.is-safari .titleFrame .bracket-br { right: -0.04em; }
 /* Matching Safari-only adjustment to the leading C — its inline
    style sets left: 0.12em (shifts C right toward I). On WebKit
    that puts C atop the I; the rule below wins because the inline
@@ -702,7 +702,7 @@ html.is-safari .titleFrame .bracket-br { right: -0.02em; }
    still shows overlap. */
 html.is-safari #menuTitle .titleInitial,
 html.is-safari #introTitle .titleInitial {
-    transform: scaleX(0.78) translateX(-0.16em);
+    transform: scaleX(0.78) translateX(-0.18em);
 }
 /* The intro screen's title gets a modest size bump over the menu's
    title — same shape and proportions (every em-based child scales with
