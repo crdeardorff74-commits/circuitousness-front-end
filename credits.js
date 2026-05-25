@@ -13,10 +13,19 @@
 // scrolling credits show through behind it.
 
 const Credits = (function () {
-    // Pixels-per-frame scroll speed. Matches TANTЯO's 0.5px/frame so the
-    // visual cadence feels familiar — slow enough to read, fast enough to
-    // get through the credits in a reasonable time on most viewports.
-    const SCROLL_SPEED = 0.5;
+    // Pixels-per-second scroll speed. Time-based (not frame-based) so the
+    // scroll runs at the same wall-clock pace regardless of the device's
+    // actual frame rate. Originally was 0.5px/frame which at 60fps is
+    // exactly 30px/sec; on iPad Safari (especially in PWA fullscreen)
+    // requestAnimationFrame can be throttled well below 60fps under
+    // thermal pressure, low-power mode, or just heavier-than-expected
+    // animation load — at ~15fps the scroll dropped to roughly 1/4 the
+    // expected speed. Time-based motion (`scrollY -= SPEED * deltaMs /
+    // 1000`) is frame-rate independent: each frame moves the scroll by
+    // whatever the elapsed wall-clock time should account for, so a
+    // 30fps device and a 120fps device finish the credits at the same
+    // moment, just with different visual smoothness.
+    const SCROLL_SPEED_PX_PER_SEC = 30;
     // Cursor auto-hide delay after the last mousemove inside the overlay.
     // Lifted from TANTЯO so the pointer doesn't sit on screen distracting
     // from the scroll.
@@ -36,6 +45,13 @@ const Credits = (function () {
     let scrollY            = 0;
     let contentHeight      = 0;
     let paused             = false;
+    // Timestamp of the previous rAF tick. 0 means "no prior frame this
+    // run" — first tick of each start() just records the timestamp and
+    // returns without moving anything. Reset on start() so a fresh
+    // credits run doesn't compute a giant delta from a long-stale value.
+    // Also updated unconditionally inside animate() (even when paused)
+    // so resuming from a pause doesn't catch up via accumulated delta.
+    let lastFrameTime      = 0;
     let musicTimeoutId     = null;
     let clickHandler       = null;
     let mouseMoveHandler   = null;
@@ -57,6 +73,12 @@ const Credits = (function () {
 
         active = true;
         startedAt = Date.now();
+        // Reset the per-frame delta baseline; the next animate() tick
+        // will record `now` and start computing deltas from there.
+        // Without this, a credits run that started, stopped, then
+        // started again hours later would compute a multi-hour delta
+        // on the first frame and instantly scroll off-screen.
+        lastFrameTime = 0;
         document.body.classList.add('credits-rolling');
 
         // Title text comes from PROJECT_NAME so the credits header tracks
@@ -122,9 +144,25 @@ const Credits = (function () {
         }, MUSIC_DELAY_MS);
     }
 
-    function animate() {
+    function animate(now) {
+        // First frame: just stash the timestamp and schedule next — no
+        // movement yet (no prior frame to delta against). This also
+        // covers the case where some browsers can call rAF without an
+        // argument; `now` would be undefined and we'd reset on the
+        // following frame.
+        if (lastFrameTime === 0 || typeof now !== 'number') {
+            if (typeof now === 'number') lastFrameTime = now;
+            if (scrollY + contentHeight > 0) {
+                animationId = requestAnimationFrame(animate);
+            } else {
+                animationId = null;
+            }
+            return;
+        }
+        const deltaMs = now - lastFrameTime;
+        lastFrameTime = now;
         if (!paused) {
-            scrollY -= SCROLL_SPEED;
+            scrollY -= SCROLL_SPEED_PX_PER_SEC * (deltaMs / 1000);
             const { scroll } = getElements();
             if (scroll) scroll.style.top = scrollY + 'px';
         }
