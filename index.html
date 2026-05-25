@@ -69,7 +69,7 @@
                 <span class="bracket bracket-bl"></span>
                 <span class="bracket bracket-br"></span>
                 <h1 id="introTitle">
-                    <span class="titleInitial" style="position: relative; left: 0.12em;">C</span><span class="titleWord" style="position: relative; left: 0.12em; z-index: 99;">IRCUIT</span><span class="titleMazeO" style="position: relative; top: 0.04em;" aria-label="O"><canvas id="introTitleOCanvas" width="160" height="160"></canvas></span><span class="titleWord" style="position: relative; left: -0.12em; z-index: 99;">USNESS</span>
+                    <span class="titleInitial" style="position: relative; left: 0.04em;">C</span><span class="titleWord" style="position: relative; left: 0.12em; z-index: 99;">IRCUIT</span><span class="titleMazeO" style="position: relative; top: 0.04em;" aria-label="O"><canvas id="introTitleOCanvas" width="160" height="160"></canvas></span><span class="titleWord" style="position: relative; left: -0.12em; z-index: 99;">USNESS</span>
                 </h1>
             </div>
 
@@ -85,7 +85,7 @@
                 <p class="introBody" id="introBody">&nbsp;</p>
             </div>
 
-            <!-- Toggles row — music + full-screen. Hidden on phones
+            <!-- Toggles row — music + SFX + full-screen. Hidden on phones
                  via intro.js (the OS / "Add to Home Screen" install
                  path takes over the fullscreen story there; the
                  fullscreenHint below replaces this row on phones). -->
@@ -95,19 +95,27 @@
                     <span data-i18n="intro.music">Music</span>
                 </label>
                 <label class="introToggle">
+                    <input type="checkbox" id="introSfxCheckbox" checked>
+                    <span data-i18n="intro.sfx">SFX</span>
+                </label>
+                <label class="introToggle">
                     <input type="checkbox" id="introFullscreenCheckbox">
                     <span data-i18n="intro.fullscreen">Full Screen</span>
                 </label>
             </div>
 
+            <button id="introAgreeBtn" type="button" data-i18n="intro.agree">I agree to solve responsibly</button>
+
             <!-- "Add to Home Screen" hint — populated + un-hidden by
                  intro.js for touch users who aren't already in standalone
                  / fullscreen mode. OS-specific copy (iOS vs Android vs
-                 generic) is selected at runtime from i18n keys. Inline
-                 styled to match TANTЯO's exact appearance. -->
+                 generic) is selected at runtime from i18n keys. Positioned
+                 BELOW the agree button so the call-to-action stays the
+                 visual anchor of the intro screen; the hint reads as
+                 supplemental advice for next time rather than a step the
+                 player has to take before continuing. Inline styled to
+                 match TANTЯO's exact appearance. -->
             <div id="fullscreenHint" style="display: none; margin-top: max(1.5vh, 12px); padding: 8px 12px; background: rgba(255, 215, 0, 0.15); border: 1px solid rgba(255, 215, 0, 0.3); border-radius: 6px; font-size: 12px; color: #FFD700; text-align: center; line-height: 1.4;"></div>
-
-            <button id="introAgreeBtn" type="button" data-i18n="intro.agree">I agree to solve responsibly</button>
         </div>
 
         <canvas id="maze"></canvas>
@@ -160,7 +168,7 @@
                 <span class="bracket bracket-bl"></span>
                 <span class="bracket bracket-br"></span>
                 <h1 id="menuTitle">
-					<span class="titleInitial" style="position: relative; left: 0.12em;">C</span><span class="titleWord" style="position: relative; left: 0.12em; z-index: 99;">IRCUIT</span><span class="titleMazeO" style="position: relative; top: 0.04em;" aria-label="O"><canvas id="titleOCanvas" width="160" height="160"></canvas></span><span class="titleWord" style="position: relative; left: -0.12em; z-index: 99;">USNESS</span>
+					<span class="titleInitial" style="position: relative; left: 0.04em;">C</span><span class="titleWord" style="position: relative; left: 0.12em; z-index: 99;">IRCUIT</span><span class="titleMazeO" style="position: relative; top: 0.04em;" aria-label="O"><canvas id="titleOCanvas" width="160" height="160"></canvas></span><span class="titleWord" style="position: relative; left: -0.12em; z-index: 99;">USNESS</span>
                 </h1>
             </div>
             <!-- Mode picker (chip + modal, lifted from TANTЯO's

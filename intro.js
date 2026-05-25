@@ -270,6 +270,20 @@ const Intro = (() => {
             });
         }
 
+        // ---- SFX toggle ----
+        // Same shape as the music toggle. Settings.setSfxMuted flips the
+        // persisted flag AND tells the Sfx module live, so any cue that
+        // fires immediately after the player toggles this is honored
+        // without waiting for a reload. Settings.isSfxMuted is the
+        // canonical "is the player muting SFX right now" predicate.
+        const sfxBox = document.getElementById('introSfxCheckbox');
+        if (sfxBox && typeof Settings !== 'undefined' && Settings.isSfxMuted) {
+            sfxBox.checked = !Settings.isSfxMuted();
+            sfxBox.addEventListener('change', () => {
+                if (Settings.setSfxMuted) Settings.setSfxMuted(!sfxBox.checked);
+            });
+        }
+
         // ---- Fullscreen toggle ----
         // Initial state mirrors the document's actual fullscreen status
         // (might be true if the player F11'd before the intro painted).

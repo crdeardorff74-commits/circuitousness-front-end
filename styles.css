@@ -661,18 +661,20 @@ html.mode-debug #introOverlay { display: none !important; }
     border-width: 0;
     pointer-events: none;
 }
-/* Horizontal inset matches the inline `left: 0.12em` / `left: -0.12em`
-   shifts on the C / IRCUIT / USNESS spans in index.html that pull the
-   letters in toward the maze-O. position: relative doesn't change layout
-   width, so without this inset the brackets would sit at the original
-   wide edges and look stranded outside the text. Right side uses a
-   smaller inset (0.08em) — visually the trailing S in USNESS doesn't
-   reach as close to its bracket as the leading C reaches to its,
-   so a symmetric 0.12em looked too tight on the right. */
-.titleFrame .bracket-tl { top: 0; left:  0.12em; border-top-width: 0.095em; border-left-width:  0.095em; }
-.titleFrame .bracket-tr { top: 0; right: 0.08em; border-top-width: 0.095em; border-right-width: 0.095em; }
-.titleFrame .bracket-bl { bottom: 0; left:  0.12em; border-bottom-width: 0.095em; border-left-width:  0.095em; }
-.titleFrame .bracket-br { bottom: 0; right: 0.08em; border-bottom-width: 0.095em; border-right-width: 0.095em; }
+/* Horizontal insets keep the brackets visually close to the title's
+   actual rendered edges. They had to be tuned against iPad Safari's
+   condensed-font rendering specifically — that engine kerns the C+I
+   join tighter than desktop browsers do, so the left side (C +
+   left brackets) sits a bit further left than the right (USNESS +
+   right brackets) to avoid the C overlapping the I. Right side's
+   smaller inset also reflects that the trailing S in USNESS doesn't
+   reach as close to its bracket as the leading C does to its. Both
+   sides are kept in sync with the matching inline `left:` shift on
+   the C span in index.html. */
+.titleFrame .bracket-tl { top: 0; left:  0.04em; border-top-width: 0.095em; border-left-width:  0.095em; }
+.titleFrame .bracket-tr { top: 0; right: 0.02em; border-top-width: 0.095em; border-right-width: 0.095em; }
+.titleFrame .bracket-bl { bottom: 0; left:  0.04em; border-bottom-width: 0.095em; border-left-width:  0.095em; }
+.titleFrame .bracket-br { bottom: 0; right: 0.02em; border-bottom-width: 0.095em; border-right-width: 0.095em; }
 /* The intro screen's title gets a modest size bump over the menu's
    title — same shape and proportions (every em-based child scales with
    it), just rendered ~15% larger so it carries more presence on the
