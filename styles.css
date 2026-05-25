@@ -18,24 +18,32 @@ html, body {
     overflow: hidden;
 }
 
-body {
-    width: 100vw;
-    height: 100vh;
-    height: 100dvh;
+/* Background-image lives on the HTML element, NOT body — the browser
+   guarantees <html> always fills the entire viewport (it's the
+   "initial containing block"), while body's height can fall short of
+   the visible area on iOS Safari and PWA fullscreen mode due to
+   well-known quirks with 100dvh / safe-area-inset interaction.
+   Painting the bg on body left a dark-blue strip along the bottom
+   on iPad where body's box didn't reach the bottom of the screen.
+   With the bg on html, the image (set at runtime by render.js's
+   applyBodyBackground via documentElement.style.backgroundImage)
+   covers the whole viewport every time, and body stays transparent
+   so its potentially-shorter box doesn't paint over anything. */
+html {
     background-color: #0a0a2e;
     background-position: center center;
     background-size: cover;
     background-repeat: no-repeat;
-    /* background-attachment: fixed pins the bg-image sizing to the visual
-       viewport instead of the body's box, which on iOS Safari (and PWA
-       fullscreen) avoids the "image is sized to initial layout viewport,
-       leaves a strip of body bg-color showing at the bottom when the URL
-       bar collapses or safe-area-inset-bottom takes effect" bug. The
-       user spotted this as a dark-blue stripe along the bottom — that
-       blue is body's #0a0a2e showing through where the image hadn't
-       stretched. With `fixed`, the bg always fills the entire visual
-       viewport regardless of element height or URL-bar state. */
-    background-attachment: fixed;
+}
+
+body {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    /* No bg-color or bg-image — html owns the background painting
+       (see note above). Setting any color here would paint over html's
+       image inside body's box and reintroduce the iOS dark-blue strip
+       issue if body's height fell short of html. */
     color: #fff;
     font-family: 'Helvetica Neue', Arial, sans-serif;
     display: flex;

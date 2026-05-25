@@ -313,33 +313,41 @@ const Render = (() => {
         lastBgIdx = idx;
         return BACKGROUND_IMAGE_URL_BASE + 'level' + idx + '.jpg';
     }
+    // IMPORTANT: bg image is painted on documentElement (<html>), NOT body.
+    // body's box can fall short of the visible viewport on iOS Safari
+    // (and PWA fullscreen with safe-area-inset / 100dvh quirks),
+    // leaving a dark-blue strip along the bottom; html always fills
+    // the initial containing block. See the matching CSS rule in
+    // styles.css's html { background-color/size/position/repeat } for
+    // the rest of the painting setup. Function name kept as
+    // applyBodyBackground for backwards-compat with existing callers.
     function applyBodyBackground() {
         const url = nextBgUrl();
         if (!url) return;
         currentBgUrl = url;
-        if (bgEnabled) document.body.style.backgroundImage = `url("${url}")`;
+        if (bgEnabled) document.documentElement.style.backgroundImage = `url("${url}")`;
         // (if !bgEnabled the bag still advances but the DOM stays empty
         // until setBackgroundEnabled(true) re-applies currentBgUrl)
     }
     // Public alias — Marathon.onPuzzleReady calls this on every puzzle start
     // so the visible bg rotates with the player's progression.
     function shuffleBackground() { applyBodyBackground(); }
-    // Settings toggle. When off, body falls back to pure black instead of
+    // Settings toggle. When off, html falls back to pure black instead of
     // the CSS default dark navy — matches the "just be black" expectation.
     // Re-applies the CURRENT bag URL (rather than advancing) on enable, so
     // toggling on/off mid-game doesn't waste images from the rotation.
     function setBackgroundEnabled(b) {
         bgEnabled = !!b;
         if (bgEnabled) {
-            document.body.style.backgroundColor = '';   // revert to CSS #0a0a2e
+            document.documentElement.style.backgroundColor = '';   // revert to CSS #0a0a2e
             if (currentBgUrl) {
-                document.body.style.backgroundImage = `url("${currentBgUrl}")`;
+                document.documentElement.style.backgroundImage = `url("${currentBgUrl}")`;
             } else {
                 applyBodyBackground();  // first time enabling: pick from bag
             }
         } else {
-            document.body.style.backgroundImage = '';
-            document.body.style.backgroundColor = '#000';
+            document.documentElement.style.backgroundImage = '';
+            document.documentElement.style.backgroundColor = '#000';
         }
     }
 
