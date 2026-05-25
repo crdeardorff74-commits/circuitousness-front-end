@@ -30,7 +30,15 @@ html, body {
    covers the whole viewport every time, and body stays transparent
    so its potentially-shorter box doesn't paint over anything. */
 html {
-    background-color: #0a0a2e;
+    /* #000 black (matches TANTЯO's pattern). Originally #0a0a2e dark navy,
+       but in PWA fullscreen mode on iPad, iOS tints the home-indicator
+       strip at the bottom with the page's theme-color (the <meta> tag,
+       not the manifest's value), and any exposed html bg color paints
+       through there too — at #0a0a2e the result was a visible dark-blue
+       bar along the bottom that disappeared in regular Safari. TANTЯO
+       uses #000 for both the meta theme-color AND body background; the
+       strip becomes invisible against the typically-dark page content. */
+    background-color: #000;
     background-position: center center;
     background-size: cover;
     background-repeat: no-repeat;
