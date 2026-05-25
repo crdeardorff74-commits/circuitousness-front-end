@@ -78,6 +78,13 @@ const Potd = (() => {
     let currentSlot  = null;
     let sessionToken = null;
     let eligible     = true;
+    // Per-attempt hint counter — primary tiebreaker in the PotD
+    // leaderboard sort (ahead of time_ms). Reset on each startPuzzle()
+    // and incremented in noteHintUsed(). Sent in /api/potd/submit so
+    // the server can record + sort by it. Hint use no longer flips
+    // `eligible` (older policy was "hint = disqualified"); the run
+    // still posts to the leaderboard, just at a worse rank.
+    let hintsUsed    = 0;
     let puzzleStartMs = 0;
     let displayInterval = null;
 
@@ -1121,6 +1128,10 @@ const Potd = (() => {
         }
         currentSlot = slot;
         puzzleStartMs = Date.now();
+        // Reset the per-attempt hint counter — incremented by
+        // noteHintUsed() during play, sent in the submit payload as
+        // the leaderboard's primary tiebreaker.
+        hintsUsed = 0;
         startTimerDisplay();
 
         // Music kicks in once the puzzle is actually loaded and about to be
@@ -1299,6 +1310,11 @@ const Potd = (() => {
             result = await postSubmit({
                 sessionToken,
                 timeMs,
+                // Primary leaderboard tiebreaker — server sorts by
+                // hints_used ASC, time_ms ASC. 0 covers the common
+                // hint-free case; older clients that don't send this
+                // field at all also fall through to 0 server-side.
+                hintsUsed,
                 events: recording ? recording.moves : null,
                 // Songs that played during this puzzle, replayed by
                 // Music.startScriptedPlayback during /potd/scores/<id>/recording
@@ -1374,12 +1390,13 @@ const Potd = (() => {
     }
 
     function noteHintUsed() {
-        // Hint used during PotD play → run is no longer eligible. The
-        // server's session token is still "eligible" from /start's
-        // perspective (it doesn't know about hints), but the front-end
-        // suppresses the /submit call entirely when eligible=false, so
-        // the score doesn't reach the leaderboard.
-        eligible = false;
+        // Hint used during PotD play → bump the hint counter. The run
+        // STAYS eligible (policy change: hints used to disqualify, now
+        // they just affect rank). hintsUsed is sent in the submit payload
+        // and used as the primary leaderboard tiebreaker (fewer hints
+        // wins ahead of faster time). Sanity-capped server-side, but
+        // no need to clamp here.
+        hintsUsed += 1;
     }
 
     function isEligible() {

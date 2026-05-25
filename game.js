@@ -1393,16 +1393,19 @@
             // player's already won, hint would just lock a tile on a
             // puzzle they're about to leave behind. Treat it as a no-op.
             if (typeof Marathon !== 'undefined' && Marathon.isInTransition()) return;
-            // PotD: hint use forfeits leaderboard eligibility. Prompt the
-            // player first IF the run is still eligible. If they're
-            // already ineligible (e.g. retrying a spent slot), skip the
-            // prompt and just give them the hint.
+            // PotD: hint use bumps the hintsUsed counter sent in the
+            // submit payload — the server's PotD leaderboard uses
+            // hints_used as the primary tiebreaker ahead of time_ms,
+            // so a hint-using run still posts but ranks below
+            // hint-free runs of any time. (Older policy was "hint =
+            // disqualified", with a confirmation modal here. That
+            // prompt is gone now — matches Marathon's no-prompt
+            // behavior, and the tooltip educates the player about
+            // the ranking cost.) On ineligible retries (spent slot)
+            // Potd.noteHintUsed still ticks the counter, harmless
+            // since no submit will fire for those runs anyway.
             if (typeof Potd !== 'undefined' && Potd.isPlaying && Potd.isPlaying()) {
-                if (Potd.isEligible && Potd.isEligible()) {
-                    const ok = await Potd.confirmHintUse();
-                    if (!ok) return;
-                    Potd.noteHintUsed();
-                }
+                if (Potd.noteHintUsed) Potd.noteHintUsed();
             }
             const pick = Maze.hint();
             if (pick) {
