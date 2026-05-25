@@ -1427,13 +1427,23 @@ const Marathon = (() => {
             // single-puzzle solve — `timeMs` is the only metric, no
             // count column.
             if (mode === 'potd') {
-                // Padding spans for the columns marathon uses but PotD
-                // doesn't (solved + hints). Without them PotD entries
-                // collapse leftward in the shared 6-column grid and the
-                // time/watch slots end up under marathon's solved/hints
-                // headers, which makes the tab switch jarring.
+                // Padding span for the `solved` column — PotD is a
+                // single puzzle, no count to show. (Without the span,
+                // PotD entries collapse leftward in the shared 6-column
+                // grid.) The hints column DOES show on PotD now —
+                // hints_used is the primary leaderboard tiebreaker on
+                // the server-side PotD sort (ahead of time_ms), so the
+                // player needs to see it. Older PotD entries from
+                // before the column existed have no hintsUsed; treat
+                // undefined as 0 (matches the server's column DEFAULT
+                // for legacy rows). Same i18n key + pluralization
+                // pattern as the marathon branch below.
                 li.appendChild(document.createElement('span'));
-                li.appendChild(document.createElement('span'));
+                const hintN = (typeof entry.hintsUsed === 'number') ? entry.hintsUsed : 0;
+                const hints = document.createElement('span');
+                hints.className   = 'lbHints';
+                hints.textContent = I18n.t('marathon.lbHints', { n: hintN, s: hintN === 1 ? '' : 's' });
+                li.appendChild(hints);
                 const time = document.createElement('span');
                 time.className   = 'lbTime';
                 time.textContent = fmtTimePrecise(entry.timeMs);
