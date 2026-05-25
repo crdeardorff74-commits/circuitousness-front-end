@@ -648,22 +648,23 @@ html.mode-debug #introOverlay { display: none !important; }
     overflow: auto;
     -webkit-overflow-scrolling: touch;  /* momentum scroll on iOS */
 }
-/* iPad-class landscape viewports (≤900px tall, but above the 500px
-   compact-phone breakpoint that lives in its own block below). The
-   menu's content (title + mode picker + subtitle + 2 sections × 4
-   mode cards + leaderboard button) is taller than 768px on these
-   devices. Two adjustments together get everything visible:
+/* Tablet-class touch devices (≤1080px tall, above the 500px compact-phone
+   breakpoint that lives in its own block below). Scoped to (pointer: coarse)
+   so desktop laptops in this height range — 1366×768, 1440×900 — don't
+   pick up the aggressive shrinking; they stay on the desktop defaults
+   where mouse precision makes larger cards fine. The 1080 ceiling
+   catches iPad Pro 12.9" (1024px tall landscape) along with smaller
+   iPads (768-820px). Two adjustments together get everything visible:
      1. Anchor #menu to flex-start so overflow only goes downward
         (centered overflow would clip the top, which isn't
         scroll-reachable on iOS).
      2. Shrink the mode cards + section chrome so the whole stack
-        fits in the iPad's ~720-800px usable height — without this,
-        the LEADERBOARDS button still gets pushed off the bottom
-        even after the title is unclipped.
+        fits in the tablet's usable height — without this, the
+        LEADERBOARDS button gets pushed off the bottom even after
+        the title is unclipped.
    Values are tighter than desktop but less aggressive than the
-   compact-phone block at max-height:500px — a middle tier sized
-   for the 768-820px iPad band. */
-@media (max-height: 900px) and (min-height: 501px) {
+   compact-phone block at max-height:500px. */
+@media (max-height: 1080px) and (min-height: 501px) and (pointer: coarse) {
     #menu {
         justify-content: flex-start;
         gap: 0.3rem;
@@ -1404,7 +1405,15 @@ html.mode-debug #settingsOverlay { display: none !important; }
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
+    /* flex-end pushes the only in-flow items (settings + quit) to the
+       right edge. Previously this was space-between, which relied on
+       #hudType's margin-right:auto to push the right-side buttons right
+       — but hudType is now display:none (see its rule further down),
+       so space-between would put settings at the left edge. flex-end
+       is the simpler replacement. The absolute-positioned items
+       (hudLevel, hudTimer, hudHintBtn) are unaffected since they're
+       out of the flex flow. */
+    justify-content: flex-end;
     gap: 0.8rem;
     /* env(safe-area-inset-*) handles iOS PWA fullscreen + viewport-fit=cover:
        on iPad in PWA fullscreen the status bar / dynamic-island region
@@ -1532,7 +1541,17 @@ html.mode-debug #settingsOverlay { display: none !important; }
    so these two pack tight together at the right edge with just the HUD's
    `gap` between them — keeps the settings button "just to the left of
    QUIT" regardless of viewport width. */
-#hudType { margin-right: auto; }
+/* hudType (the "Singular · 2 paths" mode label in the top-left of the
+   gameplay HUD) is intentionally hidden — the in-game timer + level
+   indicator already convey what the player is playing, and the label
+   is redundant noise that crowds the top bar. The element stays in
+   the DOM because marathon.js still writes to its textContent in
+   startGame; display:none just keeps it from rendering.
+   Removing it from the flex flow also kills its margin-right:auto
+   contribution, which is what used to push the right-side buttons
+   (settings + quit) to the right edge — see the flex-end override
+   on #hud above for the replacement mechanism. */
+#hudType { display: none; }
 #hudHintBtn,
 #hudQuitBtn {
     padding: 0.4rem 0.9rem;
