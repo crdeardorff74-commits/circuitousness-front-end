@@ -32,6 +32,29 @@
     })();
     </script>
 
+    <!-- Safari / WebKit detection. WebKit kerns the title's condensed
+         font (scaleX 0.78 on .titleWord / .titleInitial) tighter than
+         Blink/Gecko do, so the leading C overlaps the I in IRCUIT and
+         the corner brackets sit too close to the rendered letters.
+         Adding .is-safari to <html> lets styles.css apply WebKit-only
+         positioning offsets without affecting Chrome/Edge/Firefox on
+         desktop or Android. The regex catches:
+           - Desktop Safari (UA has Safari but no Chrome)
+           - iOS Safari (same shape)
+           - iOS Chrome/Firefox/Edge (CriOS/FxiOS/EdgiOS) — these also
+             use WebKit on iOS per Apple's policy, so they have the
+             same rendering quirk.
+         Run synchronously here (not later in JS) so the class is set
+         before first paint — no FOUC of mis-positioned brackets. -->
+    <script>
+    (function () {
+        var ua = navigator.userAgent;
+        if (/^((?!chrome|android).)*safari/i.test(ua) || /CriOS|FxiOS|EdgiOS/.test(ua)) {
+            document.documentElement.classList.add('is-safari');
+        }
+    })();
+    </script>
+
     <!-- Portrait orientation overlay (mobile only). Pure CSS-driven —
          visibility is governed by a media query in styles.css
          (@media (orientation: portrait) and (max-width: 1024px) and
@@ -69,7 +92,7 @@
                 <span class="bracket bracket-bl"></span>
                 <span class="bracket bracket-br"></span>
                 <h1 id="introTitle">
-                    <span class="titleInitial" style="position: relative; left: 0.04em;">C</span><span class="titleWord" style="position: relative; left: 0.12em; z-index: 99;">IRCUIT</span><span class="titleMazeO" style="position: relative; top: 0.04em;" aria-label="O"><canvas id="introTitleOCanvas" width="160" height="160"></canvas></span><span class="titleWord" style="position: relative; left: -0.12em; z-index: 99;">USNESS</span>
+                    <span class="titleInitial" style="position: relative; left: 0.12em;">C</span><span class="titleWord" style="position: relative; left: 0.12em; z-index: 99;">IRCUIT</span><span class="titleMazeO" style="position: relative; top: 0.04em;" aria-label="O"><canvas id="introTitleOCanvas" width="160" height="160"></canvas></span><span class="titleWord" style="position: relative; left: -0.12em; z-index: 99;">USNESS</span>
                 </h1>
             </div>
 
@@ -168,7 +191,7 @@
                 <span class="bracket bracket-bl"></span>
                 <span class="bracket bracket-br"></span>
                 <h1 id="menuTitle">
-					<span class="titleInitial" style="position: relative; left: 0.04em;">C</span><span class="titleWord" style="position: relative; left: 0.12em; z-index: 99;">IRCUIT</span><span class="titleMazeO" style="position: relative; top: 0.04em;" aria-label="O"><canvas id="titleOCanvas" width="160" height="160"></canvas></span><span class="titleWord" style="position: relative; left: -0.12em; z-index: 99;">USNESS</span>
+					<span class="titleInitial" style="position: relative; left: 0.12em;">C</span><span class="titleWord" style="position: relative; left: 0.12em; z-index: 99;">IRCUIT</span><span class="titleMazeO" style="position: relative; top: 0.04em;" aria-label="O"><canvas id="titleOCanvas" width="160" height="160"></canvas></span><span class="titleWord" style="position: relative; left: -0.12em; z-index: 99;">USNESS</span>
                 </h1>
             </div>
             <!-- Mode picker (chip + modal, lifted from TANTЯO's
