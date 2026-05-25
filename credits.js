@@ -119,8 +119,16 @@ const Credits = (function () {
 
         // Start the content fully off-screen below. We measure
         // contentHeight after one rAF so layout has actually rendered.
+        // Position is driven by `transform: translate3d` (GPU compositing
+        // + sub-pixel rendering for smooth motion) rather than `top:`,
+        // which on slower-refresh devices can render choppily because
+        // the per-frame delta is often a fractional pixel (0.5 at 60fps).
+        // top:0 + a translate3d Y offset keeps the layout box at the
+        // natural position; only the visual compositing layer is moved.
         scrollY = screenHeight;
-        scroll.style.top = scrollY + 'px';
+        scroll.style.top = '0';
+        scroll.style.transform = `translate3d(0, ${scrollY}px, 0)`;
+        scroll.style.willChange = 'transform';
 
         requestAnimationFrame(function () {
             const content = scroll.querySelector('.credits-content');
@@ -164,7 +172,11 @@ const Credits = (function () {
         if (!paused) {
             scrollY -= SCROLL_SPEED_PX_PER_SEC * (deltaMs / 1000);
             const { scroll } = getElements();
-            if (scroll) scroll.style.top = scrollY + 'px';
+            // translate3d (GPU compositor) rather than top: — sub-pixel
+            // movement renders smoothly. With top:, fractional-pixel
+            // increments would round per frame and stutter visibly,
+            // particularly on iOS Safari.
+            if (scroll) scroll.style.transform = `translate3d(0, ${scrollY}px, 0)`;
         }
         // Stop once the bottom of the content has fully passed the top of
         // the viewport. Overlay stays visible (player still has the score
@@ -194,12 +206,21 @@ const Credits = (function () {
             cursorHideTimer = null;
         }
 
-        const { overlay } = getElements();
+        const { overlay, scroll } = getElements();
         if (overlay) {
             overlay.style.display = 'none';
             overlay.style.cursor  = '';
             if (clickHandler)     overlay.removeEventListener('click',     clickHandler);
             if (mouseMoveHandler) overlay.removeEventListener('mousemove', mouseMoveHandler);
+        }
+        // Release the GPU-promoted layer hint so the credits-scroll
+        // element isn't permanently composited on its own layer when
+        // it's not animating. will-change: transform during start()
+        // tells the browser to prep a layer; clearing here tells it
+        // to fold back into the normal paint tree.
+        if (scroll) {
+            scroll.style.willChange = '';
+            scroll.style.transform  = '';
         }
         clickHandler     = null;
         mouseMoveHandler = null;

@@ -2,6 +2,22 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-05-25 — Open: dynamic theme-color for PWA bottom bar
+
+- iPad PWA fullscreen mode (launching from home-screen icon, NOT regular Safari) draws a strip at the bottom for the home-indicator gesture area, tinted with the meta `theme-color`. `viewport-fit=cover` doesn't extend the page render INTO that strip — it's iOS-reserved chrome. v0.22 set the meta `theme-color` to `#000` (matching TANTЯO's pattern) so the bar is black against dark UI; against colorful background images (level1-50.jpg) the black bar is still visible but less obtrusive than the prior dark-navy.
+- **Why TANTЯO doesn't show this**: TANTЯO's body is mostly black starfield; the same strip is there but invisible against its own background. Circuitousness's rotating colorful images make the bar always visible.
+- **Potential follow-up the user didn't reject**: after each `applyBodyBackground()` image load (render.js), sample the image's bottom edge in an offscreen canvas, average to a single color, then `document.querySelector('meta[name="theme-color"]').content = '#xxxxxx'`. Bar tracks each image's bottom color and effectively disappears into the image. Cost: ~ms canvas sample per image change. User said "if that's the best we can do" — they accepted static black for now but the dynamic option is a clean enhancement when convenient.
+
+## 2026-05-25 — Release v0.22
+
+- **iPad PWA fullscreen "blue bar at bottom" fix**: `<meta name="theme-color">` changed `#0a0a2e` → `#000000`, and `html { background-color }` from `#0a0a2e` → `#000`. Matches TANTЯO's exact pattern. iOS PWA fullscreen tints the home-indicator strip at the bottom using the HTML meta theme-color (NOT manifest's value), and the dark-navy default rendered as a visible dark-blue bar in PWA-launched mode (invisible in regular Safari). Manifest theme_color/background_color stay at `#0a0a2e` — those drive splash screen + Android Chrome UI which are fine with the dark navy. **Caveat**: existing PWA home-screen icons cache the manifest indefinitely; users may need to delete + re-add the icon to pick up future manifest changes, but this specific fix is via meta tag so it should propagate via the normal SW update.
+
+## 2026-05-25 — Release v0.21
+
+- **iPad / TANTЯO-parity mobile polish, replay SFX, debug-panel cleanup**: PWA manifest now `display: fullscreen` + `orientation: landscape`; portrait overlay (CSS-only media-query) shows on phones held in portrait; `?dev=true` PotD pre-gen and music transition fixes; `intro.sfx` checkbox added between Music + Full Screen, fullscreenHint moved below the agree button. Removed 11 warnings from warnings.txt + 14 i18n activity lists in sync.
+- **iPad Safari layout fixes**: title brackets + C + USNESS get WebKit-only transform/inset overrides via `.is-safari` class set by an early UA-detect script (Blink/Gecko keep desktop defaults). Tablet-class viewport block at `@media (max-height: 1080px) and (pointer: coarse)` moved BELOW the base menu styles — source-order tie-break was silently overriding the @media rules when it lived earlier in the file. `#hud` + `#nowPlaying` + `#menu` respect `env(safe-area-inset-*)` for PWA fullscreen + viewport-fit:cover. Background image now painted on `<html>` (was body) — body's box can fall short of the visible viewport on iOS, exposing the `#0a0a2e` bg-color as a dark-blue strip along the bottom.
+- **Other**: `#hudType` (the "Singular · 2 paths" gameplay label) hidden everywhere — user flagged it as redundant. Stage-2 audience-cheer on PotD Save removed (see prior entry). Replay now triggers derived SFX (path-completion applause, glitch overlap loop, hint, solve applause_long) when the watcher has SFX enabled; gating in `refresh()` removed; `playOneRecording` now calls `refresh()` per move and `resetSfxBaselines()` after `loadSnapshot`. Debug panel: removed "Animate Rotations" + "Complete circuits" checkboxes; added "Wipe Visit Stats" button → new `POST /api/admin/wipe-visits` endpoint (back-end deploy required separately).
+
 ## 2026-05-24 — Removed stage-2 audience cheer on PotD Save
 
 - **potd.js `onSolve`**: stage-2 `audience_cheer` / `audience_cheer_long` (rank-dependent SFX after submit) is GONE. Was producing a "brief blast" on Save click: cheer fired at full volume, then within ~1 frame `quitToLeaderboard` ran `Sfx.fadeOneShots()` + `Music.start()` (which calls `playSong` → another `fadeOneShots`), clipping the cheer's onset into a startling truncated sound.
