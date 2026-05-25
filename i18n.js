@@ -95,6 +95,11 @@ const I18n = (() => {
             'intro.music':             'Music',
             'intro.fullscreen':        'Full Screen',
             'intro.agree':             'I agree to solve responsibly',
+            'intro.fullscreenHint.ios':     '📱 For fullscreen: tap <strong>Share</strong> ⬆️ then <strong>"Add to Home Screen"</strong>',
+            'intro.fullscreenHint.android': '📱 For fullscreen: tap <strong>⋮ Menu</strong> then <strong>"Add to Home Screen"</strong>',
+            'intro.fullscreenHint.generic': '📱 Add to your Home Screen for a fullscreen experience!',
+            'rotate.message':          'Rotate your device to landscape mode',
+            'rotate.subtext':          'for the best experience',
             'marathon.namePlaceholder': 'Your name',
             'marathon.tapKeyboard':    'Tap keyboard below',
             'marathon.save':           'Save',
@@ -188,6 +193,11 @@ const I18n = (() => {
             'intro.music':             'Música',
             'intro.fullscreen':        'Pantalla Completa',
             'intro.agree':             'Acepto resolver con responsabilidad',
+            'intro.fullscreenHint.ios':     '📱 Pantalla completa: toca <strong>Compartir</strong> ⬆️ y luego <strong>"Añadir a Inicio"</strong>',
+            'intro.fullscreenHint.android': '📱 Pantalla completa: toca <strong>⋮ Menú</strong> y luego <strong>"Añadir a Inicio"</strong>',
+            'intro.fullscreenHint.generic': '📱 ¡Añádelo a tu pantalla de inicio para pantalla completa!',
+            'rotate.message':          'Gira tu dispositivo a modo horizontal',
+            'rotate.subtext':          'para la mejor experiencia',
             // Order MUST match warnings.txt exactly — intro.js picks
             // an index from the English list and looks up the same
             // index here. Each entry is pre-conjugated to fit the
@@ -386,6 +396,11 @@ const I18n = (() => {
             'intro.music':             'Musique',
             'intro.fullscreen':        'Plein Écran',
             'intro.agree':             'J\'accepte de résoudre de manière responsable',
+            'intro.fullscreenHint.ios':     '📱 Plein écran : appuyez sur <strong>Partager</strong> ⬆️ puis <strong>« Sur l\'écran d\'accueil »</strong>',
+            'intro.fullscreenHint.android': '📱 Plein écran : appuyez sur <strong>⋮ Menu</strong> puis <strong>« Ajouter à l\'écran d\'accueil »</strong>',
+            'intro.fullscreenHint.generic': '📱 Ajoutez à votre écran d\'accueil pour le plein écran !',
+            'rotate.message':          'Tournez votre appareil en mode paysage',
+            'rotate.subtext':          'pour la meilleure expérience',
             // Order MUST match warnings.txt exactly. Each entry fits
             // the bodyTemplate's "pendant que vous {activity}" — i.e.
             // a 2nd-person plural verb form ("vous" is in the template,
@@ -584,6 +599,11 @@ const I18n = (() => {
             'intro.music':             'Musik',
             'intro.fullscreen':        'Vollbild',
             'intro.agree':             'Ich stimme zu, verantwortungsvoll zu lösen',
+            'intro.fullscreenHint.ios':     '📱 Vollbild: Tippe auf <strong>Teilen</strong> ⬆️ dann <strong>„Zum Home-Bildschirm"</strong>',
+            'intro.fullscreenHint.android': '📱 Vollbild: Tippe auf <strong>⋮ Menü</strong> dann <strong>„Zum Startbildschirm hinzufügen"</strong>',
+            'intro.fullscreenHint.generic': '📱 Zum Startbildschirm hinzufügen für Vollbild!',
+            'rotate.message':          'Gerät ins Querformat drehen',
+            'rotate.subtext':          'für das beste Erlebnis',
             // Order MUST match warnings.txt. Each entry fits the
             // bodyTemplate's "während du {activity}" — 2nd-person
             // singular verb form ("du" is in the template).
@@ -781,6 +801,11 @@ const I18n = (() => {
             'intro.music':             'Música',
             'intro.fullscreen':        'Tela Cheia',
             'intro.agree':             'Concordo em resolver com responsabilidade',
+            'intro.fullscreenHint.ios':     '📱 Tela cheia: toque em <strong>Compartilhar</strong> ⬆️ e <strong>"Adicionar à Tela Inicial"</strong>',
+            'intro.fullscreenHint.android': '📱 Tela cheia: toque em <strong>⋮ Menu</strong> e <strong>"Adicionar à Tela Inicial"</strong>',
+            'intro.fullscreenHint.generic': '📱 Adicione à Tela Inicial para tela cheia!',
+            'rotate.message':          'Gire o dispositivo para o modo paisagem',
+            'rotate.subtext':          'para a melhor experiência',
             // Order MUST match warnings.txt. Each entry fits the
             // bodyTemplate's "enquanto {activity}" — verb in 3rd-person
             // (você implied).
@@ -978,6 +1003,11 @@ const I18n = (() => {
             'intro.music':             'ミュージック',
             'intro.fullscreen':        'フルスクリーン',
             'intro.agree':             '責任を持って解くことに同意します',
+            'intro.fullscreenHint.ios':     '📱 フルスクリーン：<strong>共有</strong> ⬆️ → <strong>「ホーム画面に追加」</strong>',
+            'intro.fullscreenHint.android': '📱 フルスクリーン：<strong>⋮ メニュー</strong> → <strong>「ホーム画面に追加」</strong>',
+            'intro.fullscreenHint.generic': '📱 ホーム画面に追加してフルスクリーンで遊ぼう！',
+            'rotate.message':          '横向きにしてください',
+            'rotate.subtext':          '最高の体験のために',
             // Order MUST match warnings.txt. Fits "{activity}中に" —
             // verbal noun.
             'intro.activities':        [
@@ -1174,6 +1204,11 @@ const I18n = (() => {
             'intro.music':             '음악',
             'intro.fullscreen':        '전체 화면',
             'intro.agree':             '책임감 있게 풀 것에 동의합니다',
+            'intro.fullscreenHint.ios':     '📱 전체 화면: <strong>공유</strong> ⬆️ → <strong>"홈 화면에 추가"</strong>',
+            'intro.fullscreenHint.android': '📱 전체 화면: <strong>⋮ 메뉴</strong> → <strong>"홈 화면에 추가"</strong>',
+            'intro.fullscreenHint.generic': '📱 홈 화면에 추가하여 전체 화면으로 즐기세요!',
+            'rotate.message':          '기기를 가로 모드로 회전하세요',
+            'rotate.subtext':          '최상의 경험을 위해',
             // Order MUST match warnings.txt. Fits "{activity} 중에는" —
             // noun.
             'intro.activities':        [
@@ -1370,6 +1405,11 @@ const I18n = (() => {
             'intro.music':             '音乐',
             'intro.fullscreen':        '全屏',
             'intro.agree':             '我同意负责任地解谜',
+            'intro.fullscreenHint.ios':     '📱 全屏：点击<strong>分享</strong> ⬆️ 然后<strong>"添加到主屏幕"</strong>',
+            'intro.fullscreenHint.android': '📱 全屏：点击<strong>⋮ 菜单</strong>然后<strong>"添加到主屏幕"</strong>',
+            'intro.fullscreenHint.generic': '📱 添加到主屏幕以获得全屏体验！',
+            'rotate.message':          '请将设备旋转至横屏',
+            'rotate.subtext':          '以获得最佳体验',
             // Order MUST match warnings.txt. Fits "在{activity}时" —
             // verb phrase.
             'intro.activities':        [
@@ -1566,6 +1606,11 @@ const I18n = (() => {
             'intro.music':             'Музыка',
             'intro.fullscreen':        'Полный Экран',
             'intro.agree':             'Я согласен решать ответственно',
+            'intro.fullscreenHint.ios':     '📱 Полный экран: нажмите <strong>Поделиться</strong> ⬆️ → <strong>«На экран Домой»</strong>',
+            'intro.fullscreenHint.android': '📱 Полный экран: нажмите <strong>⋮ Меню</strong> → <strong>«Добавить на главный экран»</strong>',
+            'intro.fullscreenHint.generic': '📱 Добавьте на главный экран для полноэкранного режима!',
+            'rotate.message':          'Поверните устройство горизонтально',
+            'rotate.subtext':          'для наилучшего опыта',
             // Order MUST match warnings.txt. Fits "пока {activity}" —
             // 2nd-person plural verbs (вы dropped where natural,
             // "у вас" used for stative phrases).
@@ -1763,6 +1808,11 @@ const I18n = (() => {
             'intro.music':             'Musica',
             'intro.fullscreen':        'Schermo Intero',
             'intro.agree':             'Accetto di risolvere responsabilmente',
+            'intro.fullscreenHint.ios':     '📱 Schermo intero: tocca <strong>Condividi</strong> ⬆️ poi <strong>"Aggiungi a Home"</strong>',
+            'intro.fullscreenHint.android': '📱 Schermo intero: tocca <strong>⋮ Menu</strong> poi <strong>"Aggiungi a Home"</strong>',
+            'intro.fullscreenHint.generic': '📱 Aggiungi alla Home per lo schermo intero!',
+            'rotate.message':          'Ruota il dispositivo in orizzontale',
+            'rotate.subtext':          'per la migliore esperienza',
             // Order MUST match warnings.txt. Fits "mentre {activity}" —
             // 2nd-singular indicative present verb.
             'intro.activities':        [
@@ -1959,6 +2009,11 @@ const I18n = (() => {
             'intro.music':             'Muziek',
             'intro.fullscreen':        'Volledig Scherm',
             'intro.agree':             'Ik ga akkoord verantwoord op te lossen',
+            'intro.fullscreenHint.ios':     '📱 Volledig scherm: tik op <strong>Delen</strong> ⬆️ dan <strong>"Zet op beginscherm"</strong>',
+            'intro.fullscreenHint.android': '📱 Volledig scherm: tik op <strong>⋮ Menu</strong> dan <strong>"Toevoegen aan startscherm"</strong>',
+            'intro.fullscreenHint.generic': '📱 Voeg toe aan je beginscherm voor volledig scherm!',
+            'rotate.message':          'Draai je apparaat naar liggende modus',
+            'rotate.subtext':          'voor de beste ervaring',
             // Order MUST match warnings.txt. Fits "terwijl u {activity}" —
             // verb in 2nd-person plural form ("u" is in the template).
             'intro.activities':        [
@@ -2155,6 +2210,11 @@ const I18n = (() => {
             'intro.music':             'Muzyka',
             'intro.fullscreen':        'Pełny Ekran',
             'intro.agree':             'Zgadzam się rozwiązywać odpowiedzialnie',
+            'intro.fullscreenHint.ios':     '📱 Pełny ekran: dotknij <strong>Udostępnij</strong> ⬆️ a potem <strong>„Dodaj do ekranu początkowego"</strong>',
+            'intro.fullscreenHint.android': '📱 Pełny ekran: dotknij <strong>⋮ Menu</strong> a potem <strong>„Dodaj do ekranu głównego"</strong>',
+            'intro.fullscreenHint.generic': '📱 Dodaj do ekranu głównego, aby uzyskać pełny ekran!',
+            'rotate.message':          'Obróć urządzenie do trybu poziomego',
+            'rotate.subtext':          'dla najlepszych wrażeń',
             // Order MUST match warnings.txt. Fits "podczas {activity}" —
             // verbal noun in genitive case.
             'intro.activities':        [
@@ -2351,6 +2411,11 @@ const I18n = (() => {
             'intro.music':             'Müzik',
             'intro.fullscreen':        'Tam Ekran',
             'intro.agree':             'Sorumlu bir şekilde çözmeyi kabul ediyorum',
+            'intro.fullscreenHint.ios':     '📱 Tam ekran: <strong>Paylaş</strong> ⬆️ ardından <strong>"Ana Ekrana Ekle"</strong>\'ye dokunun',
+            'intro.fullscreenHint.android': '📱 Tam ekran: <strong>⋮ Menü</strong> ardından <strong>"Ana ekrana ekle"</strong>\'ye dokunun',
+            'intro.fullscreenHint.generic': '📱 Tam ekran deneyimi için Ana Ekrana Ekleyin!',
+            'rotate.message':          'Cihazınızı yatay moda çevirin',
+            'rotate.subtext':          'en iyi deneyim için',
             // Order MUST match warnings.txt. Fits "{activity} sırasında" —
             // verbal noun (-me/-ma) that "during" takes.
             'intro.activities':        [
@@ -2547,6 +2612,11 @@ const I18n = (() => {
             'intro.music':             'الموسيقى',
             'intro.fullscreen':        'ملء الشاشة',
             'intro.agree':             'أوافق على الحل بمسؤولية',
+            'intro.fullscreenHint.ios':     '📱 ملء الشاشة: انقر على <strong>مشاركة</strong> ⬆️ ثم <strong>"إضافة إلى الشاشة الرئيسية"</strong>',
+            'intro.fullscreenHint.android': '📱 ملء الشاشة: انقر على <strong>⋮ القائمة</strong> ثم <strong>"إضافة إلى الشاشة الرئيسية"</strong>',
+            'intro.fullscreenHint.generic': '📱 أضف إلى شاشتك الرئيسية لتجربة ملء الشاشة!',
+            'rotate.message':          'أدر جهازك إلى الوضع الأفقي',
+            'rotate.subtext':          'للحصول على أفضل تجربة',
             // Order MUST match warnings.txt. Fits "أثناء {activity}" —
             // verbal noun (مصدر).
             'intro.activities':        [
@@ -2743,6 +2813,11 @@ const I18n = (() => {
             'intro.music':             'संगीत',
             'intro.fullscreen':        'पूर्ण स्क्रीन',
             'intro.agree':             'मैं जिम्मेदारी से हल करने के लिए सहमत हूं',
+            'intro.fullscreenHint.ios':     '📱 फुलस्क्रीन के लिए: <strong>शेयर</strong> ⬆️ टैप करें फिर <strong>"होम स्क्रीन पर जोड़ें"</strong>',
+            'intro.fullscreenHint.android': '📱 फुलस्क्रीन के लिए: <strong>⋮ मेनू</strong> टैप करें फिर <strong>"होम स्क्रीन पर जोड़ें"</strong>',
+            'intro.fullscreenHint.generic': '📱 फुलस्क्रीन अनुभव के लिए अपनी होम स्क्रीन पर जोड़ें!',
+            'rotate.message':          'अपने डिवाइस को लैंडस्केप मोड में घुमाएं',
+            'rotate.subtext':          'बेहतर अनुभव के लिए',
             // Order MUST match warnings.txt. Fits "{activity} करते समय" —
             // noun phrase ("करते समय" = while doing).
             'intro.activities':        [

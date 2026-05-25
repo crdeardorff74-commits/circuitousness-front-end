@@ -276,9 +276,19 @@ const Intro = (() => {
         // The change handler fires requestFullscreen INSIDE the gesture
         // path — Safari/iOS require the request to be synchronous with
         // a user input event.
+        //
+        // Phones get the box pre-checked (TANTЯO parity): mobile players
+        // benefit most from fullscreen and almost always want it on. The
+        // toggles row itself is hidden for them below in favor of the
+        // OS-specific "Add to Home Screen" hint — but we still flip the
+        // checkbox on first so the "agree" click's gesture-bound
+        // requestFullscreen runs (the change handler doesn't fire when
+        // we set .checked programmatically, so it's just a state default,
+        // not an autoplay attempt).
         const fsBox = document.getElementById('introFullscreenCheckbox');
         if (fsBox) {
-            fsBox.checked = !!getFullscreenElement();
+            const isMobile = typeof DeviceDetection !== 'undefined' && DeviceDetection.isMobile;
+            fsBox.checked = !!getFullscreenElement() || isMobile;
             fsBox.addEventListener('change', () => {
                 if (fsBox.checked) {
                     requestFullscreen(document.documentElement).catch(() => {
@@ -311,6 +321,45 @@ const Intro = (() => {
                 toggleFullscreen();
             }
         });
+
+        // ---- Mobile-only "Add to Home Screen" hint + hide toggles row ----
+        // Touch users who aren't already in standalone/fullscreen mode
+        // get an OS-specific install hint underneath the toggles, then
+        // the toggles themselves are hidden (TANTЯO parity: phones use
+        // the OS install flow + Settings popup instead of the in-page
+        // toggles, since native mobile chrome eats the viewport hard
+        // and "Add to Home Screen" gives a cleaner fullscreen than the
+        // browser fullscreen API can on iOS Safari).
+        (function showFullscreenHint() {
+            const hint = document.getElementById('fullscreenHint');
+            if (!hint) return;
+            const isStandalone = window.navigator.standalone
+                || window.matchMedia('(display-mode: standalone)').matches
+                || window.matchMedia('(display-mode: fullscreen)').matches;
+            const isFullscreen = !!getFullscreenElement();
+            const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            // Skip the hint entirely when there's nothing to recommend:
+            // already in standalone, already in fullscreen, or not a
+            // touch device (desktop users handle fullscreen via F11).
+            if (isStandalone || isFullscreen || !isTouch) return;
+            const ua = navigator.userAgent;
+            const isIOS = /iphone|ipad|ipod/i.test(ua)
+                || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 2);
+            const isAndroid = /android/i.test(ua);
+            let key = 'intro.fullscreenHint.generic';
+            if (isIOS)          key = 'intro.fullscreenHint.ios';
+            else if (isAndroid) key = 'intro.fullscreenHint.android';
+            hint.innerHTML = (typeof I18n !== 'undefined' && I18n.t) ? I18n.t(key) : '';
+            hint.style.display = 'block';
+            // Phones replace the in-page Music+Fullscreen toggles with
+            // the install hint above (and the Settings popup for music).
+            // Tablets keep the toggles — they can usually take fullscreen
+            // via the browser API without needing home-screen install.
+            if (typeof DeviceDetection !== 'undefined' && DeviceDetection.isMobile) {
+                const togglesRow = document.getElementById('introToggles');
+                if (togglesRow) togglesRow.style.display = 'none';
+            }
+        })();
 
         // ---- Dismiss button ----
         const agreeBtn = document.getElementById('introAgreeBtn');

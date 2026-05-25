@@ -32,6 +32,23 @@
     })();
     </script>
 
+    <!-- Portrait orientation overlay (mobile only). Pure CSS-driven —
+         visibility is governed by a media query in styles.css
+         (@media (orientation: portrait) and (max-width: 1024px) and
+         (pointer: coarse)), so it only ever appears on touch phones
+         held in portrait. The PWA manifest already requests
+         orientation: landscape, but a non-installed mobile-browser
+         page (or a desktop browser resized small + emulating touch)
+         can still land in portrait — this overlay is the safety net.
+         Mirrors TANTЯO's exact markup. -->
+    <div id="portraitOverlay">
+        <div class="portrait-overlay-content">
+            <div class="rotate-icon">📱</div>
+            <div class="rotate-text" data-i18n="rotate.message">Rotate your device to landscape mode</div>
+            <div class="rotate-subtext" data-i18n="rotate.subtext">for the best experience</div>
+        </div>
+    </div>
+
     <main id="app">
         <!-- Opening intro / warning splash. Painted by intro.js on page
              load, dismissed by the "I agree to solve responsibly" button
@@ -69,8 +86,9 @@
             </div>
 
             <!-- Toggles row — music + full-screen. Hidden on phones
-                 (the OS keyboards already shrink the viewport hard,
-                 and mobile browsers have their own full-screen UI). -->
+                 via intro.js (the OS / "Add to Home Screen" install
+                 path takes over the fullscreen story there; the
+                 fullscreenHint below replaces this row on phones). -->
             <div class="introToggles" id="introToggles">
                 <label class="introToggle">
                     <input type="checkbox" id="introMusicCheckbox" checked>
@@ -81,6 +99,13 @@
                     <span data-i18n="intro.fullscreen">Full Screen</span>
                 </label>
             </div>
+
+            <!-- "Add to Home Screen" hint — populated + un-hidden by
+                 intro.js for touch users who aren't already in standalone
+                 / fullscreen mode. OS-specific copy (iOS vs Android vs
+                 generic) is selected at runtime from i18n keys. Inline
+                 styled to match TANTЯO's exact appearance. -->
+            <div id="fullscreenHint" style="display: none; margin-top: max(1.5vh, 12px); padding: 8px 12px; background: rgba(255, 215, 0, 0.15); border: 1px solid rgba(255, 215, 0, 0.3); border-radius: 6px; font-size: 12px; color: #FFD700; text-align: center; line-height: 1.4;"></div>
 
             <button id="introAgreeBtn" type="button" data-i18n="intro.agree">I agree to solve responsibly</button>
         </div>

@@ -570,6 +570,60 @@ html.mode-debug #introOverlay { display: none !important; }
     }
 }
 
+/* Portrait orientation overlay (mobile only). Hidden by default;
+   the media query at the bottom of this block flips it on when a
+   coarse-pointer device under 1024px wide is held in portrait. The
+   PWA manifest already requests landscape, but a non-installed
+   mobile-browser page (or a desktop browser resized small with
+   touch emulation) can still land in portrait — this is the safety
+   net so the player never tries to play a wide-canvas circuit puzzle
+   on a tall thin viewport. Mirrors TANTЯO's pattern + styling. */
+#portraitOverlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;  /* dynamic viewport — accounts for mobile URL bar */
+    background: linear-gradient(180deg, #0a0a1a 0%, #1a1a3e 50%, #0a0a1a 100%);
+    z-index: 99999;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+.portrait-overlay-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2vh;
+}
+.rotate-icon {
+    font-size: 15vh;
+    animation: rotatePhone 2s ease-in-out infinite;
+    display: inline-block;
+}
+@keyframes rotatePhone {
+    0%, 100% { transform: rotate(0deg); }
+    30%, 70% { transform: rotate(90deg); }
+}
+.rotate-text {
+    font-size: max(2.5vh, 18px);
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-weight: 600;
+}
+.rotate-subtext {
+    font-size: max(1.8vh, 14px);
+    color: #888;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+@media (orientation: portrait) and (max-width: 1024px) and (pointer: coarse) {
+    #portraitOverlay {
+        display: flex;
+    }
+}
+
 /* ----- Main menu ----- */
 #menu {
     position: absolute;
