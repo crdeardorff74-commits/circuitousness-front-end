@@ -28,9 +28,9 @@ const Settings = (function () {
     const PATH_WIDTH_KEY  = PROJECT_SLUG + '_setting_pathWidth';
     const BEVEL_KEY       = PROJECT_SLUG + '_setting_bevelThickness';
     const DEF_TILE_COLOR  = '#153050';
-    const DEF_TILE_FACE   = 0.80;
+    const DEF_TILE_FACE   = 0.69;
     const DEF_PATH_COLOR  = '#ff2424';
-    const DEF_PATH_ALPHA  = 0.14;
+    const DEF_PATH_ALPHA  = 0.11;
     const DEF_PATH_WIDTH  = 0.18;
     const DEF_BEVEL       = 0.07;
 
@@ -91,11 +91,12 @@ const Settings = (function () {
     if (musicMode !== 'none') priorMode = musicMode;
 
     let sfxMuted          = loadBool(SFX_MUTED_KEY,   false);
-    // Default volumes: music at full, SFX a touch lower so the puzzle cues
-    // (cinematic_bass, applause, fail) don't overpower a song playing
+    // Default volumes: music slightly below full so peaks have headroom on
+    // built-in laptop/phone speakers; SFX noticeably lower so the puzzle
+    // cues (cinematic_bass, applause, fail) don't overpower a song playing
     // underneath. Players can adjust both via the Settings popup sliders.
-    let musicVolume       = loadFloat(MUSIC_VOL_KEY,  1.0);
-    let sfxVolume         = loadFloat(SFX_VOL_KEY,    0.75);
+    let musicVolume       = loadFloat(MUSIC_VOL_KEY,  0.88);
+    let sfxVolume         = loadFloat(SFX_VOL_KEY,    0.42);
     let backgroundEnabled = loadBool(BG_ENABLED_KEY,  true);
     // Visual tuning state — read once at boot, pushed into Render in init().
     function loadHexColor(key, defaultVal) {

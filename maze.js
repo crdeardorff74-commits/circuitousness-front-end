@@ -1038,22 +1038,30 @@ const Maze = (() => {
             let bestSnapshot = null;
             let bestCount = 0;
             const target = pathCount;
-            const maxAttempts = pathCount === 4 ? 10000 : (pathCount === 3 ? 400 : (pathCount === 2 ? 20 : 8));
-            // Hurry only bails when we have at least target-1 paths placed —
-            // shipping a 1-path snapshot when the player asked for 3 paths
-            // is a worse experience than waiting a moment longer.
-            const hurryThreshold = Math.max(1, target - 1);
-            for (let attempt = 0; attempt < maxAttempts; attempt++) {
-                await yieldToBrowser();
-                if (abortFlag) return false;
-                if (hurryFlag && bestCount >= hurryThreshold) break;
-                if (!buildPuzzle(startCap)) continue;
-                const got = entry4 ? 4 : (entry3 ? 3 : (entry2 ? 2 : 1));
-                if (got > bestCount) {
-                    bestCount = got;
-                    bestSnapshot = snapshotState();
+            // STRICT MODE: the player's selected path count is a hard
+            // contract — selecting q4 must produce a 4-path puzzle, never
+            // q3 silently. Loop indefinitely at the current dims until
+            // target is met (or abortFlag fires on quit). Without this,
+            // the worker used to ship bestSnapshot regardless and the
+            // game accepted it because the worker's response reports the
+            // REQUESTED pathCount, not the actual one. config.js's
+            // MIN_DIM_*_4PATH bump keeps the loop fast on the typical
+            // case; the strict loop is the safety net.
+            // hurryFlag is intentionally NOT a bail trigger here — letting
+            // a hurried player accept fewer paths violates the contract.
+            const ATTEMPTS_PER_PASS = pathCount === 4 ? 10000 : (pathCount === 3 ? 400 : (pathCount === 2 ? 20 : 8));
+            while (bestCount < target) {
+                for (let attempt = 0; attempt < ATTEMPTS_PER_PASS; attempt++) {
+                    await yieldToBrowser();
+                    if (abortFlag) return false;
+                    if (!buildPuzzle(startCap)) continue;
+                    const got = entry4 ? 4 : (entry3 ? 3 : (entry2 ? 2 : 1));
+                    if (got > bestCount) {
+                        bestCount = got;
+                        bestSnapshot = snapshotState();
+                    }
+                    if (got >= target) break;
                 }
-                if (got >= target) break;
             }
             if (bestSnapshot) restoreState(bestSnapshot);
             locked = new Set();
@@ -1075,13 +1083,25 @@ const Maze = (() => {
         // top would compound an already-tight retry budget.
         if (pathCount === 2) {
             let bestCanonical = null;        // best canonical 2-path snapshot
-            let bestFallback = null;         // best non-canonical fallback (most paths placed)
+            let bestFallback = null;         // best non-canonical 2-path fallback
             let bestFallbackCount = 0;
-            const maxAttempts = 24;
-            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            // STRICT MODE: the player asked for 2 paths; never ship a
+            // 1-path snapshot. Wrap the canonical-search loop in a
+            // while-true that keeps retrying until we have AT LEAST a
+            // non-canonical 2-path build (bestFallback). The inner
+            // 24-attempt budget is enough for the canonical search to
+            // succeed in the typical case; the outer loop is the safety
+            // net for the rare "no 2-path build placed in 24 attempts"
+            // case that previously fell through and shipped 1 path.
+            // hurryFlag may bail with bestFallback (≥2 paths guaranteed
+            // by the outer condition) — that's fine, it's still 2 paths.
+            const ATTEMPTS_PER_PASS = 24;
+          retry2path:
+            while (true) {
+            for (let attempt = 0; attempt < ATTEMPTS_PER_PASS; attempt++) {
                 await yieldToBrowser();
                 if (abortFlag) return false;
-                if (hurryFlag && (bestCanonical || bestFallback)) break;
+                if (hurryFlag && (bestCanonical || (bestFallback && bestFallbackCount >= 2))) break retry2path;
                 if (!buildPuzzle(startCap)) continue;
                 const got = entry2 ? 2 : 1;
                 // Track best fallback regardless of canonical-ness.
@@ -1140,9 +1160,16 @@ const Maze = (() => {
 
                 if (bothCanon()) {
                     bestCanonical = snapshotState();
-                    break;
+                    break retry2path;
                 }
             }
+            // Inner pass done. Exit the outer retry only when we have
+            // either a canonical 2-path OR at minimum a non-canonical
+            // 2-path. If bestFallback is still 1-path (no successful
+            // 2-path build at all in this pass), do another pass.
+            if (bestCanonical) break;
+            if (bestFallback && bestFallbackCount >= 2) break;
+            }   // end while(true) retry2path
 
             if (bestCanonical)      restoreState(bestCanonical);
             else if (bestFallback)  restoreState(bestFallback);
@@ -1154,34 +1181,38 @@ const Maze = (() => {
 
         // 3+ paths: tight retry budget, no canonical check. buildPuzzle drops
         // failed extra paths silently; we retry many times to find a build
-        // with the full pathCount, saving the best (most paths placed) so far.
+        // with the full pathCount.
         // 4-path is dramatically harder to fit (8 distinct edge endpoints +
         // 4 DFS paths competing for the same grid), so it gets a much bigger
-        // retry budget.
+        // retry budget per pass. config.js's MIN_DIM_*_4PATH bump keeps the
+        // strict loop's typical case fast.
         if (pathCount >= 3) {
             let bestSnapshot = null;
             let bestCount = 0;
             const target = pathCount;
-            // Very high cap for 4-path — we'd rather wait than ship a puzzle
-            // with fewer paths than the player selected. yieldToBrowser keeps
-            // the UI alive between attempts; hurryFlag lets the worker bail
-            // if the player is actively waiting on this build.
-            const maxAttempts = pathCount === 4 ? 10000 : 400;
-            // Hurry only bails when we have at least target-1 paths placed —
-            // shipping a 1-path snapshot when the player asked for 3 paths
-            // is a worse experience than waiting a moment longer.
-            const hurryThreshold = Math.max(1, target - 1);
-            for (let attempt = 0; attempt < maxAttempts; attempt++) {
-                await yieldToBrowser();
-                if (abortFlag) return false;
-                if (hurryFlag && bestCount >= hurryThreshold) break;
-                if (!buildPuzzle(startCap)) continue;
-                const got = entry4 ? 4 : (entry3 ? 3 : (entry2 ? 2 : 1));
-                if (got > bestCount) {
-                    bestCount = got;
-                    bestSnapshot = snapshotState();
+            // STRICT MODE: never accept a snapshot with fewer paths than
+            // the player selected. Loop indefinitely until target met
+            // (or abortFlag fires on quit). Previously this branch
+            // shipped bestSnapshot regardless of bestCount — a 4-path
+            // request that exhausted maxAttempts at, say, 3 paths would
+            // silently ship the 3-path build, and the worker response
+            // reported pathCount=4 (the request) so the game couldn't
+            // tell. hurryFlag is intentionally NOT a bail trigger here —
+            // letting a hurried player accept fewer paths violates the
+            // selected-count contract.
+            const ATTEMPTS_PER_PASS = pathCount === 4 ? 10000 : 400;
+            while (bestCount < target) {
+                for (let attempt = 0; attempt < ATTEMPTS_PER_PASS; attempt++) {
+                    await yieldToBrowser();
+                    if (abortFlag) return false;
+                    if (!buildPuzzle(startCap)) continue;
+                    const got = entry4 ? 4 : (entry3 ? 3 : (entry2 ? 2 : 1));
+                    if (got > bestCount) {
+                        bestCount = got;
+                        bestSnapshot = snapshotState();
+                    }
+                    if (got >= target) break;
                 }
-                if (got >= target) break;
             }
             if (bestSnapshot) restoreState(bestSnapshot);
             locked = new Set();
@@ -1786,19 +1817,45 @@ const Maze = (() => {
         if (quadMode) {
             const qr0 = Math.floor(row / 2) * 2;
             const qc0 = Math.floor(col / 2) * 2;
-            const cells = [
-                [qr0,     qc0    ],
-                [qr0,     qc0 + 1],
-                [qr0 + 1, qc0    ],
-                [qr0 + 1, qc0 + 1]
+            const cellsOf = (qr, qc) => [
+                [qr,     qc    ],
+                [qr,     qc + 1],
+                [qr + 1, qc    ],
+                [qr + 1, qc + 1]
             ];
-            // If hint-locked anywhere in the quad, no-op.
+            const cells = cellsOf(qr0, qc0);
+            // Twin partner quad: same convention rotate() and applyHintAt
+            // use — `_twin.partner` lives on the clicked quad's top-left
+            // sub-tile and points at the partner quad's top-left coord.
+            // Twin pairs rotate in lockstep, so they must lock in lockstep
+            // too; otherwise long-pressing one would visually mark only
+            // half the pair as locked even though rotating either still
+            // moves both. (This was the bug — quad mode was lighting up
+            // only the touched quad, while singular mode lit both halves
+            // of the twin pair.)
+            let partnerCells = null;
+            const anchor = grid[qr0][qc0];
+            if (anchor && anchor._twin) {
+                const [pr0, pc0] = anchor._twin.partner.split(',').map(Number);
+                if (pr0 !== qr0 || pc0 !== qc0) {
+                    partnerCells = cellsOf(pr0, pc0);
+                }
+            }
+            // Hint-lock check on the clicked quad only. Hint locks both
+            // quads of a twin pair simultaneously (applyHintAt's `lockQuad`
+            // runs on both), so if either quad is hint-locked the other is
+            // too — checking the clicked side is sufficient.
             for (const [r, c] of cells) {
                 if (locked.has(r + ',' + c)) return;
             }
-            // Toggle: if any sub-tile is player-locked, unlock the whole quad.
-            const isOn = cells.some(([r, c]) => grid[r][c]._playerLocked);
-            for (const [r, c] of cells) grid[r][c]._playerLocked = !isOn;
+            // Toggle from the clicked quad's state — if any sub-tile in
+            // the clicked quad is player-locked, the long-press unlocks
+            // the whole pair (both quads). Otherwise it locks the pair.
+            const next = !cells.some(([r, c]) => grid[r][c]._playerLocked);
+            for (const [r, c] of cells) grid[r][c]._playerLocked = next;
+            if (partnerCells) {
+                for (const [r, c] of partnerCells) grid[r][c]._playerLocked = next;
+            }
             return;
         }
         const k = row + ',' + col;

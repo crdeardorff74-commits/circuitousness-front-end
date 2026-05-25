@@ -47,6 +47,18 @@
 
         let lastWon    = false; // start false so the banner appears even if init() randomly produces a winning rotation
         let isBuilding = false;
+        // Monotonic counter — each newPuzzle() invocation captures its
+        // own seq and checks against this after every await. If a
+        // newer call has incremented it, the older call is "superseded"
+        // and bails out before applying any side effects. Replaces the
+        // old `if (isBuilding) return;` gate (which silently DROPPED
+        // overlapping clicks instead of letting the newer one take
+        // over). Without this: the player abandons a slow build (e.g.
+        // q4 = 16×16 quad, several seconds), starts a different cached
+        // puzzle, then several seconds later the abandoned worker
+        // finishes and stomps the active game by loadSnapshot'ing the
+        // old puzzle's data on top.
+        let newPuzzleSeq = 0;
         // SFX state: refresh() detects per-path completion + overlap-loop
         // transitions by diffing against these. newPuzzle resets both so a
         // fresh puzzle doesn't replay applause for paths that are already
@@ -131,8 +143,14 @@
             for (const type of MARATHON.TYPES) {
                 const quad   = type[0] === 'q';
                 const paths  = parseInt(type[1], 10) || 1;
-                const minDim = quad ? MARATHON.MIN_DIM_QUAD : MARATHON.MIN_DIM_SINGULAR;
-                // dimsForLevel(1, quad) returns logical {rows:minDim, cols:minDim};
+                // Path-count-aware min dim: 4-path needs more grid than the
+                // 1/2/3-path baseline (see MARATHON.minDimFor in config.js).
+                // Without this, starter pre-gen for s4/q4 would use the baseline
+                // 8/6 dims that the strict-mode generator in maze.js will reject
+                // for not fitting 4 paths — forcing a long retry loop right when
+                // the player is most likely to be waiting.
+                const minDim = MARATHON.minDimFor(quad, paths);
+                // dimsForLevel(1, quad, paths) returns logical {rows:minDim, cols:minDim};
                 // upcomingDims/startPuzzle convert ×2 for quad → PHYSICAL dims.
                 const rows = quad ? minDim * 2 : minDim;
                 const cols = rows;
@@ -316,10 +334,22 @@
             }
             // All 8 starters cached — nothing to do until one gets consumed.
         }
-        function waitForPreGen(rows, cols) {
+        // mySeq is optional. When passed, the poll self-cancels if a
+        // newer newPuzzle has incremented newPuzzleSeq — without this,
+        // a build that's preempted in the worker (its cache key never
+        // gets populated because the worker is now building something
+        // else) would leave waitForPreGen polling every 50ms forever,
+        // leaking the promise and its setTimeout chain. Caller checks
+        // supersession again after this resolves before applying any
+        // side effects.
+        function waitForPreGen(rows, cols, mySeq) {
             return new Promise(function (resolve) {
                 const k = cacheKey(rows, cols);
                 const check = function () {
+                    if (mySeq !== undefined && mySeq !== newPuzzleSeq) {
+                        resolve();
+                        return;
+                    }
                     if (preGenCache.has(k)) resolve();
                     else setTimeout(check, 50);
                 };
@@ -360,8 +390,28 @@
                 // its current puzzle — a sticking-out-of-grid mismatch
                 // when the live puzzle is larger than the replayed one.
                 gates: (typeof Gates !== 'undefined' && Gates.snapshot) ? Gates.snapshot() : null,
-                moves: []
+                moves: [],
+                // Music events: songs that played during this puzzle.
+                // [{ t: ms, songId: string }, ...] where t is ms since
+                // the first move (same anchor as moves' timestamps).
+                // The first entry (t=0) is the song that was playing
+                // when the first move happened — captured below from
+                // the live Music module. Pre-first-move song changes
+                // overwrite this entry rather than appending, so the
+                // recording's "starting song" is whatever was actually
+                // playing the instant the player started moving.
+                // Music.addSongChangeListener (wired in start()) fires
+                // the append/overwrite logic.
+                musicEvents: []
             };
+            // Seed the initial song with whatever's playing right now.
+            // The listener below will replace this entry if the song
+            // changes BEFORE the first move (pre-move idle), or
+            // append new entries AFTER the first move.
+            const cur = (typeof Music !== 'undefined' && Music.getCurrentSong)
+                        ? Music.getCurrentSong()
+                        : null;
+            if (cur && cur.id) recording.musicEvents.push({ t: 0, songId: cur.id });
         }
         function recordMove(move) {
             if (!recording || isReplaying) return;
@@ -373,6 +423,34 @@
             if (recording.moves.length === 0) recording.startTime = Date.now();
             move.t = Date.now() - recording.startTime;
             recording.moves.push(move);
+        }
+
+        // Music-events recorder. Registers once (in start() below) and
+        // appends entries to the active recording every time a new song
+        // starts. Pre-first-move song changes overwrite the initial
+        // entry (so the "starting song" is whatever's actually playing
+        // the instant the player begins). Post-first-move song changes
+        // append timestamped entries. Skips entirely during replay so
+        // scripted playback doesn't loop-record itself.
+        function recordSongChange(song /*, paused */) {
+            if (!recording || isReplaying) return;
+            if (!song || !song.id) return;
+            if (recording.startTime === 0) {
+                // Pre-first-move: track the initial song slot.
+                if (recording.musicEvents.length === 0) {
+                    recording.musicEvents.push({ t: 0, songId: song.id });
+                } else {
+                    recording.musicEvents[0] = { t: 0, songId: song.id };
+                }
+            } else {
+                recording.musicEvents.push({
+                    t: Date.now() - recording.startTime,
+                    songId: song.id
+                });
+            }
+        }
+        if (typeof Music !== 'undefined' && Music.addSongChangeListener) {
+            Music.addSongChangeListener(recordSongChange);
         }
 
         const replayBtn = document.getElementById('replayBtn');
@@ -398,6 +476,31 @@
             }
         }
 
+        // Re-seed every SFX state baseline `refresh()` diffs against, plus
+        // kill any still-running loops, from whatever's currently loaded
+        // into Maze + Render. Two reasons:
+        //   (1) Maze.pathsWon's unused slots default to `true` in modes
+        //       with fewer than 4 paths (e.g. 1-path → [F,T,T,T]). An
+        //       all-false baseline reads those phantom trues as newly
+        //       completed paths and fires applause on every puzzle start.
+        //   (2) The first refresh() after a puzzle loads would otherwise
+        //       fire applause for any genuinely-won path that happens to
+        //       already be lit in the loaded snapshot.
+        // Called from `newPuzzle` AND exposed on `window.Game` so callers
+        // that bypass newPuzzle (PotD's startPuzzle does its own
+        // Maze.loadSnapshot + Gates.restore + Maze.recompute pipeline)
+        // can also reset the baselines — without that, the first
+        // refresh() during a PotD play diffs against the prior Marathon
+        // game's stale lastPathsWon and fires spurious applause on the
+        // player's first tile click.
+        function resetSfxBaselines() {
+            lastWon = !!Maze.won;
+            const initPaths = Maze.pathsWon || [false, false, false, false];
+            lastPathsWon = [!!initPaths[0], !!initPaths[1], !!initPaths[2], !!initPaths[3]];
+            lastJoined   = !!(Render.hasJoinedLanes && Render.hasJoinedLanes());
+            if (typeof Sfx !== 'undefined' && Sfx.stopLoop) Sfx.stopLoop('glitch_overlap');
+        }
+
         function refresh() {
             Render.draw();
             const justWon = Maze.won && !lastWon;
@@ -412,15 +515,33 @@
                 } else {
                     banner.classList.add('visible');
                     if (replayBtn && recording && !isReplaying) replayBtn.hidden = false;
+                    // Replay solve: mirror Marathon.onSolve / Potd.onSolve's
+                    // celebratory cue without going through their scoring
+                    // flows (which would re-submit to the server, etc.).
+                    // stopLoop matches the live path's pattern (line ~721
+                    // in marathon.js) — any lingering overlap-loop dies
+                    // with the win so the loop doesn't bleed into the
+                    // brief solved-state pause before the next replay
+                    // puzzle (or the leaderboard return on single-puzzle
+                    // replay).
+                    if (isReplaying && typeof Sfx !== 'undefined') {
+                        if (Sfx.stopLoop) Sfx.stopLoop('glitch_overlap');
+                        Sfx.play('applause_long');
+                    }
                 }
             } else if (!Maze.won && lastWon) {
                 banner.classList.remove('visible');
             }
 
-            // SFX state machine. Skipped during replay (passive viewing) and
-            // when Sfx isn't loaded yet (defensive — script-order should
-            // guarantee it's there).
-            if (typeof Sfx !== 'undefined' && !isReplaying) {
+            // SFX state machine. Fires whenever Sfx is loaded (defensive —
+            // script-order should guarantee it's there). Runs during both
+            // live play AND replay — the state-derived cues (path-completion
+            // applause + glitch overlap loop) are exactly the SFX a replay
+            // viewer expects to hear at the same moments the original
+            // player heard them. SFX itself is self-gated on the viewer's
+            // current muted/volume settings — players who keep SFX off
+            // get a silent replay, those who keep them on get the cues.
+            if (typeof Sfx !== 'undefined') {
                 const cur = Maze.pathsWon || [false, false, false, false];
                 // Intermediate path completion: applause when a single path
                 // connects but the puzzle as a whole isn't solved yet.
@@ -460,6 +581,12 @@
                 if (result && result.turns > 0) {
                     Render.animateRotationAt(move.r, move.c, false, result.turns);
                 }
+                // Mirror handleHintClick's SFX so replay viewers hear the
+                // same audience-reaction cue the live player did. Sfx
+                // self-gates on the watcher's current muted/volume
+                // settings, so a player who has SFX off hears nothing —
+                // matching universal-rule expectations for replay audio.
+                if (typeof Sfx !== 'undefined') Sfx.play(['audience_shocked', 'jump_scare']);
             } else if (move.type === 'gate') {
                 if (typeof Gates !== 'undefined') {
                     Gates.rotate(move.ccw);
@@ -494,24 +621,53 @@
             }
             Render.refit();
             Render.draw();
-            const start = Date.now();
-            for (const move of (rec.moves || [])) {
-                if (replayCancelled) break;
-                const wait = Math.max(0, move.t - (Date.now() - start));
-                if (wait > 0) {
-                    await new Promise((res) => {
-                        replayResolve = res;
-                        replayTimer = setTimeout(() => {
-                            replayTimer = null;
-                            replayResolve = null;
-                            res();
-                        }, wait);
-                    });
+            // Re-seed the SFX diff baselines for the just-loaded snapshot.
+            // Without this, the previous game's lastPathsWon/lastWon/
+            // lastJoined would still be in place; the first replay-move
+            // refresh() would diff against those and could fire spurious
+            // applause / leak a stale glitch-loop into the new playback.
+            resetSfxBaselines();
+            // Hand music control to scripted playback: schedules each
+            // recorded song change at its original timestamp so the
+            // watcher hears the same songs in the same order at the
+            // same offsets the original player heard. Older recordings
+            // without musicEvents pass an empty array → no-op (music
+            // continues whatever it was already playing). Wrapped in
+            // try/finally so a thrown error or cancel still stops the
+            // scripted timer chain and returns Music to normal control.
+            if (typeof Music !== 'undefined' && Music.startScriptedPlayback) {
+                Music.startScriptedPlayback(rec.musicEvents || []);
+            }
+            try {
+                const start = Date.now();
+                for (const move of (rec.moves || [])) {
+                    if (replayCancelled) break;
+                    const wait = Math.max(0, move.t - (Date.now() - start));
+                    if (wait > 0) {
+                        await new Promise((res) => {
+                            replayResolve = res;
+                            replayTimer = setTimeout(() => {
+                                replayTimer = null;
+                                replayResolve = null;
+                                res();
+                            }, wait);
+                        });
+                    }
+                    if (replayCancelled) break;
+                    applyReplayMove(move);
+                    // refresh() — not just Render.draw() — so the SFX
+                    // state machine runs after every replay move (the
+                    // gate that previously suppressed SFX during replay
+                    // was removed). refresh() also handles the win-state
+                    // banner add via its justWon branch, so the explicit
+                    // `if (Maze.won) banner...` line below is no longer
+                    // needed.
+                    refresh();
                 }
-                if (replayCancelled) break;
-                applyReplayMove(move);
-                Render.draw();
-                if (Maze.won) banner.classList.add('visible');
+            } finally {
+                if (typeof Music !== 'undefined' && Music.stopScriptedPlayback) {
+                    Music.stopScriptedPlayback();
+                }
             }
         }
 
@@ -563,13 +719,24 @@
         }
 
         async function newPuzzle(rows, cols) {
-            // Bail out of any in-progress replay BEFORE the isBuilding gate
+            // Bail out of any in-progress replay BEFORE the seq-token gate
             // — the user clicking "next puzzle" mid-replay should always
             // abort the playback even if a build is somehow already pending.
             cancelReplay();
-            if (isBuilding) return;
+            // Capture our seq BEFORE any async work so we can detect being
+            // superseded later. ++ first so the OLDER in-flight call sees
+            // its seq is now stale.
+            const mySeq = ++newPuzzleSeq;
             isBuilding = true;
             banner.classList.remove('visible');
+            // Defensive: clear the building banner up front. A previous
+            // newPuzzle invocation that the player abandoned mid-build
+            // can leave the banner visible because its banner-removal
+            // line never runs until the worker eventually completes the
+            // abandoned build. Without this clear, the player can end
+            // up sitting in a fresh game (cache-hit, instant) with the
+            // stale "Building puzzle…" banner still painted on top.
+            buildingBanner.classList.remove('visible');
 
             // No explicit dims AND last puzzle was won → advance progression.
             // (Manual `Game.newPuzzle(r, c)` from the slider keeps that exact
@@ -606,10 +773,22 @@
                 // Build directly on the main thread; banner after 500ms.
                 if (wantResize) invalidatePreGen();
                 const bannerTimer = setTimeout(function () {
+                    // Self-check supersession before painting the banner —
+                    // an older call's timer that fires AFTER a newer call
+                    // has taken over would otherwise show "Building…" on
+                    // a game that's already loaded.
+                    if (mySeq !== newPuzzleSeq) return;
                     buildingBanner.classList.add('visible');
                 }, 500);
                 await Maze.init();
                 clearTimeout(bannerTimer);
+                // Supersession: a newer newPuzzle started while we were
+                // building on the main thread. Maze.init() already mutated
+                // the live Maze (no way to undo that — the newer call will
+                // re-init on top), but we MUST skip the rest of the cleanup
+                // (Gates, Render.refit, lastWon update) so we don't stomp
+                // the newer call's state when its turn comes.
+                if (mySeq !== newPuzzleSeq) return;
                 buildingBanner.classList.remove('visible');
             } else {
                 // Cache miss. Two sub-cases:
@@ -638,11 +817,23 @@
                     worker.postMessage({ type: 'hurry' });
                 }
                 const bannerTimer = setTimeout(function () {
+                    // Self-check supersession before painting the banner.
+                    if (mySeq !== newPuzzleSeq) return;
                     buildingBanner.textContent = inFlight ? 'Loading…' : 'Building puzzle…';
                     buildingBanner.classList.add('visible');
                 }, 500);
-                await waitForPreGen(wantR, wantC);
+                await waitForPreGen(wantR, wantC, mySeq);
                 clearTimeout(bannerTimer);
+                // Supersession: this is THE bug we're guarding against.
+                // The player abandoned this build, started a different
+                // puzzle (cache-hit, instant), and is now actively playing
+                // it. The worker just finished what we asked for and put
+                // it in preGenCache — but loadSnapshot'ing it here would
+                // wipe the active game and replace it with the abandoned
+                // puzzle's data. The cached snapshot stays in preGenCache
+                // intact (no .delete) so it serves a future request for
+                // that exact size as a cache hit.
+                if (mySeq !== newPuzzleSeq) return;
                 buildingBanner.classList.remove('visible');
                 Maze.loadSnapshot(preGenCache.get(wantKey));
                 preGenCache.delete(wantKey);
@@ -673,20 +864,7 @@
                 Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), target, stride);
                 if (Maze.recompute) Maze.recompute();
             }
-            lastWon = Maze.won;
-            // Seed the SFX diff baselines from the CURRENT puzzle state, not
-            // all-false. Two reasons:
-            //   (1) Maze.pathsWon's unused slots default to `true` in modes
-            //       with fewer than 4 paths (e.g. 1-path → [F,T,T,T]). An
-            //       all-false baseline reads those phantom trues as newly
-            //       completed paths and fires applause on every puzzle start.
-            //   (2) The refresh() at the end of this function would otherwise
-            //       fire applause for any genuinely-won path that happens to
-            //       already be lit in the loaded snapshot.
-            const initPaths = Maze.pathsWon || [false, false, false, false];
-            lastPathsWon = [!!initPaths[0], !!initPaths[1], !!initPaths[2], !!initPaths[3]];
-            lastJoined   = !!(Render.hasJoinedLanes && Render.hasJoinedLanes());
-            if (typeof Sfx !== 'undefined') Sfx.stopLoop('glitch_overlap');
+            resetSfxBaselines();
             if (Render.clearFadingLanes) Render.clearFadingLanes();
             // Start a fresh recording for the new puzzle. Hide any leftover
             // replay button from the previous puzzle.
@@ -749,6 +927,14 @@
             // anchored on the loaded state instead of inheriting whatever
             // the previous marathon run left in `recording`.
             startRecording: startRecording,
+            // Same bypass concern as startRecording — PotD doesn't route
+            // through newPuzzle, so it needs to re-seed the SFX diff
+            // baselines explicitly. Without this call, the first refresh()
+            // in a PotD play diffs against the previous marathon game's
+            // pathsWon/won/joined state and can fire spurious applause /
+            // applause_long / glitch-loop SFX on the player's first tile
+            // click.
+            resetSfxBaselines: resetSfxBaselines,
         };
 
         // Debug-panel pre-gen status indicator. Polls every 200ms — cheap
@@ -804,23 +990,60 @@
                     // alongside "Building puzzle…" — otherwise the old
                     // puzzle's background lingers while the worker runs.
                     if (Render.shuffleBackground) Render.shuffleBackground();
+                    // Sync Maze to the requested config every time, regardless of
+                    // whether game.js's cached locals match. PotD's startPuzzle
+                    // path mutates Maze.setQuadMode/setPathCount directly — it
+                    // does NOT route through this callback — so between a PotD
+                    // play and the next Marathon click, game.js's locals can be
+                    // out of sync with Maze's actual state. The old diff check
+                    // gated Maze.set*() on game.js's view of the world, which
+                    // meant "PotD quad → Marathon singular when the previous
+                    // Marathon was also singular" left Maze.quadMode stuck at
+                    // true. Subsequent rotate() entered the quad branch and
+                    // crashed dereferencing the null quadScramble; subsequent
+                    // newPuzzle's solutionEdges crashed running the un-scramble
+                    // dance on a stale-size quadScramble against the new grid.
+                    // setPathCount/setQuadMode are trivial assignments — calling
+                    // them unconditionally is free.
+                    const mazeQuadChanged = Maze.quadMode !== opts.quadMode;
+                    const mazePathChanged = Maze.pathCount !== opts.pathCount;
+                    Maze.setPathCount(opts.pathCount);
+                    Maze.setQuadMode(opts.quadMode);
+                    // PreGen worker invalidation is the expensive piece — only
+                    // do it when game.js's view actually changed, since PotD's
+                    // mutations don't touch the worker and don't require a
+                    // rebuild. Render.refit() runs whenever MAZE'S mode shifted
+                    // (covering both the normal Marathon mode-switch case and
+                    // the PotD-pollution case), so a stale layout from before
+                    // can't survive into the new puzzle.
+                    if (mazeQuadChanged || mazePathChanged) {
+                        Render.refit();
+                    }
                     if (pathCount !== opts.pathCount || quadMode !== opts.quadMode) {
                         pathCount = opts.pathCount;
                         quadMode  = opts.quadMode;
-                        Maze.setPathCount(pathCount);
-                        Maze.setQuadMode(quadMode);
                         invalidatePreGen();
                         preGenSize = null;
-                        Render.refit();
                     }
                     await newPuzzle(opts.rows, opts.cols);
                     Marathon.onPuzzleReady();
                 },
                 // Cancel any in-flight visual state when the player abandons
                 // a game or time expires — leaves the engine in a sane idle.
+                // Hides BOTH banners: winBanner ("You connected the path!")
+                // in case the player solved the puzzle but quit before the
+                // animation finished, AND buildingBanner ("Building puzzle…")
+                // which would otherwise stay stuck on screen if the player
+                // quit mid-build (the worker keeps building, its newPuzzle
+                // await chain is still pending, and nothing else hides the
+                // banner until that await completes — which for a 4-path
+                // quad is many seconds). Both removes are unconditional;
+                // .classList.remove on an element that doesn't have the
+                // class is a no-op.
                 quit: function () {
                     cancelReplay();
-                    if (banner) banner.classList.remove('visible');
+                    if (banner)         banner.classList.remove('visible');
+                    if (buildingBanner) buildingBanner.classList.remove('visible');
                 }
             });
         }

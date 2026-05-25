@@ -76,6 +76,14 @@ const MUSIC_BASE_URL = IS_IOS_AUDIO
 // list so single-list projects still get post-intro variety.
 const MUSIC_INTRO_LIST_NAME   = 'album_intro';
 const MUSIC_SHUFFLE_LIST_NAME = 'gameplay';
+// Optional menu/lobby pool. When the player is on the main menu (between
+// games, or right after dismissing the opening intro), music plays from
+// this list on shuffle. When a game starts, music switches to the
+// intro-then-shuffle paradigm above. Independent of the player's
+// Settings.musicMode choice — that controls GAME music, not menu music.
+// If the list is empty/missing in the admin, the menu phase silently
+// falls through to playing from the intro/shuffle pool instead.
+const MUSIC_MENU_LIST_NAME    = 'menu_only';
 // End-credits pool. Played during the credits sequence that runs after a
 // Marathon ends or a PotD puzzle is solved (regardless of music mode), and
 // during regular play when the user picks the "End Credits" / "Gameplay +
@@ -97,9 +105,9 @@ const MARATHON = {
     //                  - solvedCount × TIME_DECREASE_PER_SOLVE) × 1000
     //   timeRemaining += fresh_ms   (no cap on the running total)
     // Arrays indexed by pathCount-1 → entries for 1, 2, 3, 4 paths.
-    START_TIME_SINGULAR:     [90, 120, 150, 180],
-    START_TIME_QUAD:         [120, 160, 200, 240],
-    TIME_DECREASE_PER_SOLVE: 15,
+    START_TIME_SINGULAR:     [120, 160, 200, 240],
+    START_TIME_QUAD:         [180, 240, 320, 380],
+    TIME_DECREASE_PER_SOLVE: 10,
     TIME_FLOOR:              30,
 
     // Puzzle progression. Each solve grows EITHER rows or cols by one
@@ -109,7 +117,28 @@ const MARATHON = {
     // call for the same level returns the same dims. Logical dims —
     // quad mode's underlying maze is 2× per axis. No upper cap.
     MIN_DIM_SINGULAR: 8,
-    MIN_DIM_QUAD:    6,
+    MIN_DIM_QUAD:    4,
+    // Per-path-count minimum-dim override. 4-path puzzles need more grid
+    // space than 1/2/3-path: 8 distinct perimeter endpoints + 4 DFS paths
+    // competing for non-overlapping cells. At 8×8 (regular MIN_DIM) the
+    // generator sometimes fails to place all 4 paths even with thousands
+    // of attempts — paired with strict mode in maze.js, that would mean
+    // the worker loops a long time. 10×10 (singular) / 6×6 (quad logical
+    // = 12×12 physical) is comfortable. Used by minDimFor() below; falls
+    // back to MIN_DIM_SINGULAR / MIN_DIM_QUAD when no override is set
+    // for a given (quadMode, pathCount).
+    MIN_DIM_SINGULAR_4PATH: 10,
+    MIN_DIM_QUAD_4PATH:      6,
+    // Single source of truth for "what's the min logical dim for THIS
+    // (quadMode, pathCount)?". Callers: marathon.js's dimsForLevel,
+    // game.js's STARTER_PLAN. Adding more overrides (3-path, etc.) is
+    // a matter of adding the constant above + a branch here.
+    minDimFor: function (quadMode, pathCount) {
+        if (pathCount === 4) {
+            return quadMode ? this.MIN_DIM_QUAD_4PATH : this.MIN_DIM_SINGULAR_4PATH;
+        }
+        return quadMode ? this.MIN_DIM_QUAD : this.MIN_DIM_SINGULAR;
+    },
 
     // Leaderboard storage. Top N entries shown per game type.
     // Per universal rule 7a: 20.
@@ -126,7 +155,7 @@ const MARATHON = {
     // meaningful threshold. Without the floor, the fractional penalty
     // approaches zero as the timer winds down and the player can spam
     // hints to solve a puzzle for nearly free.
-    HINT_PENALTY_FRACTION: 0.33,
+    HINT_PENALTY_FRACTION: 0.25,
     HINT_PENALTY_MIN_MS:   10000,
 
     // 8 game types: singular/quad × 1..4 paths. Stored as keys 's1'..'s4', 'q1'..'q4'.

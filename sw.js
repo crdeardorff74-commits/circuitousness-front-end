@@ -7,7 +7,7 @@
 // Do NOT add DOM/window references to config.js — it must stay worker-safe.
 importScripts('/config.js');
 
-const APP_VERSION = '0.19';
+const APP_VERSION = '0.20';
 const CACHE_NAME = `${PROJECT_SLUG}-v${APP_VERSION}`;
 
 const CORE_ASSETS = [
@@ -23,6 +23,9 @@ const CORE_ASSETS = [
     '/maze-worker.js',
     '/render.js',
     '/game.js',
+    '/intro.js',
+    '/tooltip.js',
+    '/warnings.txt',
     '/manifest.json',
     '/favicon.svg'
 ];
@@ -87,6 +90,17 @@ self.addEventListener('fetch', (event) => {
 
     if (event.request.method !== 'GET') return;
     if (!url.protocol.startsWith('http')) return;
+
+    // Dev bypass: skip the SW cache entirely when running on localhost
+    // (any port). The dev server already sends Cache-Control: no-cache
+    // headers, so the browser will hit disk on each request and pick up
+    // the latest bytes. Without this bypass, iterative edits on localhost
+    // require manually clearing the SW + Cache Storage every time —
+    // because stale-while-revalidate returns the cached old code FIRST
+    // and only updates the cache for the NEXT load, which costs an extra
+    // round-trip the dev didn't expect. Production (real domain) still
+    // gets the full cache-first behavior below.
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return;
 
     // API calls: network only, never cached
     if (url.hostname.includes('onrender.com') || url.pathname.startsWith('/api/')) return;

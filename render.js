@@ -880,8 +880,24 @@ const Render = (() => {
             const endAngle   = Math.atan2(b.y - corner.y, b.x - corner.x);
             const dCW = ((endAngle - startAngle) + 2 * Math.PI) % (2 * Math.PI);
             const anticlockwise = dCW > Math.PI;
-            ctx.moveTo(a.x, a.y);
-            ctx.arc(corner.x, corner.y, cellSize / 2, startAngle, endAngle, anticlockwise);
+            // Snippet mode (title-O): extend each elbow's arc by ~1px of
+            // arc-length on both ends so adjacent tiles' butt caps overlap
+            // by ~2px at every shared port instead of meeting at a
+            // sub-pixel boundary. Without this overlap the AA on butt-cap
+            // junctions leaves a hair-thin transparent sliver between the
+            // arcs and the body background bleeds through as a dark seam
+            // cutting the red O. In-game tiles keep the exact butt-to-butt
+            // joins (snippetMode false) so cross intersections stay clean.
+            let s = startAngle, e = endAngle;
+            if (snippetMode) {
+                const eps = 2 / cellSize; // 1px / radius, where radius = cellSize/2
+                if (anticlockwise) { s += eps; e -= eps; }
+                else               { s -= eps; e += eps; }
+                ctx.arc(corner.x, corner.y, cellSize / 2, s, e, anticlockwise);
+            } else {
+                ctx.moveTo(a.x, a.y);
+                ctx.arc(corner.x, corner.y, cellSize / 2, s, e, anticlockwise);
+            }
         }
     }
 

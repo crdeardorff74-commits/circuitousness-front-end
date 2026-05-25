@@ -1,0 +1,109 @@
+# warnings.txt — silly activities inserted into the intro's WARNING body.
+# One activity per line. Lines starting with '#' or blank lines are ignored.
+# intro.js picks one at random per page load and substitutes it for
+# {activity} in the i18n template (intro.bodyTemplate).
+#
+# This file is intentionally bland — populate with your own list of
+# activities. If empty (or all lines commented), intro.js falls back to
+# the small list embedded in intro.js itself (FALLBACK_ACTIVITIES).
+operating heavy machinery
+skydiving
+bunjee jumping
+kayaking
+climbing a mountain
+tightrope walking
+unicycling
+snowboarding
+parasailing
+breakdancing
+teleporting
+escaping from prison
+scuba diving
+horseback riding
+skateboarding
+mountain biking
+line dancing
+skipping rope
+summoning Cthulu
+holding a seance
+in labor
+hang gliding
+running a marathon
+tap dancing
+moonwalking
+waiting for Godot
+speaking in tongues
+performing an execution
+engaged in shenanigans
+pursuing tomfoolery
+flying your sleigh
+releasing a Kraken
+landing a plane
+hunting
+hanging with Jeremy Piven
+opening the Ark of the Covenant
+finding Nemo
+crossing the streams
+getting your groove back
+taming a lion
+riding a bull
+riding Falkor
+training a raccoon
+doing improv
+reciting your wedding vows
+performing surgery
+mansplaining
+hiccupping
+playing The Cones of Dunshire
+making a sex tape
+smoking the reefer
+doing the Macarena
+# --- Claude's suggestions — remove freely ---
+petting Cerberus
+BASE jumping
+volcano boarding
+wing-walking
+alligator wrestling
+cliff diving
+in a high-speed chase
+doing stand-up at an open mic
+agreeing to the terms and conditions
+testifying before Congress
+changing a diaper
+trying to leave a Costco
+explaining cryptocurrency to your parents
+trying to fold a fitted sheet
+# --- Earlier batch (recovered from session history) — remove freely ---
+juggling chainsaws
+defusing a bomb
+wrestling a bear
+giving a TED talk
+arguing with a toddler
+bathing a cat
+running with scissors
+being chased by a goose
+parallel parking
+on a first date
+meeting your future in-laws
+testifying in court
+deciphering hieroglyphics
+running for office
+hosting Saturday Night Live
+holding a live grenade
+shaving with a katana
+having a tooth pulled
+storming a castle
+on a roller coaster
+operating an MRI machine
+serving as a Supreme Court justice
+narrating a documentary
+in zero gravity
+piloting a submarine
+delivering the State of the Union
+running with bulls in Pamplona
+on the trapeze
+giving a eulogy
+walking on hot coals
+on a blind date with your boss's child
+on a stakeout
+giving directions to your spouse

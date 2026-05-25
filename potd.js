@@ -48,9 +48,27 @@ const Potd = (() => {
 
     // Per the user: random size in [8, 14] for each axis, average ≥ 10.
     // Rejection sampling — keep-rate is high in this range.
-    const SIZE_MIN     = 8;
-    const SIZE_MAX     = 14;
-    const SIZE_AVG_MIN = 10;
+    // Per-mode physical sub-tile dim ranges (the dims the generator
+    // actually consumes). Quad needs different — and even — values
+    // because each player-facing quad-tile is a 2×2 group of sub-tiles.
+    // The two modes were originally on the same range, but at parity
+    // singular felt right while quad felt cramped (3 quad-tiles per
+    // axis is very tight). Doubled quad to 12–24 felt too sprawling,
+    // so quad now sits at the midpoint — physically larger than
+    // singular's range, but quad-tile counts that still feel manageable
+    // as a daily exercise. 10/18/14 → 5–9 quad-tiles per axis with an
+    // average cap of 7.
+    const SIZE_MIN          = 6;
+    const SIZE_MAX          = 12;
+    // Rejection-sample CEILING on the (W+H)/2 average — pairs whose
+    // average exceeds this get re-rolled. Without it, lopsided rolls
+    // (one axis at min, the other at max) would land bigger than the
+    // distribution targets. Per-mode so quad can have a larger absolute
+    // cap that's still a sensible fraction of its own range.
+    const SIZE_AVG_MAX      = 9;
+    const SIZE_MIN_QUAD     = 10;
+    const SIZE_MAX_QUAD     = 18;
+    const SIZE_AVG_MAX_QUAD = 14;
 
     // ── DOM refs (populated in init) ──
     let menuEl, hudEl, buildBannerEl, hudType, hudTimerVal, hudHintBtn;
@@ -100,19 +118,35 @@ const Potd = (() => {
     }
 
     function generateDims(quadMode) {
-        // Rejection sample: pick W and H in range, retry until avg ≥ 15.
+        // Per-mode physical dim range. Singular's range was the
+        // original target; quad sits between "use singular's range
+        // directly" (felt cramped, 3×3 quad-tile floor) and "double
+        // singular's range" (felt sprawling, 6×6 quad-tile floor).
+        // Current values target a 5×5 quad-tile floor / 9×9 ceiling
+        // with avg ≤ 7 quad-tiles per axis.
+        const min    = quadMode ? SIZE_MIN_QUAD     : SIZE_MIN;
+        const max    = quadMode ? SIZE_MAX_QUAD     : SIZE_MAX;
+        const avgCap = quadMode ? SIZE_AVG_MAX_QUAD : SIZE_AVG_MAX;
+        // Rejection sample: pick W and H in [min, max], re-roll until
+        // (W+H)/2 ≤ avgCap. Caps overall size so neither axis can land
+        // far on the large end while the other is also moderately
+        // large — keeps puzzles approachable as a daily exercise.
         while (true) {
             let w, h;
             if (quadMode) {
-                // Even values only — quad puzzles need divisible-by-2 dims.
-                w = SIZE_MIN + 2 * Math.floor(Math.random() * ((SIZE_MAX - SIZE_MIN) / 2 + 1));
-                h = SIZE_MIN + 2 * Math.floor(Math.random() * ((SIZE_MAX - SIZE_MIN) / 2 + 1));
+                // Even values only — quad puzzles need divisible-by-2
+                // sub-tile dims so each 2×2 quad-tile fits cleanly.
+                // (min/max are already even from the *2, so stepping by
+                // 2 covers the full range.)
+                const span = (max - min) / 2 + 1;
+                w = min + 2 * Math.floor(Math.random() * span);
+                h = min + 2 * Math.floor(Math.random() * span);
             } else {
-                const span = SIZE_MAX - SIZE_MIN + 1;
-                w = SIZE_MIN + Math.floor(Math.random() * span);
-                h = SIZE_MIN + Math.floor(Math.random() * span);
+                const span = max - min + 1;
+                w = min + Math.floor(Math.random() * span);
+                h = min + Math.floor(Math.random() * span);
             }
-            if ((w + h) / 2 >= SIZE_AVG_MIN) return { w, h };
+            if ((w + h) / 2 <= avgCap) return { w, h };
         }
     }
 
@@ -181,6 +215,102 @@ const Potd = (() => {
     function setSlotState(slot, date, value) {
         try { localStorage.setItem(stateKey(slot, date), value); }
         catch (e) {}
+        // Re-paint the menu indicators every time we write. Without this,
+        // a 'solved' write during onSolve doesn't reach the buttons until
+        // something else (init, ModePicker.onChange to 'potd') happens to
+        // call refreshMenuIndicators — so a player who solves a PotD slot
+        // and goes straight to the leaderboard sees the same fresh cards
+        // until they bounce out to Marathon and back. The buttons may be
+        // hidden right now (we're mid-puzzle); querySelectorAll still
+        // finds them and the next menu reveal paints correctly.
+        // refreshMenuIndicators is a hoisted function declaration below,
+        // so this forward reference is safe at runtime.
+        refreshMenuIndicators();
+    }
+
+    // Per-(date, slot) localStorage record of the server's last-seen
+    // generated_at timestamp. Used by reconcileGeneratedAt to detect
+    // when a slot's underlying puzzle has been re-seeded server-side
+    // (e.g., by the dev-reset endpoint or — eventually — by the next
+    // UTC day's rollover). Storing per slot rather than per date so
+    // partial reseeds (cooperative seeding mid-day) don't false-trigger
+    // wipes on slots that didn't change.
+    function genAtKey(slot, date) {
+        return projectSlug() + '_potd_genAt_' + date + '_' + slot;
+    }
+    // Reconcile local PotD state against a fresh /potd/today response.
+    // Two paths:
+    //
+    //   1. Slots PRESENT in the response — compare generatedAt timestamps.
+    //      A mismatch means the puzzle was re-seeded since this client
+    //      last saw it (dev-reset + new player, or server-side data
+    //      churn); the local 'solved'/'started' state refers to a
+    //      different puzzle than the server actually has, so wipe it.
+    //
+    //   2. Slots ABSENT from the response — if we've EVER seen a server
+    //      puzzle for this slot (lastSeen genAt non-null), the server has
+    //      since dropped it. This is the cross-browser dev-reset case:
+    //      Browser A clicks Reset → server PotdPuzzle rows wiped → some
+    //      slots get re-seeded before Browser B reloads, some don't yet.
+    //      Slots not in the response stayed wiped server-side, so the
+    //      stale local state on Browser B is now meaningless. Wipe both
+    //      the state and the genAt record so a future re-seed registers
+    //      as a fresh first-sight (not a mismatch-of-stale).
+    //
+    //   Exception: a slot with lastSeen=null (never seen a server puzzle)
+    //   and a local 'solved'/'started' state means the player solved a
+    //   purely-local puzzle whose seed POST never reached the server —
+    //   offline play, or a 409 race. Leave that state alone; wiping it
+    //   would erase the player's only record of an actual solve.
+    function reconcileGeneratedAt(date, puzzlesList) {
+        if (!date || !Array.isArray(puzzlesList)) return;
+        const serverSlots = new Set();
+        // Path 1: slots present in the response. Always record the slot
+        // in serverSlots BEFORE checking generatedAt — old back-end
+        // deployments don't return that field, but the slot IS still on
+        // the server, and path 2 below would otherwise wrongly treat it
+        // as "absent" and wipe local state. The generatedAt comparison
+        // (when available) handles re-seed detection; without it we just
+        // skip that comparison but still trust the slot's presence.
+        for (const p of puzzlesList) {
+            if (!p || !p.slot) continue;
+            serverSlots.add(p.slot);
+            if (!p.generatedAt) continue;
+            let lastSeen = null;
+            try { lastSeen = localStorage.getItem(genAtKey(p.slot, date)); }
+            catch (e) { /* private mode — skip */ }
+            if (lastSeen !== p.generatedAt) {
+                if (lastSeen !== null) {
+                    try { localStorage.removeItem(stateKey(p.slot, date)); }
+                    catch (e) {}
+                }
+                try { localStorage.setItem(genAtKey(p.slot, date), p.generatedAt); }
+                catch (e) {}
+            }
+        }
+        // Path 2: slots absent from the response. The fetch succeeded
+        // (this function is only called from inside the response-ok
+        // branch of fetchTodaysPuzzles), so absent-from-response means
+        // "server doesn't have this slot right now" — re-seed pending,
+        // dev-reset, etc. Wipe local state regardless of whether we
+        // have a genAt record for it, because (a) without the back-end
+        // generatedAt-field deployment we'd never have one even for
+        // legitimate state, and (b) the only case the previous
+        // lastSeen!==null guard protected — pure-offline play whose
+        // seed POST never reached the server — leaves the local state
+        // unable to post a score anyway, so wiping costs the player
+        // nothing they could have actually used.
+        for (const slot of SLOTS) {
+            if (serverSlots.has(slot)) continue;
+            try {
+                localStorage.removeItem(stateKey(slot, date));
+                localStorage.removeItem(genAtKey(slot, date));
+            } catch (e) {}
+        }
+        // After potentially clearing slot states, refresh the menu so the
+        // badges reflect the (now-empty) localStorage. Cheap; no-op when
+        // nothing changed.
+        refreshMenuIndicators();
     }
 
     // ── localStorage cache for today's puzzle SNAPSHOTS ──
@@ -244,24 +374,63 @@ const Potd = (() => {
     // GET /api/potd/today — always 200, possibly with a partial puzzles
     // list (cooperative seeding means the server may have, say, 3 of 8
     // until other players fill in the rest). Returns { date, byslot } or
-    // null if the server is unreachable or didn't respond within the
-    // timeout. The timeout matters specifically on Render's free tier
-    // — cold starts can hang for 30+ seconds with no error, and without
-    // it `ensurePuzzleAvailable`'s await on this fetch would leave the
-    // player stuck on "Loading today's puzzles…" forever rather than
-    // falling through to local generation.
-    const FETCH_TIMEOUT_MS = 8000;
-    async function fetchTodaysPuzzles() {
-        const base = apiBase();
-        if (!base) return null;
+    // null if every attempt fails (server unreachable or unresponsive).
+    //
+    // Timeout + retry rationale: the per-attempt cap originally existed
+    // for Render free-tier cold starts (30+ seconds of hang with no
+    // error). Even on paid tier, transient slowness still happens
+    // (DB pool exhaustion, brief GC pause, deploy mid-flight) and an 8s
+    // cap occasionally trips on requests that would have succeeded in
+    // 9-10s. A single retry covers those cases without the user staring
+    // at "Loading today's puzzles…" for the entire window of one really
+    // long hang. Worst case (both attempts time out): ~16.5s, then
+    // ensurePuzzleAvailable falls through to local generation.
+    const FETCH_TIMEOUT_MS     = 8000;
+    const FETCH_MAX_ATTEMPTS   = 2;
+    const FETCH_RETRY_DELAY_MS = 500;
+
+    // Single fetch attempt — returns { ok, data } on success or
+    // { ok: false, reason } on any failure (network error, abort,
+    // non-2xx). Separated from the outer retry loop so each attempt
+    // gets its own AbortController + timeout pair.
+    async function attemptFetchTodaysPuzzles(base) {
         const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
         const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, FETCH_TIMEOUT_MS) : null;
         try {
             const resp = await fetch(base + '/potd/today', ctrl ? { signal: ctrl.signal } : undefined);
             if (resp.ok) {
                 const data = await resp.json();
+                return { ok: true, data: data };
+            }
+            return { ok: false, reason: 'http ' + resp.status };
+        } catch (e) {
+            return { ok: false, reason: e && e.name === 'AbortError'
+                ? 'timeout after ' + FETCH_TIMEOUT_MS + 'ms'
+                : (e && e.message) || String(e) };
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    }
+
+    async function fetchTodaysPuzzles() {
+        const base = apiBase();
+        if (!base) return null;
+        let lastReason = null;
+        for (let attempt = 1; attempt <= FETCH_MAX_ATTEMPTS; attempt++) {
+            const result = await attemptFetchTodaysPuzzles(base);
+            if (result.ok) {
+                const data = result.data;
                 const set = { date: data.date, byslot: {} };
                 for (const p of (data.puzzles || [])) set.byslot[p.slot] = p.snapshot;
+                // Staleness check — wipes 'solved'/'started' state for any
+                // slot whose server-side puzzle has been re-seeded since
+                // this client last saw it. Catches the cross-browser
+                // dev-reset case: Browser A clicks Reset PotD, the server
+                // drops + (eventually) re-seeds today's PotdPuzzle rows,
+                // but Browser B's localStorage still claims to have
+                // solved them. Comparing generated_at per slot lets
+                // Browser B notice and self-clean on its next /today fetch.
+                reconcileGeneratedAt(data.date, data.puzzles || []);
                 // Persist for instant load on next visit. Saving here
                 // (rather than at each call site) keeps the cache write
                 // in lockstep with the canonical server response, which
@@ -270,17 +439,20 @@ const Potd = (() => {
                 pruneOldPuzzleCaches(set.date);
                 return set;
             }
-        } catch (e) {
-            // Logger.warn so a hung fetch (cold-start timeout, CORS,
-            // offline) surfaces in the console — the silent null return
-            // made these very hard to diagnose.
-            if (typeof Logger !== 'undefined') {
-                Logger.warn('PotD: /today fetch failed', e && e.name === 'AbortError'
-                    ? 'timeout after ' + FETCH_TIMEOUT_MS + 'ms'
-                    : (e && e.message) || e);
+            lastReason = result.reason;
+            if (attempt < FETCH_MAX_ATTEMPTS) {
+                // Brief pause before retrying — gives the back-end a
+                // moment to recover from whatever caused the first
+                // attempt to fail (transient connection pool exhaustion,
+                // brief GC pause, deploy mid-flight, etc.).
+                await new Promise(function (res) { setTimeout(res, FETCH_RETRY_DELAY_MS); });
             }
-        } finally {
-            if (timer) clearTimeout(timer);
+        }
+        // All attempts failed. Log enough context to diagnose without
+        // spelunking — the silent null return historically made hung
+        // fetches a pain to track down.
+        if (typeof Logger !== 'undefined') {
+            Logger.warn('PotD: /today fetch failed after ' + FETCH_MAX_ATTEMPTS + ' attempts:', lastReason);
         }
         return null;
     }
@@ -304,31 +476,105 @@ const Potd = (() => {
     // POST /api/potd/seed — single slot. Returns { ok, status }:
     //   201 ok           → we won the race, server now has our snapshot
     //   409 already_seeded → another player beat us; caller fetches theirs
-    //   other            → offline / error; caller falls back to local-only play
-    async function postSeedSingle(date, slot, snapshot) {
-        const base = apiBase();
-        if (!base) return { ok: false, status: 0 };
+    //   other            → offline / error; caller falls back to local-only
+    //                       play (which then 404s on /potd/start and shows
+    //                       "Offline" on the solve modal — historically the
+    //                       single most opaque failure mode in PotD).
+    //
+    // Per-attempt timeout + single retry mirrors fetchTodaysPuzzles —
+    // unbounded fetch was the silent-hang root cause, and one retry
+    // covers transient back-end slowness (DB pool exhaustion, brief GC
+    // pause) without making the player wait 30+s on a truly down server.
+    const SEED_TIMEOUT_MS     = 8000;
+    const SEED_MAX_ATTEMPTS   = 2;
+    const SEED_RETRY_DELAY_MS = 500;
+    async function attemptSeedSingle(base, date, slot, snapshot) {
+        const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, SEED_TIMEOUT_MS) : null;
         try {
-            const resp = await fetch(base + '/potd/seed', {
+            const resp = await fetch(base + '/potd/seed', Object.assign({
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify({ date, slot, snapshot }),
-            });
+            }, ctrl ? { signal: ctrl.signal } : {}));
             return { ok: resp.ok, status: resp.status };
-        } catch (e) { return { ok: false, status: 0 }; }
+        } catch (e) {
+            return { ok: false, status: 0, reason: e && e.name === 'AbortError'
+                ? 'timeout after ' + SEED_TIMEOUT_MS + 'ms'
+                : (e && e.message) || String(e) };
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    }
+    async function postSeedSingle(date, slot, snapshot) {
+        const base = apiBase();
+        if (!base) return { ok: false, status: 0 };
+        let last = null;
+        for (let attempt = 1; attempt <= SEED_MAX_ATTEMPTS; attempt++) {
+            last = await attemptSeedSingle(base, date, slot, snapshot);
+            // 201 = success, 409 = lost race (caller handles). Both are
+            // terminal — no retry. Only transient failures (5xx, network
+            // abort, timeout) get retried.
+            if (last.ok) return last;
+            if (last.status === 409) return last;
+            if (attempt < SEED_MAX_ATTEMPTS) {
+                await new Promise(function (res) { setTimeout(res, SEED_RETRY_DELAY_MS); });
+            }
+        }
+        // Both attempts failed. Surface the failure clearly — historically
+        // a silent fall-through to "local snap only, server has nothing"
+        // caused the subsequent /potd/start to 404 and the player to see
+        // an "Offline" message on solve despite being online.
+        if (typeof Logger !== 'undefined') {
+            Logger.warn('PotD: /potd/seed failed after ' + SEED_MAX_ATTEMPTS + ' attempts',
+                { slot: slot, status: last && last.status, reason: last && last.reason });
+        }
+        return last || { ok: false, status: 0 };
     }
 
-    async function postStart(date, slot) {
-        const base = apiBase();
-        if (!base) return null;
+    // Inner request: just the POST, no recovery logic. Lets postStart
+    // distinguish a network failure (return null) from a "server says
+    // not_generated" (404 → caller can re-seed and retry).
+    async function attemptPostStart(base, date, slot) {
         try {
             const resp = await fetch(base + '/potd/start', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify({ date, slot, sessionId: getSessionId() }),
             });
-            if (resp.ok) return await resp.json();
-        } catch (e) { /* offline */ }
+            if (resp.ok) return { ok: true, data: await resp.json() };
+            return { ok: false, status: resp.status };
+        } catch (e) {
+            return { ok: false, status: 0 };
+        }
+    }
+    async function postStart(date, slot) {
+        const base = apiBase();
+        if (!base) return null;
+        const first = await attemptPostStart(base, date, slot);
+        if (first.ok) return first.data;
+        // 404 from /potd/start means the server doesn't have a
+        // PotdPuzzle row for (date, slot) yet — even though
+        // ensurePuzzleAvailable should have seeded it. This is the
+        // recurring "Offline despite being online" trap: the seed POST
+        // failed silently (server hiccup, transient 5xx), runQueue
+        // fell through with a local snap, and now start can't proceed.
+        // Recovery: re-seed from the local snap (which we still have in
+        // puzzles.byslot[slot]) and retry start once. Only the 404 path
+        // gets this recovery — other failures (timeout, network) just
+        // return null and let the solve modal show "Offline".
+        if (first.status === 404 && puzzles && puzzles.byslot && puzzles.byslot[slot]) {
+            if (typeof Logger !== 'undefined') {
+                Logger.warn('PotD: /potd/start 404 — re-seeding and retrying', { slot: slot });
+            }
+            const seedResult = await postSeedSingle(date, slot, puzzles.byslot[slot]);
+            // Either we won (201) or someone seeded in the meantime
+            // (409) — either way the row should exist now.
+            if (seedResult.ok || seedResult.status === 409) {
+                const retry = await attemptPostStart(base, date, slot);
+                if (retry.ok) return retry.data;
+            }
+        }
         return null;
     }
 
@@ -372,6 +618,35 @@ const Potd = (() => {
     // ELSE started the fetch. null = never started; non-null = either
     // pending or settled (either way, await is safe and cheap).
     let serverFetchPromise = null;
+    // Resolution state for serverFetchPromise. Promises don't expose a
+    // synchronous "have you settled yet?" — we track it ourselves so
+    // ensurePuzzleAvailable can suppress the "Loading today's puzzles…"
+    // banner on the cache-already-warm path (e.g. after init()'s pre-warm
+    // resolved before the user clicked). Without this, repeat clicks
+    // flashed "Loading…" for one frame even though the await was
+    // instantaneous, which read as a misleading network-wait blip
+    // followed by the real "Generating…" banner.
+    let serverFetchResolved = false;
+
+    // Helper — fire fetchTodaysPuzzles into serverFetchPromise if no
+    // fetch is in flight. Centralizes the resolution-tracking so all
+    // three caller sites (init pre-warm, ensurePuzzleAvailable cache-hit
+    // branch, ensurePuzzleAvailable cache-miss branch) agree on when
+    // serverFetchResolved flips. devSeedAllSlots intentionally keeps its
+    // own merge logic (it replaces `puzzles` wholesale rather than
+    // merging into byslot) — that's dev-only and silent so the banner
+    // suppression isn't relevant there.
+    function ensureServerFetch() {
+        if (serverFetchPromise) return;
+        serverFetchResolved = false;
+        serverFetchPromise = fetchTodaysPuzzles().then(function (fetched) {
+            if (fetched) {
+                for (const k in fetched.byslot) puzzles.byslot[k] = fetched.byslot[k];
+            }
+        }).finally(function () {
+            serverFetchResolved = true;
+        });
+    }
 
     // Dedicated worker — independent Maze instance, no collision with
     // marathon's pre-gen worker. Lazily spun up on first need. Stays
@@ -648,6 +923,7 @@ const Potd = (() => {
         if (puzzles && puzzles.date !== wantDate) {
             puzzles               = null;
             serverFetchPromise    = null;
+            serverFetchResolved   = false;
             queue                 = [];
             slotWaiters.clear();
         }
@@ -664,17 +940,7 @@ const Potd = (() => {
             // Even on cache hit, kick the server fetch in the background
             // so other slots' cache stays warm. Fire-and-forget — no
             // await, no banner.
-            if (!serverFetchPromise) {
-                serverFetchPromise = fetchTodaysPuzzles().then(function (fetched) {
-                    if (fetched) {
-                        // Merge: server-known slots beat cached ones (they're
-                        // canonical), but we keep any cached slots the server
-                        // hasn't reported yet (cooperative seeding may not
-                        // have completed for them).
-                        for (const k in fetched.byslot) puzzles.byslot[k] = fetched.byslot[k];
-                    }
-                });
-            }
+            ensureServerFetch();
             return puzzles.byslot[slot];
         }
 
@@ -684,14 +950,15 @@ const Potd = (() => {
         // still pending awaits the same result instead of skipping the
         // load step (which would show "Generating…" while actually
         // waiting on the server).
-        if (!serverFetchPromise) {
-            serverFetchPromise = fetchTodaysPuzzles().then(function (fetched) {
-                if (fetched) {
-                    for (const k in fetched.byslot) puzzles.byslot[k] = fetched.byslot[k];
-                }
-            });
+        ensureServerFetch();
+        // Only show "Loading today's puzzles…" if the fetch is still
+        // in flight. After init's pre-warm completes, serverFetchResolved
+        // is true and the await below is effectively instant — we'd
+        // rather skip straight to "Generating…" than flash a misleading
+        // network-wait banner for one frame.
+        if (!puzzles.byslot[slot] && !serverFetchResolved) {
+            showBanner('Loading today\'s puzzles…');
         }
-        if (!puzzles.byslot[slot]) showBanner('Loading today\'s puzzles…');
         await serverFetchPromise;
         if (puzzles.byslot[slot]) return puzzles.byslot[slot];
 
@@ -702,7 +969,16 @@ const Potd = (() => {
     // ── Start a puzzle ──
 
     async function startPuzzle(slot) {
-        if (state !== STATE.MENU) return;
+        // Diagnostic: log when a click is silently rejected by the state
+        // guard. Helps catch the "click did nothing, second click worked"
+        // case — if the user sees this warn in the console on a failed
+        // click, the state machine got stuck in a non-MENU state.
+        if (state !== STATE.MENU) {
+            if (typeof Logger !== 'undefined' && Logger.warn) {
+                Logger.warn('PotD.startPuzzle: rejected, state =', state, 'slot =', slot);
+            }
+            return;
+        }
         if (SLOTS.indexOf(slot) < 0) return;
 
         state = STATE.BUILDING;
@@ -730,6 +1006,46 @@ const Potd = (() => {
         // postStart awaited a session token over the network.
         showBanner('Loading today\'s puzzle…');
 
+        // Compute the date up front so postStart can fire in parallel
+        // with ensurePuzzleAvailable. The two endpoints are independent:
+        // /potd/today returns the snapshot, /potd/start issues a session
+        // token + reports eligibility — neither needs the other's
+        // response. Sequential awaits added an extra round-trip of
+        // latency for no functional reason. We prefer puzzles.date when
+        // the pre-warm fetch has already populated it (server-authoritative
+        // for the rollover edge), falling back to client UTC otherwise.
+        const date = (puzzles && puzzles.date) || todayUTC();
+
+        // Already solved today? Refuse to restart (the eligibility gate is
+        // also enforced server-side, but bailing here avoids the round-trip).
+        // This runs BEFORE the network fire-off so we never burn a session
+        // token on a slot we already know the player can't post a score for.
+        const local = getSlotState(slot, date);
+        if (local === 'solved') {
+            bailToMenu();
+            return;
+        }
+
+        // Sequential: ensurePuzzleAvailable MUST complete before postStart,
+        // because the server's /potd/start endpoint refuses to issue a
+        // session token for a slot that hasn't been seeded server-side yet
+        // (returns 404). ensurePuzzleAvailable is what seeds it — either by
+        // pulling from the /today response or, on a cache miss, by
+        // generating locally + POSTing /potd/seed.
+        //
+        // A previous version of this code fired both via Promise.all to
+        // shave one network round-trip. That worked when the slot was
+        // already seeded (the common case once a day is warm) but broke
+        // every first-play scenario — fresh users, first-of-the-day picks,
+        // and especially post-dev-reset plays would race /start ahead of
+        // the seed POST, /start would 404, sessionToken would land null,
+        // and the solve modal would falsely tell the player they were
+        // offline. The marginal speed win wasn't worth the silent
+        // failure mode. The pre-warm in init() still hides the /today
+        // round-trip behind the intro screen, so cache-warm clicks are
+        // still effectively instant; the only cost of sequential here is
+        // one /start round-trip latency, which is small compared to
+        // anything seeding-related.
         let snapshot;
         try {
             snapshot = await ensurePuzzleAvailable(slot);
@@ -741,22 +1057,6 @@ const Potd = (() => {
             bailToMenu();
             return;
         }
-        const date = (puzzles && puzzles.date) || todayUTC();
-
-        // Already solved today? Refuse to restart (the eligibility gate is
-        // also enforced server-side, but bailing here avoids the round-trip).
-        const local = getSlotState(slot, date);
-        if (local === 'solved') {
-            bailToMenu();
-            return;
-        }
-
-        // Issue session token + check eligibility. Server is the source
-        // of truth: even if the player cleared localStorage, a prior
-        // PotdSession row for (date, slot, sessionId) makes the new one
-        // ineligible. The banner above stays up during this await so
-        // the player doesn't see a blank screen while we wait for the
-        // session-token round-trip.
         const startData = await postStart(date, slot);
         sessionToken = startData ? startData.sessionToken : null;
         eligible     = startData ? !!startData.eligible    : true;
@@ -795,6 +1095,18 @@ const Potd = (() => {
         Render.refit();
         Render.draw();
 
+        // PotD bypasses game.js's newPuzzle, so we also have to manually
+        // reset the SFX diff baselines (lastPathsWon / lastWon / lastJoined
+        // in game.js's closure). Without this, the first refresh() during
+        // this PotD play diffs against the previous marathon game's stale
+        // state and can fire spurious applause on the player's first tile
+        // click — particularly with 1-/2-/3-path PotD slots whose unused
+        // path slots default to `true` and read as "newly connected"
+        // against the prior 4-path marathon's all-false baseline.
+        if (typeof Game !== 'undefined' && Game.resetSfxBaselines) {
+            Game.resetSfxBaselines();
+        }
+
         // Start a fresh recording anchored on the just-loaded snapshot,
         // so the player's solve moves (including gate rotations) end up
         // in Game.recording.moves where onSolve can pick them up to
@@ -814,8 +1126,12 @@ const Potd = (() => {
         // Music kicks in once the puzzle is actually loaded and about to be
         // playable — matches marathon.js's "music starts at game-start"
         // pattern. Music.stop() lives in quitToMenu so PotD's solve→menu
-        // transition silences playback cleanly.
-        if (typeof Music !== 'undefined' && Music.start) Music.start();
+        // transition silences playback cleanly. Phase switch makes next
+        // pickNext draw from the intro/shuffle pool instead of menu_only.
+        if (typeof Music !== 'undefined') {
+            if (Music.setMenuPhase) Music.setMenuPhase(false);
+            if (Music.start)        Music.start();
+        }
         // Engagement tracking: one start per PotD slot. The slot string
         // (s1..s4, q1..q4) goes into the gameType column so the admin
         // breakdown can distinguish PotD plays of each type.
@@ -827,6 +1143,47 @@ const Potd = (() => {
         showHud();
         hideBanner();
         state = STATE.PLAYING;
+        // First-play educational tooltips:
+        //   • potdHint — appears immediately so the player reads the
+        //     hint-disqualification rule BEFORE they're tempted to use
+        //     one.
+        //   • lockTile — scheduled 30s in so it appears once the player
+        //     is mid-solve. Shared seen-flag with marathon's lockTile
+        //     trigger, so a player who saw the tip in one mode doesn't
+        //     see it again in the other.
+        if (typeof Tooltip !== 'undefined') {
+            Tooltip.showOnce('potdHint',
+                (typeof I18n !== 'undefined' && I18n.t)
+                    ? I18n.t('tooltip.potdHint')
+                    : 'Using HINT for help will disqualify you for the Puzzle of the Day leaderboards');
+            scheduleLockTip();
+        }
+    }
+    // Same lock-tip scheduling pattern marathon uses — see marathon.js
+    // for the rationale. Cancelled on puzzle exit (quit-to-menu / solve)
+    // so the tip can't fire over a non-puzzle screen.
+    let lockTipTimerHandle = null;
+    const LOCK_TIP_DELAY_MS = 30000;
+    function scheduleLockTip() {
+        cancelLockTip();
+        if (typeof Tooltip === 'undefined' || Tooltip.isSeen('lockTile')) return;
+        lockTipTimerHandle = setTimeout(function () {
+            lockTipTimerHandle = null;
+            if (state !== STATE.PLAYING) return;
+            Tooltip.showOnce('lockTile',
+                (typeof I18n !== 'undefined' && I18n.t)
+                    ? I18n.t('tooltip.lockTile')
+                    : 'If you are sure that a tile is rotated correctly, you can press and hold to lock it in place (along with its twin, if it has one)');
+        }, LOCK_TIP_DELAY_MS);
+    }
+    function cancelLockTip() {
+        if (lockTipTimerHandle !== null) {
+            clearTimeout(lockTipTimerHandle);
+            lockTipTimerHandle = null;
+        }
+        if (typeof Tooltip !== 'undefined' && Tooltip.cancelPending) {
+            Tooltip.cancelPending('lockTile');
+        }
     }
 
     // ── Solve detection (called from game.js's refresh when Maze.won flips) ──
@@ -835,6 +1192,28 @@ const Potd = (() => {
         if (state !== STATE.PLAYING) return;
         state = STATE.SOLVED;
         stopTimerDisplay();
+        // Cancel the lock-tip timer — it would otherwise pop up over the
+        // solve modal if the player solved within 30s.
+        cancelLockTip();
+        // Drop any active first-play tooltip without marking seen, so
+        // it'll fire again on the player's next puzzle. The solve modal
+        // + end-credits scene shouldn't have a play-time tip layered on
+        // top of them.
+        if (typeof Tooltip !== 'undefined' && Tooltip.dismissActive) {
+            Tooltip.dismissActive(false);
+        }
+
+        // Solve SFX (stage 1): immediate applause as soon as the player
+        // connects the puzzle. Mirrors marathon.onSolve's same call —
+        // both modes get the celebratory audio cue at the moment the
+        // win state flips, before any submission round-trip. Stop any
+        // sustained overlap-loop first (same defensive pattern marathon
+        // uses) so the SFX channel is clear. The stage-2 audience_cheer
+        // fires later, after the submit returns, gated on top-N rank.
+        if (typeof Sfx !== 'undefined') {
+            if (Sfx.stopLoop) Sfx.stopLoop('glitch_overlap');
+            Sfx.play('applause_long');
+        }
 
         const timeMs = Date.now() - puzzleStartMs;
         const date = puzzles.date;
@@ -850,44 +1229,100 @@ const Potd = (() => {
             }
         } catch (e) { /* fall through with null */ }
 
+        // Pull the player's last-saved name to pre-fill the input. Shared
+        // with marathon via the same _lastPlayerName key, so typing once
+        // in either mode populates both.
+        const lastName = (function () {
+            try { return localStorage.getItem(projectSlug() + '_lastPlayerName') || ''; }
+            catch (e) { return ''; }
+        })();
+
+        // Brief pause so the player sees the win-state visuals (gold lit
+        // channels, etc.) before the modal covers the canvas.
+        await new Promise((res) => setTimeout(res, 250));
+
+        // Music swap, credits, tracking, share — same as before; these
+        // are time-independent of submission so they fire as soon as the
+        // solve resolves rather than waiting on a name-input round-trip.
+        if (typeof Music !== 'undefined' && Music.stop) Music.stop();
+        if (typeof Credits !== 'undefined' && Credits.start) Credits.start();
+        if (typeof Tracking !== 'undefined' && Tracking.recordFinish) Tracking.recordFinish();
+        if (typeof Share !== 'undefined' && Share.maybeShowPopup) Share.maybeShowPopup();
+
+        const wasOffline = !sessionToken;
+        const canSubmit  = !!sessionToken && eligible;
+
+        // Show the solve modal. If we can submit, the modal collects a
+        // name and resolves with the entered string when the player clicks
+        // Save (or hits Enter). Otherwise it's informational only and
+        // resolves on a tap-anywhere — there's no point asking for a name
+        // when no score is going to be posted.
+        let enteredName = '';
+        if (canSubmit) {
+            enteredName = await showSolveModal({ timeMs, awaitName: true, lastName });
+        } else {
+            await showSolveModal({ timeMs, awaitName: false, wasOffline });
+            quitToMenu();
+            return;
+        }
+
+        // Trim + clamp the same way marathon does. Persist BEFORE the
+        // submit so an offline / failed POST still leaves the player's
+        // chosen name on disk for next time (universal rule 7a). Only
+        // persist actual user input — don't write the 'Anonymous' fallback.
+        const trimmedName = (enteredName || '').trim().slice(0, 16);
+        if (trimmedName) {
+            try { localStorage.setItem(projectSlug() + '_lastPlayerName', trimmedName); }
+            catch (e) { /* localStorage unavailable */ }
+        }
+        const submittedName = trimmedName || 'Anonymous';
+
+        // Submit with the entered name.
         let result = null;
-        // Only submit when the run is still eligible. Hints flip eligible
-        // to false client-side; the server doesn't know about hints, so
-        // we have to gate the /submit ourselves to keep ineligible runs
-        // off the leaderboard.
-        if (sessionToken && eligible) {
-            const lastName = (() => {
-                try { return localStorage.getItem(projectSlug() + '_lastPlayerName') || ''; }
-                catch (e) { return ''; }
-            })();
+        try {
             result = await postSubmit({
                 sessionToken,
                 timeMs,
                 events: recording ? recording.moves : null,
-                name: lastName,
+                // Songs that played during this puzzle, replayed by
+                // Music.startScriptedPlayback during /potd/scores/<id>/recording
+                // playback. PotD's existing `events` field is a flat
+                // moves array (vs marathon's full-recording objects),
+                // so musicEvents rides as a separate top-level field.
+                musicEvents: recording ? recording.musicEvents : null,
+                name: submittedName,
                 clientVersion: (typeof PAGE_VERSION === 'string') ? PAGE_VERSION : null,
             });
-        }
+        } catch (e) { /* submission failed — fall through with null result */ }
 
-        // Defer the modal briefly so the player sees the win-state visual
-        // (gold lit channels, etc.) before the dialog covers the canvas.
+        // Did the player make the visible top-N? If so, jump straight to
+        // the leaderboard with their entry highlighted; otherwise return
+        // to menu (below-cap submissions are persisted on the server but
+        // not visible on the displayed board, and jumping to a leaderboard
+        // that doesn't show the player's row would be confusing).
         const rank           = (result && typeof result.rank === 'number') ? result.rank : null;
         const submittedOk    = !!(result && result.eligible !== false);
-        const wasOffline     = !sessionToken;
-        await new Promise((res) => setTimeout(res, 250));
-        // Stop gameplay music and roll the end-credits sequence behind the
-        // solve modal. Credits.start kicks the credits track on a delay so
-        // the music swap doesn't feel abrupt; the solve modal positions
-        // itself in the upper third via body.credits-rolling.
-        if (typeof Music !== 'undefined' && Music.stop) Music.stop();
-        if (typeof Credits !== 'undefined' && Credits.start) Credits.start();
-        // Engagement tracking: solving a PotD = "finished a puzzle". Same
-        // sticky-server-side behavior as marathon gameOver.
-        if (typeof Tracking !== 'undefined' && Tracking.recordFinish) Tracking.recordFinish();
-        // Share popup gate (Share module owns dismissal + threshold).
-        if (typeof Share !== 'undefined' && Share.maybeShowPopup) Share.maybeShowPopup();
-        await showSolveModal({ timeMs, rank, submittedOk, wasOffline });
-        quitToMenu();
+        const scoreId        = (result && typeof result.id === 'number') ? result.id : null;
+        const TOP_N          = (typeof MARATHON === 'object' && MARATHON.LEADERBOARD_TOP_N) || 20;
+        const madeLeaderboard = submittedOk && rank != null && rank <= TOP_N;
+
+        // NOTE: no stage-2 audience-cheer SFX on Save. The stage-1
+        // applause_long fired the moment the puzzle solved, which is the
+        // celebratory cue. The Save click is a quiet bookkeeping action —
+        // any SFX layered onto it gets immediately faded by the music
+        // transition in quitToLeaderboard (Sfx.fadeOneShots +
+        // Music.start → playSong → fadeOneShots), producing a "blast"
+        // sound that startles the player. Rank is communicated visually
+        // by the highlighted leaderboard row.
+        if (madeLeaderboard) {
+            quitToLeaderboard(slot, {
+                id:     scoreId,
+                name:   submittedName,
+                timeMs: timeMs,
+            });
+        } else {
+            quitToMenu();
+        }
     }
 
     // ── Result + disclaimer modals (replace browser alert() / confirm()) ──
@@ -939,41 +1374,113 @@ const Potd = (() => {
         return showConfirmModal('potdDisclaimerOverlay', 'potdDisclaimerContinueBtn', 'potdDisclaimerCancelBtn');
     }
 
-    function showSolveModal({ timeMs, rank, submittedOk, wasOffline }) {
+    // Show the post-solve modal.
+    //
+    // Two modes, controlled by `awaitName`:
+    //  - awaitName=true:  eligible online run. Show name input + Save
+    //                     button; resolve with the entered name when the
+    //                     player clicks Save / presses Enter. Tap-elsewhere
+    //                     does NOT dismiss in this mode (we need the name).
+    //                     Rank is intentionally not shown here — submission
+    //                     happens after the player saves, so we don't know
+    //                     rank yet; the leaderboard view shows it with the
+    //                     player's row highlighted.
+    //  - awaitName=false: ineligible (hint used) or offline run. Show the
+    //                     status message; resolve when the player taps
+    //                     anywhere on the card. No submission will follow.
+    //                     Promise resolves with '' since no name was taken.
+    function showSolveModal({ timeMs, awaitName, lastName, wasOffline }) {
         return new Promise((resolve) => {
             const card      = document.getElementById('potdSolveTransition');
-            if (!card) return resolve();
+            if (!card) return resolve('');
             const timeEl    = document.getElementById('potdSolveTime');
             const rankEl    = document.getElementById('potdSolveRank');
             const ineligEl  = document.getElementById('potdSolveIneligible');
             const offlineEl = document.getElementById('potdSolveOffline');
+            const nameRow   = document.getElementById('potdSolveNameRow');
+            const nameInput = document.getElementById('potdSolveName');
+            const saveBtn   = document.getElementById('potdSolveSaveBtn');
+            const continueEl= document.getElementById('potdSolveContinue');
 
             const t = (key, vars) =>
                 (typeof I18n !== 'undefined' && I18n.t) ? I18n.t(key, vars) : key;
 
-            if (timeEl) timeEl.textContent = t('marathon.totalTime', { t: fmtTime(timeMs) });
-            if (rankEl) {
-                if (submittedOk && rank !== null) {
-                    rankEl.textContent = t('potd.solved.rankFmt', { r: rank });
-                    rankEl.hidden = false;
-                } else {
-                    rankEl.hidden = true;
+            if (timeEl)    timeEl.textContent = t('marathon.totalTime', { t: fmtTime(timeMs) });
+            // Rank only meaningful AFTER submission. In await-name mode the
+            // submission hasn't fired yet, so always hide; the leaderboard
+            // view tells the player where they landed.
+            if (rankEl)    rankEl.hidden    = true;
+            // Status messages only when there's no name entry happening.
+            if (ineligEl)  ineligEl.hidden  = awaitName || wasOffline;
+            if (offlineEl) offlineEl.hidden = !wasOffline;
+            // Tap-to-continue hint only shown in dismiss-on-tap mode.
+            if (continueEl) continueEl.hidden = !!awaitName;
+
+            if (awaitName) {
+                if (nameInput) {
+                    nameInput.value    = lastName || '';
+                    nameInput.disabled = false;
+                }
+                if (saveBtn) {
+                    saveBtn.disabled    = false;
+                    saveBtn.textContent = t('marathon.save');
+                }
+                if (nameRow) nameRow.hidden = false;
+            } else {
+                if (nameRow) nameRow.hidden = true;
+            }
+
+            function close(name) {
+                card.classList.remove('visible');
+                card.removeEventListener('click', onTap);
+                if (saveBtn)   saveBtn.removeEventListener('click', onSave);
+                if (nameInput) nameInput.removeEventListener('keydown', onKey);
+                if (nameRow)   nameRow.hidden = true;
+                // Tear down the iOS on-screen keyboard if it was painted.
+                // No-op on desktop / Android / non-standalone iOS, so the
+                // call is safe to make unconditionally.
+                if (typeof Marathon !== 'undefined' && Marathon.teardownMobileKeyboard) {
+                    Marathon.teardownMobileKeyboard();
+                }
+                resolve(name || '');
+            }
+            function onTap()  { if (!awaitName) close(''); }
+            function onSave(e) {
+                if (e) e.stopPropagation();
+                close(nameInput ? nameInput.value : '');
+            }
+            function onKey(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    close(nameInput ? nameInput.value : '');
                 }
             }
-            if (ineligEl)  ineligEl.hidden  = !!submittedOk || wasOffline;
-            if (offlineEl) offlineEl.hidden = !wasOffline;
 
-            // Tap-to-dismiss: marathon-style. Tap on the card itself
-            // advances; canvas taps are blocked because Potd is in the
-            // SOLVED state and the handlePointer guard will skip them.
-            function close() {
-                card.classList.remove('visible');
-                card.removeEventListener('click', onClose);
-                resolve();
+            card.addEventListener('click', onTap);
+            if (awaitName) {
+                if (saveBtn)   saveBtn.addEventListener('click', onSave);
+                if (nameInput) nameInput.addEventListener('keydown', onKey);
             }
-            function onClose() { close(); }
-            card.addEventListener('click', onClose);
             card.classList.add('visible');
+
+            // Auto-focus so the player can type immediately. Wrapped in
+            // try/catch — iOS Safari (especially standalone PWA) sometimes
+            // refuses focus() outside a direct gesture stack. Silent failure
+            // is fine; the player can just tap the input.
+            if (awaitName && nameInput) {
+                try { nameInput.focus(); } catch (e) { /* */ }
+            }
+            // iOS PWA standalone: paint the shared custom keyboard so the
+            // player can type (the native keyboard doesn't reliably show
+            // for inputs in standalone mode). Wired through Marathon's
+            // public API since marathon owns the keyboard implementation.
+            // Enter on the custom keyboard fires onSave, identical to the
+            // hardware Enter handler above. No-op everywhere else.
+            if (awaitName && nameInput
+                && typeof Marathon !== 'undefined'
+                && Marathon.setupMobileKeyboard) {
+                Marathon.setupMobileKeyboard(nameInput, () => onSave());
+            }
         });
     }
 
@@ -982,7 +1489,46 @@ const Potd = (() => {
         state = STATE.MENU;
         currentSlot = null;
         sessionToken = null;
-        if (typeof Music !== 'undefined' && Music.stop) Music.stop();
+        // Cancel any pending lock-tip timer — without this, a player
+        // who quits within 30s of puzzle start would see the tip on
+        // the menu.
+        cancelLockTip();
+        // Hide any active first-play tooltip without marking seen, so
+        // the tip will re-appear on the player's next puzzle.
+        if (typeof Tooltip !== 'undefined' && Tooltip.dismissActive) {
+            Tooltip.dismissActive(false);
+        }
+        // Defensive: tear down the iOS on-screen keyboard if the player
+        // hits Quit mid-name-entry. showSolveModal's close() also tears
+        // down, but a side-channel exit (HUD Quit button) bypasses that —
+        // without this the keyboard would linger on the menu. No-op on
+        // non-iOS-standalone platforms.
+        if (typeof Marathon !== 'undefined' && Marathon.teardownMobileKeyboard) {
+            Marathon.teardownMobileKeyboard();
+        }
+        // Kill any sustained SFX loops (currently just 'glitch_overlap', but
+        // stopAllLoops is forward-safe for future sustained cues). Without
+        // this, quitting mid-puzzle while paths were overlapping leaves the
+        // glitch loop running on the main menu indefinitely.
+        if (typeof Sfx !== 'undefined' && Sfx.stopAllLoops) Sfx.stopAllLoops();
+        // Fade any lingering one-shots (audience_cheer, applause_long, etc.).
+        // Music.start below ALSO triggers a fade via its own playSong hook,
+        // but that path only fires when music is enabled — this defensive
+        // call catches the music-disabled case where the player's solve
+        // SFX would otherwise persist into the menu silence.
+        if (typeof Sfx !== 'undefined' && Sfx.fadeOneShots) Sfx.fadeOneShots();
+        // Restart music with a fresh menu_only pool song UNLESS the
+        // current track is already a menu song (avoids interrupting
+        // ongoing menu music). Mirrors marathon.js's goToMenu —
+        // see the comment there for the full rationale.
+        if (typeof Music !== 'undefined') {
+            if (Music.setMenuPhase) Music.setMenuPhase(true);
+            const alreadyMenu = Music.isMenuSongPlaying && Music.isMenuSongPlaying();
+            if (!alreadyMenu) {
+                if (Music.stop)  Music.stop();
+                if (Music.start) Music.start();
+            }
+        }
         // Tear the credits down before returning to menu. Covers both the
         // post-solve dismiss path (modal tap → quitToMenu) and the in-game
         // Quit button (which doesn't trigger credits, but Credits.stop is
@@ -991,6 +1537,57 @@ const Potd = (() => {
         Maze.clear();
         Render.draw();  // wipe the canvas so the menu doesn't paint over a stale puzzle
         showMenu();
+    }
+
+    // Same teardown as quitToMenu, but hand off to Marathon's leaderboard
+    // view instead of the menu — used after a PotD solve when the player
+    // ranked in the top N, so they land on the board with their entry
+    // highlighted. Marathon.showPotdLeaderboard handles the mode swap,
+    // pendingHighlight wiring, and rendering.
+    function quitToLeaderboard(slot, highlight) {
+        stopTimerDisplay();
+        state = STATE.MENU;
+        currentSlot = null;
+        sessionToken = null;
+        cancelLockTip();
+        // Defensive — onSolve already dismisses, but this path can also
+        // be reached from Marathon.showPotdLeaderboard (cross-module
+        // entry), so we cover it directly.
+        if (typeof Tooltip !== 'undefined' && Tooltip.dismissActive) {
+            Tooltip.dismissActive(false);
+        }
+        // Tear down the iOS keyboard if showSolveModal somehow exited
+        // without going through close() (defensive — close() itself also
+        // tears down, but redundancy is cheap). No-op on non-iOS.
+        if (typeof Marathon !== 'undefined' && Marathon.teardownMobileKeyboard) {
+            Marathon.teardownMobileKeyboard();
+        }
+        if (typeof Sfx !== 'undefined' && Sfx.stopAllLoops) Sfx.stopAllLoops();
+        // Same one-shot fade as quitToMenu — audience_cheer / applause_long
+        // shouldn't bleed into the leaderboard view.
+        if (typeof Sfx !== 'undefined' && Sfx.fadeOneShots) Sfx.fadeOneShots();
+        // Same music chain as quitToMenu — leaderboard view is also
+        // a "back at menu" state. Skips the stop+start restart if a
+        // menu pool song is already playing (see marathon.js goToMenu
+        // for the full rationale).
+        if (typeof Music !== 'undefined') {
+            if (Music.setMenuPhase) Music.setMenuPhase(true);
+            const alreadyMenu = Music.isMenuSongPlaying && Music.isMenuSongPlaying();
+            if (!alreadyMenu) {
+                if (Music.stop)  Music.stop();
+                if (Music.start) Music.start();
+            }
+        }
+        if (typeof Credits !== 'undefined' && Credits.stop) Credits.stop();
+        Maze.clear();
+        Render.draw();
+        if (typeof Marathon !== 'undefined' && Marathon.showPotdLeaderboard) {
+            Marathon.showPotdLeaderboard(slot, highlight);
+        } else {
+            // Fallback: if Marathon isn't loaded for some reason, don't
+            // strand the player on a blank canvas — drop them at the menu.
+            showMenu();
+        }
     }
 
     // Used when startPuzzle aborts before play starts (loading failure,
@@ -1035,8 +1632,32 @@ const Potd = (() => {
     // surface in the debug UI. Any in-flight background generation is
     // left to drain naturally — its seed POST will just land in the
     // post-reset (empty) server set, which is benign.
+    //
+    // Order matters: local wipe + UI refresh fire FIRST (synchronously),
+    // then the server wipe runs over its (potentially slow) network
+    // round-trip. Without that ordering, a user who clicks Reset and
+    // reloads before the server fetch completes would never trigger the
+    // local wipe — which lives after the await — and the page would
+    // come back painted with the same checkmarks they thought they
+    // cleared.
     async function devReset() {
         const base = apiBase();
+        // Local-state wipe FIRST — synchronous, fast, can't be aborted
+        // by a quick page reload. Includes both the localStorage keys
+        // AND the in-memory caches so the menu indicators update
+        // immediately on the next refresh call.
+        resetLocalState();
+        puzzles              = null;
+        serverFetchPromise   = null;
+        serverFetchResolved  = false;
+        queue                = [];
+        slotWaiters.clear();
+        refreshMenuIndicators();
+        // Server-side wipe SECOND — this can hang on a cold backend,
+        // but the local visual state has already updated so the user
+        // sees an immediate response. The server-reachability flag in
+        // the returned status object tells the debug-UI caller which
+        // outcome message to surface.
         let serverOk = false;
         if (base) {
             try {
@@ -1044,14 +1665,6 @@ const Potd = (() => {
                 serverOk = resp.ok;
             } catch (e) { /* offline / endpoint missing — leave serverOk false */ }
         }
-        resetLocalState();
-        // In-memory cache wipe — so the next slot click re-fetches and,
-        // finding nothing, regenerates fresh puzzles + reseeds the server.
-        puzzles              = null;
-        serverFetchPromise   = null;
-        queue                = [];
-        slotWaiters.clear();
-        refreshMenuIndicators();
         return { serverOk: serverOk, serverReachable: !!base };
     }
 
@@ -1084,6 +1697,53 @@ const Potd = (() => {
                 if (mode === 'potd') refreshMenuIndicators();
             });
         }
+
+        // Day-rollover watcher: polls every minute for the UTC date to
+        // change, and on change wipes the in-memory puzzles cache + re-
+        // paints the menu indicators. Without this, a long-running page
+        // session sitting open across UTC midnight would keep showing
+        // yesterday's solved-state badges (state keys are per-date, but
+        // refreshMenuIndicators isn't called automatically). The next
+        // time the player clicks a slot, ensurePuzzleAvailable's own
+        // date-mismatch reset would handle the data side, but the menu
+        // wouldn't have updated until then. dev-mode.js has its own
+        // rollover watcher that ALSO kicks devSeedAllSlots for the new
+        // day — this one is purely UI-side and runs for every player.
+        let lastSeenDate = todayUTC();
+        setInterval(function () {
+            const now = todayUTC();
+            if (now === lastSeenDate) return;
+            lastSeenDate = now;
+            // Reset the in-memory cache so ensurePuzzleAvailable will
+            // fetch fresh from the server. ensurePuzzleAvailable itself
+            // also handles date mismatches, but resetting here means the
+            // pre-warm fires immediately on rollover rather than waiting
+            // for the next slot click.
+            puzzles             = null;
+            serverFetchPromise  = null;
+            serverFetchResolved = false;
+            queue               = [];
+            slotWaiters.clear();
+            refreshMenuIndicators();
+        }, 60 * 1000);
+
+        // Pre-warm today's puzzle set on page load so the slot-click path
+        // doesn't pay the network round-trip up front. The pattern mirrors
+        // ensurePuzzleAvailable's own warm-up branch: seed `puzzles` from
+        // localStorage cache (instant) and kick fetchTodaysPuzzles() into
+        // serverFetchPromise. By the time the player has dismissed the
+        // intro and picked a slot, the network call is usually done — the
+        // click path's await on serverFetchPromise returns immediately.
+        // The fetch is dedupe-keyed by serverFetchPromise, so even if the
+        // player clicks during the warm-up they share this in-flight
+        // request rather than starting a redundant one. Harmless one GET
+        // per page load for players who never click PotD.
+        if (!puzzles) {
+            const today = todayUTC();
+            const cached = loadPuzzlesCache(today);
+            puzzles = cached || { date: today, byslot: {} };
+        }
+        ensureServerFetch();
     }
 
     if (document.readyState === 'loading') {
@@ -1105,6 +1765,7 @@ const Potd = (() => {
         if (puzzles && puzzles.date !== wantDate) {
             puzzles               = null;
             serverFetchPromise    = null;
+            serverFetchResolved   = false;
             queue                 = [];
             slotWaiters.clear();
         }
@@ -1126,8 +1787,11 @@ const Potd = (() => {
         // generation that the server would 409 on).
         if (!serverFetchPromise) {
             if (typeof Logger !== 'undefined') Logger.info('[dev] PotD ' + wantDate + ': fetching server-seeded set…');
+            serverFetchResolved = false;
             serverFetchPromise = fetchTodaysPuzzles().then(function (fetched) {
                 if (fetched) puzzles = fetched;
+            }).finally(function () {
+                serverFetchResolved = true;
             });
         }
         await serverFetchPromise;

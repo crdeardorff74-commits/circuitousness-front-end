@@ -80,6 +80,15 @@ const TitleRenderer = (() => {
         // Snapshot only if Maze actually has a grid loaded — saves a crash
         // on first paint (menu shown before any puzzle has built).
         const saved = mazeStateConsistent() ? Maze.snapshotState() : null;
+        // quadMode is a separate global flag (not part of snapshotState)
+        // so we save it explicitly and force false during the render.
+        // Without this: after the player finishes a Quad puzzle, quadMode
+        // is true; rendering the 2×2 synthetic snapshot under quadMode
+        // makes the render pipeline treat the four tiles as ONE quad
+        // group (no inter-tile bevels, no segmentation), so the title-O
+        // visibly becomes a single big tile instead of 4 elbows joined.
+        const savedQuadMode = Maze.quadMode;
+        if (Maze.setQuadMode) Maze.setQuadMode(false);
 
         Maze.loadSnapshot(buildSnippetSnapshot());
 
@@ -117,18 +126,31 @@ const TitleRenderer = (() => {
         };
         Render.renderSnippet(canvas, sizeCss, litOpts);
 
-        // Mask the per-tile channel rendering's port-boundary seams by
-        // overlaying the ring as a SINGLE continuous-circle stroke. The 4
-        // elbow arcs are all on the same circle (centered at the 2×2
-        // group's geometric center, radius cs/2), so the channel is one
-        // perfect ring — but rendered per-tile, the butt-cap junctions at
-        // each shared port leave sub-pixel AA gaps that the dim pass
-        // bleeds through as visible dark lines cutting the red O. Overlay
-        // matches the per-tile gradient + pulse exactly via the shared
-        // litOpts, so visually it just replaces the per-tile lit pass
-        // with a seamless equivalent. Wall bevels (which the player
-        // wanted kept visible) sit BELOW the channel in z-order and stay
-        // unaffected.
+        // The underlying render IS four separate T_ELBOW tiles drawn
+        // through the normal per-tile pipeline (build a snapshot of 4
+        // elbows → renderSnippet → drawCore → renderTileLit per tile).
+        // Walls, bevels, every per-tile pass runs exactly as it does in
+        // gameplay; we're not faking the 2×2 as one big tile.
+        //
+        // The only thing this overlay does is plug a sub-pixel
+        // antialiasing artifact: at the title-O's tiny cellSize (~20px)
+        // the butt-cap junctions where adjacent elbows' lit arcs meet at
+        // a shared port leave hairline transparent slivers that the dark
+        // body background bleeds through as visible dark seams cutting
+        // the red ring. In gameplay the same AA gap exists but is
+        // sub-visual at the larger cellSize (~50px+). Things that don't
+        // fix it: extending each arc by a sub-pixel angle (still leaks
+        // — the AA at fractional pixel coords misses); switching to
+        // round line caps (each stripe gets its own cap radius, so the
+        // port ends up as a stacked-disk blob that distorts the ring).
+        //
+        // The fix here is purely cosmetic AA-cleanup: re-stroke the same
+        // 4-elbow channel as a single continuous-circle path (since all
+        // 4 elbow arcs share the same center + radius by construction)
+        // using the EXACT same per-stripe colors and pulse, so the
+        // overlay is visually indistinguishable from a perfect per-tile
+        // render — it just fills the AA slivers. Wall bevels (drawn in a
+        // later pass) sit on top so the 4 tiles' borders remain visible.
         if (Render.paintSnippetRingMask) {
             Render.paintSnippetRingMask(canvas, sizeCss, litOpts);
         }
@@ -142,39 +164,76 @@ const TitleRenderer = (() => {
             // main canvas (e.g. game.js's Render.refit fires before await).
             Maze.clear();
         }
+        // Restore quadMode to whatever it was before our render — we
+        // forced it false above so the snippet rendered as 4 separate
+        // elbows. The next gameplay frame needs the true setting so
+        // actual quad puzzles render correctly.
+        if (Maze.setQuadMode) Maze.setQuadMode(savedQuadMode);
 
-        // Capture the latest canvas/size for the animation loop, then
-        // ensure the loop is running so the pulse animates.
-        lastCanvas  = canvas;
-        lastSizeCss = sizeCss;
+        // Register this canvas with the animation loop. activeCanvases
+        // is a Map so multiple title canvases (e.g. main menu's #titleOCanvas
+        // AND the opening intro's #introTitleOCanvas) animate independently
+        // — each gets its own pulse driven by the shared rAF loop, and
+        // calling draw() again on the same canvas just updates its size.
+        // Previously this used a single `lastCanvas` slot, so a second
+        // caller's draw would overwrite the first and the original
+        // canvas would freeze on whatever frame it last rendered.
+        activeCanvases.set(canvas, sizeCss);
         ensureAnimating();
     }
 
     // Continuous redraw loop drives the litPulse animation. Idempotent —
-    // multiple draw() calls don't multiply the loop. Ticks skip rendering
-    // when the canvas is hidden (zero size), but stay scheduled so the
-    // pulse resumes immediately the next time the menu becomes visible.
-    let lastCanvas  = null;
-    let lastSizeCss = 0;
-    let rafId       = null;
+    // multiple draw() calls don't multiply the loop. Ticks paint EVERY
+    // registered canvas each frame, skipping (but keeping registered)
+    // ones that are momentarily hidden, and unregistering ones that are
+    // no longer in the DOM. Stops itself when nothing is registered.
+    const activeCanvases = new Map();   // canvas → lastSizeCss
+    let rafId            = null;
     function ensureAnimating() {
         if (rafId !== null) return;
         rafId = requestAnimationFrame(animTick);
     }
     function animTick() {
-        rafId = null;
-        if (!lastCanvas) return;
-        const rect = lastCanvas.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-            // Re-measure: when the title font reflows or the viewport
-            // resizes, the canvas's CSS size changes. Use the same min/max
-            // floor as marathon.js's paintTitleO so the loop stays in sync.
-            const size = Math.max(24, Math.min(rect.width, rect.height));
-            draw(lastCanvas, size);
-        } else {
-            // Canvas hidden — keep the loop alive so the pulse resumes
-            // when the menu re-shows. Cheap (one rAF callback per frame).
-            rafId = requestAnimationFrame(animTick);
+        // CRITICAL: schedule the next tick BEFORE iterating, so the
+        // draw() calls inside the loop see rafId != null and the
+        // ensureAnimating() they invoke no-ops. Otherwise each draw
+        // schedules its own rAF AND we'd schedule another at the
+        // bottom of this function, doubling rAFs per frame —
+        // exponential growth that locks up the main thread within
+        // ~20 frames (page freezes, devtools won't open).
+        if (activeCanvases.size === 0) {
+            rafId = null;
+            return;
+        }
+        rafId = requestAnimationFrame(animTick);
+        // Snapshot keys since the body of the loop may mutate the
+        // map (we delete detached canvases).
+        const canvases = Array.from(activeCanvases.keys());
+        for (const canvas of canvases) {
+            // Drop canvases that left the DOM (e.g. the intro overlay
+            // is removed on dismiss). Without this the loop runs
+            // forever painting a detached node.
+            if (!canvas.isConnected) {
+                activeCanvases.delete(canvas);
+                continue;
+            }
+            const rect = canvas.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                // Re-measure each frame so the loop stays in sync if
+                // the title font reflows or the viewport resizes.
+                const size = Math.max(24, Math.min(rect.width, rect.height));
+                draw(canvas, size);
+            }
+            // If width/height are 0 the canvas is momentarily hidden
+            // (e.g. menu while intro is up); skip the paint but leave
+            // it registered so the pulse resumes when it's shown again.
+        }
+        // If iteration emptied the map (every canvas had detached),
+        // cancel the tick we just scheduled — no point burning another
+        // frame on an empty loop.
+        if (activeCanvases.size === 0 && rafId !== null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
         }
     }
 

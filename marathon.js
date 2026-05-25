@@ -36,6 +36,11 @@ const Marathon = (() => {
     let sessionToken   = null;     // server-issued cheat-proof timing token (from /api/game/start)
     let level          = 0;        // current puzzle index, 1-based
     let solvedCount    = 0;
+    // Hints used across the whole marathon run — submitted with the score
+    // and used as the primary tiebreaker on the leaderboard (fewer hints
+    // wins before total_ms is even considered). Reset to 0 in startGame,
+    // incremented inside onHintUsed.
+    let hintsUsed      = 0;
     // Per-game growth sequence: one entry per "level transition" (so
     // growthSequence[0] is the choice between puzzle 1 and puzzle 2,
     // growthSequence[1] between 2 and 3, etc). Each entry is 'r' (row
@@ -64,7 +69,7 @@ const Marathon = (() => {
     let hudType, hudLevel, hudTimer, hudQuit;
     let solveHeadline, solveBanked;
     let gameOverScore, gameOverTime, gameOverRank, gameOverName, gameOverSave, gameOverMenu, gameOverNameRow;
-    let leaderboardSelect, leaderboardEntries, leaderboardEmpty, leaderboardClose, menuLeaderboardBtn;
+    let leaderboardTileTabsEl, leaderboardPathTabsEl, leaderboardEntries, leaderboardEmpty, leaderboardClose, menuLeaderboardBtn;
     let leaderboardTabsEl;
     let replayLabel, replayStopBtn;
 
@@ -122,7 +127,8 @@ const Marathon = (() => {
         gameOverMenu    = $('gameOverMenuBtn');
         gameOverNameRow = gameOverEl ? gameOverEl.querySelector('.gameOverNameRow') : null;
 
-        leaderboardSelect  = $('leaderboardSelect');
+        leaderboardTileTabsEl = $('leaderboardTileTabs');
+        leaderboardPathTabsEl = $('leaderboardPathTabs');
         leaderboardEntries = $('leaderboardEntries');
         leaderboardEmpty   = $('leaderboardEmpty');
         leaderboardClose   = $('leaderboardCloseBtn');
@@ -165,7 +171,30 @@ const Marathon = (() => {
             if (ev.key === 'Enter') saveScore();
         });
         if (leaderboardClose)   leaderboardClose.addEventListener('click', goToMenu);
-        if (leaderboardSelect)  leaderboardSelect.addEventListener('change', renderLeaderboard);
+        // Two-tier sub-tab selector replaces the old 8-option dropdown:
+        // tile-type tabs (Singular/Quad) + path-count tabs (1/2/3/4)
+        // side-by-side. Combined they pick the slot identifier
+        // ('s1'..'s4', 'q1'..'q4') the rest of the leaderboard code
+        // already expects — see getActiveBoardType / setActiveBoardType
+        // below. Both rows use the shared .lbSubTab visual.
+        // wireSubTabRow: takes the row element + default-button selector,
+        // wires click handlers (toggling .active and re-rendering), and
+        // sets the default-button's .active class so the panel renders
+        // something sensible before any explicit selection.
+        function wireSubTabRow(rowEl, defaultSelector) {
+            if (!rowEl) return;
+            rowEl.querySelectorAll('.lbSubTab').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    rowEl.querySelectorAll('.lbSubTab').forEach((b) => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    renderLeaderboard();
+                });
+            });
+            const first = rowEl.querySelector(defaultSelector);
+            if (first) first.classList.add('active');
+        }
+        wireSubTabRow(leaderboardTileTabsEl, '.lbSubTab[data-tile="s"]');
+        wireSubTabRow(leaderboardPathTabsEl, '.lbSubTab[data-paths="1"]');
         // Tab click handlers — switch the active leaderboard mode and
         // re-render with the new mode's fetch + render branch.
         if (leaderboardTabsEl) {
@@ -177,16 +206,6 @@ const Marathon = (() => {
         // Tap the popup to advance to the next puzzle. The canvas does NOT
         // route here — see comment on the inTransition declaration above.
         if (solveTransitionEl)  solveTransitionEl.addEventListener('click', advance);
-
-        // Populate the leaderboard mode dropdown — one option per game type.
-        if (leaderboardSelect) {
-            for (const t of MARATHON.TYPES) {
-                const opt = document.createElement('option');
-                opt.value = t;
-                opt.textContent = I18n.t('marathon.mode' + t.toUpperCase());
-                leaderboardSelect.appendChild(opt);
-            }
-        }
 
         // Paint the maze-O canvas in the menu title. Re-paints on resize
         // because the canvas's CSS size scales with viewport (clamped font).
@@ -259,11 +278,87 @@ const Marathon = (() => {
         state = STATE.MENU;
         stopTimer();
         clearTransition();
+        // Cancel any pending lock-tip timer — without this, a player who
+        // quits within 30s of puzzle start would see the lock tip pop up
+        // on the menu (contextually wrong; the tip's about mid-puzzle
+        // tile-locking).
+        cancelLockTip();
+        // Hide any active first-play tooltip + drop the queue WITHOUT
+        // marking seen. The player didn't actually click Got It — they
+        // navigated away — so the same tip will fire again next puzzle.
+        if (typeof Tooltip !== 'undefined' && Tooltip.dismissActive) {
+            Tooltip.dismissActive(false);
+        }
+        // Fade any lingering one-shot SFX (audience_cheer / cheer_long /
+        // applause_long / disappointed / etc.) on the way out. Music.start
+        // below ALSO triggers a fade via its own playSong hook, but only
+        // when music is enabled — this defensive call handles the
+        // music-disabled case where the player's game-over SFX would
+        // otherwise persist into the menu silence.
+        if (typeof Sfx !== 'undefined' && Sfx.fadeOneShots) Sfx.fadeOneShots();
         // Tear the credits down before returning to menu — covers every exit
         // path from the game-over screen (Back to menu, Save, leaderboard).
         if (typeof Credits !== 'undefined' && Credits.stop) Credits.stop();
+        // Same idea for the iOS standalone on-screen keyboard — if the
+        // game-over name input painted one, remove it on every exit so
+        // it doesn't linger over the menu/leaderboard.
+        teardownMobileKeyboard();
+        // Back at menu — restart music with a fresh menu_only pool
+        // song IF the current track isn't already from the menu pool.
+        // Without the isMenuSongPlaying gate, closing the leaderboard
+        // while a menu song was already playing would yank it off and
+        // replace it with a different menu song — annoying mid-listen.
+        // setMenuPhase is always called so the next pickNext (when
+        // the current song ends naturally) draws from the menu pool
+        // even on the "already playing menu music, no restart" path.
+        // start() respects muted: if the player has music off, the
+        // stop+start chain is a no-op silently.
+        if (typeof Music !== 'undefined') {
+            if (Music.setMenuPhase) Music.setMenuPhase(true);
+            const alreadyMenu = Music.isMenuSongPlaying && Music.isMenuSongPlaying();
+            if (!alreadyMenu) {
+                if (Music.stop)  Music.stop();
+                if (Music.start) Music.start();
+            }
+        }
         pendingHighlight = null;   // leaving the leaderboard drops the highlight
         showOnly(menuEl);
+    }
+
+    // Combined-slot getter: reads the active tile-type tab (Singular/Quad)
+    // and the active path tab (1/2/3/4) to produce the slot identifier
+    // ('s1'..'s4', 'q1'..'q4') the fetcher + cache + render logic already
+    // speaks. Defaults conservatively to 's1' if either control is
+    // missing (e.g. during init before DOM refs are populated).
+    function getActiveBoardType() {
+        const tileBtn = leaderboardTileTabsEl
+                        ? leaderboardTileTabsEl.querySelector('.lbSubTab.active')
+                        : null;
+        const tile    = (tileBtn && tileBtn.dataset.tile) || 's';
+        const pathBtn = leaderboardPathTabsEl
+                        ? leaderboardPathTabsEl.querySelector('.lbSubTab.active')
+                        : null;
+        const paths   = (pathBtn && pathBtn.dataset.paths) || '1';
+        return tile + paths;
+    }
+    // Combined-slot setter: drives both tab rows from a slot identifier.
+    // Used by every code path that used to do `leaderboardSelect.value =
+    // <slot>` directly (showPotdLeaderboard, saveScore success, etc).
+    // No-ops if the slot is malformed or the rows aren't wired yet.
+    function setActiveBoardType(type) {
+        if (!type || typeof type !== 'string' || type.length !== 2) return;
+        const tile  = type[0];
+        const paths = type[1];
+        if (leaderboardTileTabsEl) {
+            leaderboardTileTabsEl.querySelectorAll('.lbSubTab').forEach((b) => {
+                b.classList.toggle('active', b.dataset.tile === tile);
+            });
+        }
+        if (leaderboardPathTabsEl) {
+            leaderboardPathTabsEl.querySelectorAll('.lbSubTab').forEach((b) => {
+                b.classList.toggle('active', b.dataset.paths === paths);
+            });
+        }
     }
 
     function showLeaderboard() {
@@ -279,12 +374,40 @@ const Marathon = (() => {
         // them down here; the leaderboard view would otherwise sit on top
         // of the scrolling overlay.
         if (typeof Credits !== 'undefined' && Credits.stop) Credits.stop();
+        // Same reason for the iOS standalone on-screen keyboard — the
+        // save path goes directly here (skipping goToMenu's teardown),
+        // so we'd otherwise leave the keyboard floating over the
+        // leaderboard. teardownMobileKeyboard is a no-op when no
+        // keyboard is present (non-iOS, or never opened).
+        teardownMobileKeyboard();
         if (!fromReplay) {
             const initialMode = (typeof ModePicker !== 'undefined' && ModePicker.getMode)
                 ? ModePicker.getMode()
                 : 'marathon';
             applyLeaderboardMode(initialMode, /*render=*/false);
         }
+        renderLeaderboard();
+        showOnly(leaderboardEl);
+    }
+
+    // Called from Potd.onSolve when the player ranked on today's board:
+    // jumps directly from the solve modal into the PotD leaderboard view
+    // with the player's row highlighted (.lbHighlight) and scrolled to
+    // center. Bypasses the menu-mode default in showLeaderboard so the
+    // PotD player doesn't briefly see the marathon tab before landing on
+    // their own board.
+    //
+    //   slot       — 's1'..'s4' / 'q1'..'q4' for today's board to render
+    //   highlight  — { id?, name, timeMs } matched by entryMatchesHighlight.
+    //                id-match when the server save succeeded; the
+    //                name+timeMs fallback covers local-only / id-less
+    //                saves.
+    function showPotdLeaderboard(slot, highlight) {
+        pendingHighlight = highlight || null;
+        setActiveBoardType(slot);
+        state = STATE.LEADERBOARD;
+        if (typeof Credits !== 'undefined' && Credits.stop) Credits.stop();
+        applyLeaderboardMode('potd', /*render=*/false);
         renderLeaderboard();
         showOnly(leaderboardEl);
     }
@@ -327,8 +450,12 @@ const Marathon = (() => {
             growthSequence.push(Math.random() < 0.5 ? 'r' : 'c');
         }
     }
-    function dimsForLevel(lev, quadMode) {
-        const minDim = quadMode ? MARATHON.MIN_DIM_QUAD : MARATHON.MIN_DIM_SINGULAR;
+    // pathCount is required for the 4-path min-dim bump (see MARATHON.minDimFor
+    // in config.js). Callers that previously omitted it would silently get the
+    // 1-path baseline — fine for 1/2/3-path puzzles, but for 4-path that means
+    // an 8×8 grid the generator can't reliably fill. All callers now pass it.
+    function dimsForLevel(lev, quadMode, pathCount) {
+        const minDim = MARATHON.minDimFor(quadMode, pathCount);
         ensureGrowthSequence(lev);
         let rowGrowth = 0, colGrowth = 0;
         for (let i = 0; i < lev - 1; i++) {
@@ -355,7 +482,7 @@ const Marathon = (() => {
         const decoded = decodeType(activeType);
         const out = [];
         for (let i = 1; i <= count; i++) {
-            const logical  = dimsForLevel(level + i, decoded.quadMode);
+            const logical  = dimsForLevel(level + i, decoded.quadMode, decoded.pathCount);
             const physRows = decoded.quadMode ? logical.rows * 2 : logical.rows;
             const physCols = decoded.quadMode ? logical.cols * 2 : logical.cols;
             out.push({ rows: physRows, cols: physCols });
@@ -382,12 +509,21 @@ const Marathon = (() => {
         sessionToken     = null;  // cleared until /api/game/start resolves
         level            = 0;
         solvedCount      = 0;
+        hintsUsed        = 0;     // fresh hint count per run, bumped by onHintUsed
         totalSolveTime   = 0;
         timeRemaining    = 0;     // first puzzle gets only its fresh allotment, no carry-over
         recordings       = [];    // fresh recording buffer for this game
         pendingHighlight = null;  // any prior-game highlight is stale once a new run begins
         growthSequence   = [];    // fresh random row/col growth sequence per game
-        if (typeof Music !== 'undefined' && Music.start) Music.start();
+        // Switch music to game phase — next pickNext (when the current
+        // menu song ends, or on a skip) will pull from the intro/shuffle
+        // pool instead of the menu_only pool. start() is still called so
+        // music kicks in if it wasn't already (e.g. player toggled music
+        // on for the first time at game start, after declining at intro).
+        if (typeof Music !== 'undefined') {
+            if (Music.setMenuPhase) Music.setMenuPhase(false);
+            if (Music.start)        Music.start();
+        }
         // Engagement tracking: one start per game (not per puzzle).
         if (typeof Tracking !== 'undefined' && Tracking.recordStart) Tracking.recordStart('marathon', type);
         // Fire-and-forget: ask the server for a cheat-proof timing token.
@@ -433,7 +569,7 @@ const Marathon = (() => {
 
         level++;
         const decoded   = decodeType(activeType);
-        const logical   = dimsForLevel(level, decoded.quadMode);
+        const logical   = dimsForLevel(level, decoded.quadMode, decoded.pathCount);
         const physRows  = decoded.quadMode ? logical.rows * 2 : logical.rows;
         const physCols  = decoded.quadMode ? logical.cols * 2 : logical.cols;
 
@@ -469,6 +605,50 @@ const Marathon = (() => {
         // Background shuffle has already fired at the START of the build
         // (in game.js startPuzzle callback) so the new image is visible
         // throughout the "Building puzzle…" wait — not after it.
+        // First-play educational tooltips:
+        //   • marathonHint — appears immediately so the player reads it
+        //     before they start tapping tiles (the 25%-time penalty info
+        //     is most useful BEFORE the timer is ticking on real moves).
+        //   • lockTile — scheduled 30s in so it appears once the player
+        //     is mid-solve and has plausibly noticed they want to lock a
+        //     tile in place. Cancelled if the puzzle ends first.
+        if (typeof Tooltip !== 'undefined') {
+            Tooltip.showOnce('marathonHint',
+                (typeof I18n !== 'undefined' && I18n.t)
+                    ? I18n.t('tooltip.marathonHint')
+                    : 'Use HINT for help strategically, as it will cost you 25% of your remaining time every time you use it');
+            scheduleLockTip();
+        }
+    }
+    // Lock-tip scheduling — see onPuzzleReady comment. Stored in a
+    // module-level handle so quit / game-over paths can cancel before
+    // the timer fires (otherwise the lock tip would pop up over the
+    // menu or game-over screen, where it's contextually wrong).
+    let lockTipTimerHandle = null;
+    const LOCK_TIP_DELAY_MS = 30000;
+    function scheduleLockTip() {
+        cancelLockTip();
+        if (typeof Tooltip === 'undefined' || Tooltip.isSeen('lockTile')) return;
+        lockTipTimerHandle = setTimeout(function () {
+            lockTipTimerHandle = null;
+            // Re-check the state — the player may have quit between
+            // the scheduling and the firing. Only show during PLAYING.
+            if (state !== STATE.PLAYING) return;
+            Tooltip.showOnce('lockTile',
+                (typeof I18n !== 'undefined' && I18n.t)
+                    ? I18n.t('tooltip.lockTile')
+                    : 'If you are sure that a tile is rotated correctly, you can press and hold to lock it in place (along with its twin, if it has one)');
+        }, LOCK_TIP_DELAY_MS);
+    }
+    function cancelLockTip() {
+        if (lockTipTimerHandle !== null) {
+            clearTimeout(lockTipTimerHandle);
+            lockTipTimerHandle = null;
+        }
+        // Also drop any already-queued lock-tip (queued but not yet shown).
+        if (typeof Tooltip !== 'undefined' && Tooltip.cancelPending) {
+            Tooltip.cancelPending('lockTile');
+        }
     }
 
     function startTimer() {
@@ -503,6 +683,12 @@ const Marathon = (() => {
     // is unmissable. No-op if a transition is in flight or we're not playing.
     function onHintUsed() {
         if (state !== STATE.PLAYING || inTransition) return;
+        // Bump the run-wide hint counter BEFORE applying the time penalty.
+        // Order doesn't matter functionally — they're independent — but
+        // counting first means the increment happens unconditionally
+        // (even if the penalty math somehow throws), which keeps the
+        // leaderboard count truthful.
+        hintsUsed += 1;
         const fractionalMs = timeRemaining * MARATHON.HINT_PENALTY_FRACTION;
         const penaltyMs    = Math.max(MARATHON.HINT_PENALTY_MIN_MS, fractionalMs);
         timeRemaining -= penaltyMs;
@@ -580,6 +766,16 @@ const Marathon = (() => {
         state = STATE.GAME_OVER;
         stopTimer();
         clearTransition();
+        // Cancel the pending lock-tip timer so it can't fire over the
+        // game-over screen.
+        cancelLockTip();
+        // Drop any active tooltip too — the game-over screen + end-
+        // credits roll shouldn't have a play-time tip sitting on top of
+        // them. Pass false so the tip isn't marked seen; it'll fire
+        // again on the player's next puzzle.
+        if (typeof Tooltip !== 'undefined' && Tooltip.dismissActive) {
+            Tooltip.dismissActive(false);
+        }
         if (callbacks.quit) callbacks.quit();
         // Stop gameplay music; the end-credits sequence will start its own
         // credits track a beat later (Credits.start schedules the music swap).
@@ -611,6 +807,11 @@ const Marathon = (() => {
     function quitToMenu() {
         clearTransition();
         if (callbacks.quit) callbacks.quit();
+        // Kill any sustained SFX loops (currently just 'glitch_overlap', but
+        // stopAllLoops is forward-safe for future sustained cues). Without
+        // this, quitting mid-puzzle while paths were overlapping leaves the
+        // glitch loop running on the main menu indefinitely.
+        if (typeof Sfx !== 'undefined' && Sfx.stopAllLoops) Sfx.stopAllLoops();
         if (typeof Music !== 'undefined' && Music.stop) Music.stop();
         // If the player quit mid-game-over (or credits were rolling for any
         // other reason), tear the credits down before returning to menu.
@@ -649,6 +850,149 @@ const Marathon = (() => {
         hudTimer.classList.toggle('urgent', timeRemaining < 10000);
     }
 
+    // ----- iOS-standalone on-screen keyboard -----
+    // Mirrors TANTЯO's pattern (leaderboard.js): iOS PWAs in standalone
+    // ("Add to Home Screen") mode don't reliably surface the system
+    // keyboard when an input gets focus — so we build a custom one and
+    // set the input to readOnly to suppress the (missing) native
+    // keyboard cue. Desktop + Android + iOS-Safari-non-standalone all
+    // get the native keyboard path (no custom UI).
+    //
+    // window.navigator.standalone === true ONLY for iOS PWA standalone.
+    // We don't paint the keyboard otherwise.
+    const KBD_ID = 'customKeyboard';
+    // Tracks which input the on-screen keyboard is currently bound to so
+    // teardown can restore that input's state (readOnly, placeholder)
+    // without each caller having to remember a ref. Set in setup, cleared
+    // in teardown — null when no keyboard is up.
+    let mobileKeyboardOwnerInput = null;
+    function isStandaloneIos() {
+        return !!(window.navigator && window.navigator.standalone);
+    }
+    function teardownMobileKeyboard() {
+        const kbd = document.getElementById(KBD_ID);
+        if (kbd) kbd.remove();
+        // Restore the owner input's editability so a later non-standalone
+        // session (different browser / same input element) gets native
+        // keyboard back. The placeholder reset is harmless when not
+        // applicable.
+        if (mobileKeyboardOwnerInput) {
+            mobileKeyboardOwnerInput.readOnly = false;
+            try {
+                mobileKeyboardOwnerInput.placeholder = I18n.t('marathon.namePlaceholder');
+            } catch (e) { /* i18n may not be ready in edge cases */ }
+            mobileKeyboardOwnerInput = null;
+        }
+    }
+    // Build the on-screen keyboard for an iOS-standalone PWA input. Takes
+    // the input element to type into and an onEnter callback that fires
+    // when the player taps ↵. No-op on every other platform — desktop,
+    // Android, and iOS Safari (non-standalone) use the native keyboard
+    // path. Reused by both marathon's game-over name entry and PotD's
+    // solve-modal name entry, since the iOS keyboard limitation applies
+    // identically to any text input in standalone mode.
+    function setupMobileKeyboard(input, onEnter) {
+        // Always tear down first so a re-render (state change → game-over
+        // → state change → game-over) doesn't stack duplicates and so
+        // the keyboard always references the CURRENT input element.
+        teardownMobileKeyboard();
+        if (!isStandaloneIos() || !input) return;
+
+        mobileKeyboardOwnerInput = input;
+        input.readOnly = true;
+        try {
+            input.placeholder = I18n.t('marathon.tapKeyboard');
+        } catch (e) { /* fall back to existing placeholder */ }
+
+        // Capacity check matches the input's maxlength=16 — type once on
+        // the source of truth (the DOM attribute) so changes only need
+        // to happen in one place.
+        const maxLen = parseInt(input.getAttribute('maxlength'), 10) || 16;
+        let isShifted = false;
+
+        const kbd = document.createElement('div');
+        kbd.id = KBD_ID;
+        kbd.setAttribute('aria-hidden', 'true');   // assistive tech uses the real input
+
+        // Same layout as TANTЯO — number row, three QWERTY rows, then a
+        // function row with shift+space+backspace.
+        const rows = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+
+        // Helper: create a key with both touchend + click bound so iOS
+        // doesn't double-fire AND so a stylus that doesn't generate touch
+        // events still works. preventDefault on touchend stops the
+        // synthesized click; we wire click separately for non-touch.
+        function makeKey(label, onTap, extraClass) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'kbdKey' + (extraClass ? ' ' + extraClass : '');
+            btn.textContent = label;
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); onTap(); });
+            btn.addEventListener('click', (e) => { e.preventDefault(); onTap(); });
+            return btn;
+        }
+        function refreshLetterCaseDisplay() {
+            kbd.querySelectorAll('.kbdLetter').forEach((b) => {
+                const c = b.dataset.char;
+                b.textContent = isShifted ? c.toUpperCase() : c.toLowerCase();
+            });
+            const shiftBtn = kbd.querySelector('.kbdShift');
+            if (shiftBtn) shiftBtn.classList.toggle('active', isShifted);
+        }
+        function appendChar(c) {
+            if (!input) return;
+            if (input.value.length >= maxLen) return;
+            input.value += c;
+            // Surface the change for any listeners (Save-btn enable logic
+            // is on submit, not on input — but future-proof).
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Build the 4 character rows.
+        rows.forEach((row, rowIdx) => {
+            const rowEl = document.createElement('div');
+            rowEl.className = 'kbdRow';
+            // Insert shift to the LEFT of the last row (zxcvbnm).
+            if (rowIdx === 3) {
+                rowEl.appendChild(makeKey('⇧', () => {
+                    isShifted = !isShifted;
+                    refreshLetterCaseDisplay();
+                }, 'kbdShift'));
+            }
+            for (const ch of row) {
+                const isLetter = /[a-z]/i.test(ch);
+                const key = makeKey(ch, () => {
+                    const out = isLetter && isShifted ? ch.toUpperCase() : ch;
+                    appendChar(out);
+                }, isLetter ? 'kbdLetter' : 'kbdDigit');
+                if (isLetter) key.dataset.char = ch;
+                rowEl.appendChild(key);
+            }
+            // Backspace on the right of the bottom row.
+            if (rowIdx === 3) {
+                rowEl.appendChild(makeKey('⌫', () => {
+                    if (input.value.length > 0) {
+                        input.value = input.value.slice(0, -1);
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                }, 'kbdBack'));
+            }
+            kbd.appendChild(rowEl);
+        });
+
+        // Function row: space (wide) + enter. Enter calls the caller-
+        // supplied onEnter — marathon passes saveScore, PotD passes the
+        // modal's resolve-with-typed-name. Lets the player submit without
+        // lifting their finger off the keyboard.
+        const fnRow = document.createElement('div');
+        fnRow.className = 'kbdRow';
+        fnRow.appendChild(makeKey('␣', () => appendChar(' '), 'kbdSpace'));
+        fnRow.appendChild(makeKey('↵', () => { if (typeof onEnter === 'function') onEnter(); }, 'kbdEnter'));
+        kbd.appendChild(fnRow);
+
+        document.body.appendChild(kbd);
+    }
+
     async function renderGameOver() {
         gameOverScore.textContent = I18n.t('marathon.solvedCount', { n: solvedCount, s: solvedCount === 1 ? '' : 's' });
         gameOverTime.textContent  = I18n.t('marathon.totalTime', { t: fmtTimePrecise(totalSolveTime) });
@@ -657,6 +1001,14 @@ const Marathon = (() => {
         gameOverName.value        = '';
         gameOverSave.disabled     = true;
         gameOverSave.textContent  = I18n.t('marathon.save');
+        // "Back to menu" button visibility is the inverse of the name-entry
+        // row's: when the player ranks in top-N they only see Save (which
+        // accepts an empty input → 'Anonymous' on the server, so a no-op
+        // Save click is the equivalent of "back without saving" without
+        // adding a redundant button). Default-show here covers the
+        // zero-score and below-cap branches; the top-N branch flips it
+        // off alongside un-hiding the name row.
+        if (gameOverMenu) gameOverMenu.hidden = false;
 
         // Zero score → never eligible to save. Hide the name row up-front
         // (per universal rule 7a) and bail without contacting the server.
@@ -691,6 +1043,13 @@ const Marathon = (() => {
             gameOverRank.textContent = I18n.t('marathon.newBest', { r: rank });
             gameOverRank.hidden = false;
             if (gameOverNameRow) gameOverNameRow.hidden = false;
+            // Hide "Back to menu" when the name-entry row is visible. The
+            // Save button doubles as both "save with this name" and "save
+            // anonymously without typing" — clicking Save on an empty
+            // input submits as 'Anonymous'. A separate Back-to-menu
+            // alongside would just be a third path to the same outcome
+            // (the player ends up on the leaderboard after either click).
+            if (gameOverMenu) gameOverMenu.hidden = true;
             gameOverSave.disabled = false;
             // Pre-fill the name field with the player's last-submitted name
             // (universal rule 7a). Mirrors TANTЯO's behavior so returning
@@ -709,6 +1068,10 @@ const Marathon = (() => {
             if (gameOverName) {
                 try { gameOverName.focus(); } catch (e) {}
             }
+            // iOS PWA standalone: paint the custom on-screen keyboard
+            // since the native one won't appear. No-op on every other
+            // platform (desktop / Android / iOS Safari non-standalone).
+            setupMobileKeyboard(gameOverName, saveScore);
             if (typeof Sfx !== 'undefined') {
                 Sfx.play(rank === 1 ? 'audience_cheer_long' : 'audience_cheer');
             }
@@ -882,6 +1245,10 @@ const Marathon = (() => {
             name:          name,
             solved:        solvedCount,
             totalMs:       totalSolveTime,
+            // Hints used across the whole run — primary tiebreaker on the
+            // server's leaderboard sort (fewer hints wins before total_ms
+            // is considered). See models.py's Score docstring.
+            hintsUsed:     hintsUsed,
             clientVersion: (typeof PAGE_VERSION === 'string' ? PAGE_VERSION : ''),
             sessionId:     getSessionId(),
             // Server-issued timing token from /api/game/start. The server
@@ -902,12 +1269,12 @@ const Marathon = (() => {
         if (state !== STATE.GAME_OVER) return;
         if (solvedCount === 0) return;     // no zero-score entries
         const rawName = (gameOverName.value || '').trim().slice(0, 16);
-        const name = rawName || 'Player';
+        const name = rawName || 'Anonymous';
 
         // Persist the entered name so the next high-score input pre-fills
         // (universal rule 7a). Save BEFORE the server submit so the name
         // sticks even if the player is offline / submission queues for retry.
-        // Only persist actual user input — don't write the 'Player' fallback.
+        // Only persist actual user input — don't write the 'Anonymous' fallback.
         if (rawName && typeof PROJECT_SLUG === 'string') {
             try { localStorage.setItem(PROJECT_SLUG + '_lastPlayerName', rawName); }
             catch (e) { /* localStorage unavailable */ }
@@ -937,13 +1304,22 @@ const Marathon = (() => {
             board.push({
                 name,
                 solved:       solvedCount,
+                hintsUsed:    hintsUsed,
                 totalMs:      totalSolveTime,
                 date:         Date.now(),
                 events:       recordings,
                 hasRecording: recordings.length > 0,
             });
+            // Mirror server sort: solved DESC, hints ASC, totalMs ASC.
+            // Older cached entries without hintsUsed (from before this
+            // column existed) fall through as 0, which sorts them as
+            // "no hints used" — same default the server uses for legacy
+            // rows.
             board.sort((a, b) => {
                 if (b.solved !== a.solved) return b.solved - a.solved;
+                const ah = a.hintsUsed || 0;
+                const bh = b.hintsUsed || 0;
+                if (ah !== bh) return ah - bh;
                 return a.totalMs - b.totalMs;
             });
             if (board.length > MARATHON.LEADERBOARD_TOP_N) board.length = MARATHON.LEADERBOARD_TOP_N;
@@ -972,22 +1348,37 @@ const Marathon = (() => {
         // fallback for local-only saves where the entry has no id yet.
         pendingHighlight = (savedId !== null)
             ? { id: savedId }
-            : { name: name, solved: solvedCount, totalMs: totalSolveTime };
-        if (leaderboardSelect) leaderboardSelect.value = activeType;
+            : { name: name, solved: solvedCount, hintsUsed: hintsUsed, totalMs: totalSolveTime };
+        setActiveBoardType(activeType);
         showLeaderboard();
     }
 
     // Match a leaderboard entry against pendingHighlight. id-match is
-    // exact when the server save succeeded; the name+solved+totalMs
-    // fallback covers local-only saves (id-less entries).
+    // exact when the server save succeeded; the name+stats fallback
+    // covers local-only saves (id-less entries). Handles both
+    // shapes:
+    //   marathon entry → { name, solved, totalMs }
+    //   potd entry     → { name, timeMs }
     function entryMatchesHighlight(entry) {
         if (!pendingHighlight) return false;
         if (pendingHighlight.id != null && entry.id != null) {
             return entry.id === pendingHighlight.id;
         }
-        return entry.name    === pendingHighlight.name
-            && entry.solved  === pendingHighlight.solved
-            && entry.totalMs === pendingHighlight.totalMs;
+        if (pendingHighlight.timeMs != null && entry.timeMs != null) {
+            return entry.name === pendingHighlight.name
+                && entry.timeMs === pendingHighlight.timeMs;
+        }
+        // Marathon local-save match — include hintsUsed in the tuple so
+        // two same-name+solved+totalMs entries (which is now possible to
+        // tie on, since hints break the tie) don't both highlight. Entries
+        // from before the hints column existed have no hintsUsed; default
+        // both sides to 0 so the comparison is well-defined for them too.
+        const entryHints     = (typeof entry.hintsUsed === 'number') ? entry.hintsUsed : 0;
+        const highlightHints = (typeof pendingHighlight.hintsUsed === 'number') ? pendingHighlight.hintsUsed : 0;
+        return entry.name      === pendingHighlight.name
+            && entry.solved    === pendingHighlight.solved
+            && entryHints      === highlightHints
+            && entry.totalMs   === pendingHighlight.totalMs;
     }
 
     function paintLeaderboard(board, mode) {
@@ -1004,12 +1395,12 @@ const Marathon = (() => {
         // no per-mode own-recording stash today (the recording always
         // travels with the entry from the server), so just skip the
         // cross-ref there.
-        const boardType    = (leaderboardSelect && leaderboardSelect.value) || MARATHON.TYPES[0];
+        const boardType    = getActiveBoardType();
         const ownRecording = mode === 'potd' ? null : loadOwnRecording(boardType);
         let highlightedEl = null;
         board.forEach((entry, i) => {
             const li     = document.createElement('li');
-            if (mode !== 'potd' && entryMatchesHighlight(entry)) {
+            if (entryMatchesHighlight(entry)) {
                 li.classList.add('lbHighlight');
                 highlightedEl = li;
             }
@@ -1022,14 +1413,40 @@ const Marathon = (() => {
             // single-puzzle solve — `timeMs` is the only metric, no
             // count column.
             if (mode === 'potd') {
+                // Padding spans for the columns marathon uses but PotD
+                // doesn't (solved + hints). Without them PotD entries
+                // collapse leftward in the shared 6-column grid and the
+                // time/watch slots end up under marathon's solved/hints
+                // headers, which makes the tab switch jarring.
+                li.appendChild(document.createElement('span'));
+                li.appendChild(document.createElement('span'));
                 const time = document.createElement('span');
                 time.className   = 'lbTime';
                 time.textContent = fmtTimePrecise(entry.timeMs);
                 li.appendChild(time);
             } else {
-                const solved = document.createElement('span'); solved.className = 'lbSolved'; solved.textContent = entry.solved + ' solved';
-                const time   = document.createElement('span'); time.className   = 'lbTime';   time.textContent   = fmtTimePrecise(entry.totalMs);
+                // Hints column — primary tiebreaker on the server sort, so
+                // the player needs to see it. Entries from before the
+                // column existed have no hintsUsed field; treat undefined
+                // as 0 (matching the server's NULL→0 default for legacy
+                // rows). Translation via marathon.lbSolved /
+                // marathon.lbHints (compact row-stat form per language;
+                // separate from the longer marathon.solvedCount sentence
+                // used on the game-over screen). The English {s} switch
+                // pluralizes "hint" → "hint"/"hints"; non-English locales
+                // use a single count-form that reads OK regardless of N.
+                const hintN  = (typeof entry.hintsUsed === 'number') ? entry.hintsUsed : 0;
+                const solved = document.createElement('span');
+                solved.className   = 'lbSolved';
+                solved.textContent = I18n.t('marathon.lbSolved', { n: entry.solved });
+                const hints  = document.createElement('span');
+                hints.className   = 'lbHints';
+                hints.textContent = I18n.t('marathon.lbHints', { n: hintN, s: hintN === 1 ? '' : 's' });
+                const time   = document.createElement('span');
+                time.className   = 'lbTime';
+                time.textContent = fmtTimePrecise(entry.totalMs);
                 li.appendChild(solved);
+                li.appendChild(hints);
                 li.appendChild(time);
             }
             // Watch button on any entry with a replayable recording. Sources,
@@ -1083,7 +1500,7 @@ const Marathon = (() => {
     }
 
     async function renderLeaderboard() {
-        const type = (leaderboardSelect && leaderboardSelect.value) || MARATHON.TYPES[0];
+        const type = getActiveBoardType();
         const mode = leaderboardMode;
 
         // Paint local cache immediately so the UI is never blank. Each
@@ -1097,7 +1514,7 @@ const Marathon = (() => {
             saveBoard(mode, type, fresh);
             if (state === STATE.LEADERBOARD &&
                 leaderboardMode === mode &&
-                leaderboardSelect && leaderboardSelect.value === type) {
+                getActiveBoardType() === type) {
                 paintLeaderboard(fresh, mode);
             }
         } catch (e) {
@@ -1187,13 +1604,21 @@ const Marathon = (() => {
         // mode, trailing digit is the path count.
         const quadMode  = slot[0] === 'q';
         const pathCount = parseInt(slot[1], 10) || 1;
-        const moves     = Array.isArray(rec.events) ? rec.events : [];
+        const moves       = Array.isArray(rec.events)       ? rec.events       : [];
+        const musicEvents = Array.isArray(rec.musicEvents)  ? rec.musicEvents  : [];
         const reconstructed = {
             quadMode:     quadMode,
             pathCount:    pathCount,
             initialState: puzzle.snapshot.maze,
             gates:        puzzle.snapshot.gates || null,
             moves:        moves,
+            // Music events ride alongside moves so the watcher hears
+            // the same songs the original player heard. PotD's submit
+            // sends musicEvents as a top-level field (vs marathon's
+            // events-is-full-recording shape), so we read it the same
+            // way — defaulting to [] for older recordings that
+            // pre-date this field.
+            musicEvents:  musicEvents,
         };
 
         // Wrap in a one-element array so the puzzle-counter reads 1/1
@@ -1217,6 +1642,26 @@ const Marathon = (() => {
         await Game.replayAll(events, (idx, total) => {
             updateReplayHud(name, idx + 1, total);
         });
+
+        // Replay's scripted playback stops its scheduled timer chain when the
+        // recording ends, but doesn't pause the currently-playing audio — so
+        // without this transition, the last replay song bleeds into the
+        // leaderboard view. Same pattern as goToMenu: flip to menu phase,
+        // restart with a menu-pool song unless we're already on one (the
+        // gate avoids interrupting menu music that happens to be playing,
+        // though in practice scripted playback will have overwritten it).
+        // Fires whether the replay completed naturally or was cancelled —
+        // either way audio should hand back to the menu pool. goToMenu
+        // does its own transition on the Quit-to-menu path, but the
+        // alreadyMenu gate makes the double-call a no-op.
+        if (typeof Music !== 'undefined') {
+            if (Music.setMenuPhase) Music.setMenuPhase(true);
+            const alreadyMenu = Music.isMenuSongPlaying && Music.isMenuSongPlaying();
+            if (!alreadyMenu) {
+                if (Music.stop)  Music.stop();
+                if (Music.start) Music.start();
+            }
+        }
 
         // Whether the replay finished naturally or was cancelled mid-stream,
         // return to the leaderboard view IF the user hasn't navigated away
@@ -1278,5 +1723,12 @@ const Marathon = (() => {
 
     return { init, onSolve, onHintUsed, onPuzzleReady, advance, isPlaying, isMenuVisible, isInTransition, isReplaying, upcomingDims,
              wipeLocalLeaderboards,
+             showPotdLeaderboard,
+             // Reusable iOS-standalone keyboard helpers — exposed so PotD's
+             // solve-modal name entry can share the same on-screen keyboard
+             // marathon's game-over name input uses. (input, onEnter) for
+             // setup; teardown is parameterless (the keyboard owner is
+             // tracked internally).
+             setupMobileKeyboard, teardownMobileKeyboard, isStandaloneIos,
              getSolvedCount: () => solvedCount };
 })();

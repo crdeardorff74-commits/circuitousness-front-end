@@ -112,6 +112,7 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    text-align: center;
 }
 #nowPlayingControls {
     display: flex;
@@ -367,6 +368,208 @@ html.mode-debug #potdSolveTransition { display: none !important; }
    the standalone debug-mode hintBtn so they don't both appear. */
 html.mode-game #hintBtn { display: none; }
 
+/* ----- Opening intro / warning splash -----
+   Painted on page load by intro.js. Sits above the menu (z-index 50,
+   higher than the menu's 30 and the gameOver's 35) so it's the first
+   thing the player sees. The "I agree to solve responsibly" click is
+   ALSO the user-gesture that unblocks the AudioContext + iOS audio
+   blessing — audio.js + music.js wire that globally on first gesture,
+   so we don't have to do anything intro-specific for it.
+
+   Layout: title at top (same .titleFrame/#menuTitle markup as the main
+   menu, just with a different canvas ID), big red WARNING in the
+   middle, body text below, toggles + agree button at the bottom. */
+#introOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: clamp(0.6rem, 2.5vh, 1.5rem);
+    /* Top padding gets its own clamp so the intro's content starts
+       further down the page than the menu's content does — gives the
+       title some breathing room from the viewport's top edge instead
+       of butting right against it. Sides/bottom stay at the original
+       smaller clamp. The short-viewport @media block below has its
+       own padding override that takes over on landscape phones. */
+    padding: clamp(2rem, 7vh, 4.5rem) clamp(1rem, 4vw, 2.5rem) clamp(1rem, 4vh, 2.5rem);
+    background:
+        radial-gradient(ellipse at center, rgba(20, 4, 8, 0.55) 0%, rgba(0, 0, 0, 0.95) 80%),
+        rgba(0, 0, 0, 0.95);
+    color: #e6ecf8;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    overflow: auto;
+    opacity: 1;
+    transition: opacity 0.32s ease;
+}
+#introOverlay.introDismissing {
+    opacity: 0;
+    pointer-events: none;
+}
+/* .introTitleFrame inherits all sizing + styling from the base
+   .titleFrame rule and the #introTitle selectors below — no
+   intro-specific overrides, so any future tweak the menu title gets
+   propagates here automatically. */
+
+/* Big red WARNING — Ridiculousness-style: heavy condensed sans, fully
+   saturated red, very subtle drop shadow for contrast against the dark
+   backdrop. Scales hard with viewport since it's the focal point. */
+.introWarningBlock {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(0.5rem, 2vh, 1rem);
+    max-width: 56rem;
+    width: 90%;
+    text-align: center;
+}
+.introWarning {
+    font-family: 'Helvetica Neue', 'Arial Black', Impact, sans-serif;
+    font-weight: 900;
+    font-stretch: condensed;
+    /* Hard cap so 4K displays don't ship a 200px title that overwhelms
+       the body text. Floor is generous so it's still readable on
+       a 320px-wide phone. */
+    font-size: clamp(2.4rem, 12vw, 7rem);
+    letter-spacing: 0.08em;
+    line-height: 1;
+    /* Same red palette as the lit path — ties the warning visually
+       to the gameplay's primary color. */
+    color: #c8161d;
+    text-shadow: 0 0.2rem 0.8rem rgba(0, 0, 0, 0.7),
+                 0 0 1.2rem rgba(200, 22, 29, 0.35);
+    margin: 0;
+}
+.introBody {
+    font-size: clamp(0.95rem, 2.4vw, 1.4rem);
+    line-height: 1.4;
+    color: rgba(230, 240, 255, 0.92);
+    margin: 0;
+    max-width: 50rem;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+/* Toggles row — music + full screen. Inline-flex with a gap between
+   the two so they read as a single control band. */
+.introToggles {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: clamp(1rem, 3vw, 2rem);
+    margin-top: clamp(0.4rem, 1.5vh, 1rem);
+}
+.introToggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: clamp(0.85rem, 1.8vw, 1.05rem);
+    color: rgba(220, 230, 250, 0.88);
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    user-select: none;
+}
+.introToggle input[type="checkbox"] {
+    /* Native checkbox styled to match the game's gold accent — bigger
+       hitbox than the default 13×13 so it's tap-friendly on mobile. */
+    appearance: none;
+    -webkit-appearance: none;
+    width: 1.2rem;
+    height: 1.2rem;
+    border: 1px solid rgba(255, 215, 0, 0.5);
+    border-radius: 0.25rem;
+    background: rgba(40, 30, 50, 0.7);
+    cursor: pointer;
+    position: relative;
+    transition: background 0.15s, border-color 0.15s;
+}
+.introToggle input[type="checkbox"]:checked {
+    background: rgba(255, 215, 0, 0.22);
+    border-color: rgba(255, 215, 0, 0.85);
+}
+.introToggle input[type="checkbox"]:checked::after {
+    content: '✓';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffd700;
+    font-weight: 700;
+    font-size: 0.9rem;
+    line-height: 1;
+}
+/* Primary CTA — uses the game's gold-accent button language but
+   bigger than any other button on the page since it's THE action
+   on this screen. */
+#introAgreeBtn {
+    margin-top: clamp(0.6rem, 2vh, 1.2rem);
+    padding: clamp(0.7rem, 1.8vh, 1rem) clamp(1.6rem, 4vw, 2.4rem);
+    background: linear-gradient(180deg, rgba(60, 45, 65, 0.95) 0%, rgba(35, 25, 40, 0.95) 100%);
+    color: #ffd700;
+    border: 2px solid rgba(255, 215, 0, 0.7);
+    border-radius: 0.5rem;
+    font-family: inherit;
+    font-size: clamp(1rem, 2.2vw, 1.25rem);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: 0 0.4rem 1.2rem rgba(0, 0, 0, 0.5),
+                0 0 1.2rem rgba(255, 215, 0, 0.15) inset;
+    transition: background 0.15s, border-color 0.15s, transform 0.05s, box-shadow 0.15s;
+}
+#introAgreeBtn:hover {
+    background: linear-gradient(180deg, rgba(90, 65, 95, 0.95) 0%, rgba(60, 40, 65, 0.95) 100%);
+    border-color: rgba(255, 215, 0, 0.95);
+    color: #fff8c0;
+    box-shadow: 0 0.4rem 1.4rem rgba(0, 0, 0, 0.6),
+                0 0 1.6rem rgba(255, 215, 0, 0.35) inset;
+}
+#introAgreeBtn:active { transform: translateY(1px); }
+/* Debug mode bypasses the intro entirely — hide it server-side too in
+   case intro.js doesn't get to run for some reason. */
+html.mode-debug #introOverlay { display: none !important; }
+
+/* Short-viewport (landscape phone) overrides for the intro. WARNING and
+   title both shrink hard; toggles wrap if needed. */
+@media (max-height: 500px) {
+    #introOverlay {
+        padding: clamp(0.4rem, 1.5vh, 0.8rem) clamp(0.8rem, 3vw, 1.5rem);
+        gap: 0.35rem;
+        justify-content: center;
+    }
+    /* .introTitleFrame inherits the .titleFrame short-viewport rule
+       at clamp(1.3rem, 8vh, 2.2rem) — same as the main menu title. */
+    .introWarning {
+        font-size: clamp(1.6rem, 14vh, 3.2rem);
+    }
+    .introBody {
+        font-size: clamp(0.75rem, 2.6vh, 0.95rem);
+        line-height: 1.35;
+    }
+    .introToggles {
+        gap: 1rem;
+        margin-top: 0.3rem;
+    }
+    .introToggle {
+        font-size: clamp(0.7rem, 2.2vh, 0.9rem);
+    }
+    .introToggle input[type="checkbox"] {
+        width: 1rem;
+        height: 1rem;
+    }
+    .introToggle input[type="checkbox"]:checked::after {
+        font-size: 0.75rem;
+    }
+    #introAgreeBtn {
+        margin-top: 0.3rem;
+        padding: 0.4rem 1.2rem;
+        font-size: clamp(0.8rem, 2.4vh, 1rem);
+    }
+}
+
 /* ----- Main menu ----- */
 #menu {
     position: absolute;
@@ -404,14 +607,39 @@ html.mode-game #hintBtn { display: none; }
     border-width: 0;
     pointer-events: none;
 }
-.titleFrame .bracket-tl { top: 0; left: 0;  border-top-width: 0.095em; border-left-width:  0.095em; }
-.titleFrame .bracket-tr { top: 0; right: 0; border-top-width: 0.095em; border-right-width: 0.095em; }
-.titleFrame .bracket-bl { bottom: 0; left: 0;  border-bottom-width: 0.095em; border-left-width:  0.095em; }
-.titleFrame .bracket-br { bottom: 0; right: 0; border-bottom-width: 0.095em; border-right-width: 0.095em; }
+/* Horizontal inset matches the inline `left: 0.12em` / `left: -0.12em`
+   shifts on the C / IRCUIT / USNESS spans in index.html that pull the
+   letters in toward the maze-O. position: relative doesn't change layout
+   width, so without this inset the brackets would sit at the original
+   wide edges and look stranded outside the text. Right side uses a
+   smaller inset (0.08em) — visually the trailing S in USNESS doesn't
+   reach as close to its bracket as the leading C reaches to its,
+   so a symmetric 0.12em looked too tight on the right. */
+.titleFrame .bracket-tl { top: 0; left:  0.12em; border-top-width: 0.095em; border-left-width:  0.095em; }
+.titleFrame .bracket-tr { top: 0; right: 0.08em; border-top-width: 0.095em; border-right-width: 0.095em; }
+.titleFrame .bracket-bl { bottom: 0; left:  0.12em; border-bottom-width: 0.095em; border-left-width:  0.095em; }
+.titleFrame .bracket-br { bottom: 0; right: 0.08em; border-bottom-width: 0.095em; border-right-width: 0.095em; }
+/* The intro screen's title gets a modest size bump over the menu's
+   title — same shape and proportions (every em-based child scales with
+   it), just rendered ~15% larger so it carries more presence on the
+   opening splash. Placed after the .titleFrame base rule so this wins
+   on desktop; the short-viewport @media block (max-height: 500px)
+   later in the file re-overrides .titleFrame's font-size, which beats
+   this rule on landscape phones — intentional, the squeeze case
+   doesn't want a bigger title. */
+.introTitleFrame {
+    font-size: clamp(2.3rem, 6.9vw, 4.15rem);
+}
 
-#menu h1 {
+#menu h1,
+#introTitle {
     /* Reverted to the original heavy system-sans stack. Universally available,
-       no network dependency, matches the rest of the UI's font baseline. */
+       no network dependency, matches the rest of the UI's font baseline.
+       #introTitle (the opening intro screen's h1) is included here so the
+       intro title is an exact match for the menu title — without this, the
+       intro h1 inherits browser defaults (no weight, no condensed stretch,
+       browser's default h1 font-size of ~1.5-2em) and reads as a thinner,
+       larger, differently-spaced version of what the menu shows. */
     font-family: 'Helvetica Neue', 'Arial Black', Impact, sans-serif;
     font-weight: 900;
     font-stretch: condensed;
@@ -433,11 +661,18 @@ html.mode-game #hintBtn { display: none; }
    The natural width depends on character count, so titleInitial (1 char)
    and titleWord (6 chars) get different values — tune by hand if you
    change font, weight, or character count. */
-#menuTitle {
+/* #introTitle is included alongside #menuTitle in every selector
+   below so the opening intro screen's title is an exact match for
+   the main menu's title — same condensed letters, same scaleX
+   negative-margin alignment, same maze-O sizing. Any tweak applied
+   here propagates to both. */
+#menuTitle,
+#introTitle {
 	position: relative;
 	left: -0.07em;
 }
-#menuTitle .titleInitial {
+#menuTitle .titleInitial,
+#introTitle .titleInitial {
     /* The leading C is bumped slightly larger than the rest. */
     font-size: 1.18em;
     line-height: 1;
@@ -446,13 +681,15 @@ html.mode-game #hintBtn { display: none; }
     transform-origin: center;
     margin: 0 -0.0em;
 }
-#menuTitle .titleWord {
+#menuTitle .titleWord,
+#introTitle .titleWord {
     display: inline-block;
     transform: scaleX(0.78);
     transform-origin: center;
     margin: 0 -0.58em;
 }
-#menuTitle .titleMazeO {
+#menuTitle .titleMazeO,
+#introTitle .titleMazeO {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -464,7 +701,8 @@ html.mode-game #hintBtn { display: none; }
 	top: 0.015em;
 	left: 0.045em;
 }
-#menuTitle .titleMazeO canvas {
+#menuTitle .titleMazeO canvas,
+#introTitle .titleMazeO canvas {
     width: 100%;
     height: 100%;
     display: block;
@@ -524,6 +762,12 @@ html.mode-game #hintBtn { display: none; }
     flex-direction: column;
     align-items: center;
     gap: 0.4rem;
+    /* Suppress text-selection-on-drag. Without it, mousedown + small
+       drift selects the label text and the subsequent mouseup doesn't
+       fire `click` because the press is being interpreted as a selection
+       gesture. */
+    user-select: none;
+    -webkit-user-select: none;
 }
 .menuModeBtn .modeThumb {
     /* Square preview pulled from the GitHub release (see THUMBNAIL_URL_BASE).
@@ -534,10 +778,31 @@ html.mode-game #hintBtn { display: none; }
     border-radius: 0.3rem;
     background: rgba(0, 0, 0, 0.25);    /* fallback while loading / on error */
     display: block;
+    /* Make the thumbnail inert to pointer events so the button receives
+       mousedown/mouseup/click directly. Without this, mousedown ON the
+       img + small drift triggers the browser's default image-drag
+       gesture (the thumbnail visually trails the cursor), mouseup lands
+       "off the button," and the `click` event never fires — the player
+       has to click a second time. pointer-events:none here means the
+       img is purely decorative; all clicks hit the button beneath it.
+       The redundant -webkit-user-drag: none is belt-and-braces for any
+       browser that re-enables drag-start despite pointer-events:none. */
+    pointer-events: none;
+    -webkit-user-drag: none;
+    user-drag: none;
 }
-.menuModeBtn:hover {
-    background: rgba(60, 90, 140, 0.9);
-    border-color: rgba(160, 210, 255, 0.7);
+/* Hover style scoped to actual-hover devices only. iOS Safari (and
+   most mobile browsers) emulate :hover on the FIRST tap of a button
+   and only fire `click` on the SECOND tap — so without this media
+   query the player sees the card visibly "hover" on tap 1 but
+   nothing happens until tap 2. (pointer: fine) extra-guards against
+   touchscreen laptops that report (hover: hover) but where the
+   primary input is still touch. */
+@media (hover: hover) and (pointer: fine) {
+    .menuModeBtn:hover {
+        background: rgba(60, 90, 140, 0.9);
+        border-color: rgba(160, 210, 255, 0.7);
+    }
 }
 .menuModeBtn:active { transform: translateY(1px); }
 
@@ -568,7 +833,30 @@ html.mode-game #hintBtn { display: none; }
     font-size: 0.9rem;
     line-height: 1;
     pointer-events: none;
+    /* Subtle lift above the now-dimmed thumbnail so the checkmark
+       reads as floating on top, not embedded in the image. */
+    box-shadow: 0 0 0.35rem rgba(0, 0, 0, 0.55);
+    z-index: 1;
 }
+/* Solved-state thumbnail + label dimming. The checkmark badge alone wasn't
+   enough of a "completed" cue — at a glance solved and unsolved cards
+   looked nearly identical because the bright thumbnail dominated. Dimming
+   the image (brightness+saturate) and softening the label gives the whole
+   card a "done for today" feel, and the un-dimmed bright-green checkmark
+   pops dramatically against the muted background. Subtle hover lift keeps
+   the card feeling tappable (PotD still allows re-attempts; only
+   leaderboard eligibility is gone). Transitions match the existing
+   background/border-color transition on .menuModeBtn for visual cohesion. */
+.menuModeBtn.potd-solved .modeThumb {
+    filter: brightness(0.45) saturate(0.7);
+    transition: filter 0.15s ease;
+}
+.menuModeBtn.potd-solved span {
+    color: rgba(220, 240, 255, 0.55);
+    transition: color 0.15s ease;
+}
+.menuModeBtn.potd-solved:hover .modeThumb { filter: brightness(0.65) saturate(0.85); }
+.menuModeBtn.potd-solved:hover span       { color: rgba(220, 240, 255, 0.85); }
 .menuModeBtn.potd-started:not(.potd-solved) {
     border-color: rgba(230, 180, 60, 0.7);
 }
@@ -603,6 +891,16 @@ body:not(.mode-potd) .menuModeBtn.potd-solved::after,
 body:not(.mode-potd) .menuModeBtn.potd-started:not(.potd-solved)::after {
     display: none;
 }
+/* In Marathon mode the .potd-solved class still rides on the buttons (so
+   the state persists across mode switches), but the dimming is PotD-only —
+   the player isn't "done with marathon for today" just because they
+   solved today's q3 PotD. Restore full brightness + label color. */
+body:not(.mode-potd) .menuModeBtn.potd-solved .modeThumb {
+    filter: none;
+}
+body:not(.mode-potd) .menuModeBtn.potd-solved span {
+    color: rgba(220, 240, 255, 0.95);
+}
 
 #menuLeaderboardBtn {
     margin-top: 0.4rem;
@@ -619,10 +917,15 @@ body:not(.mode-potd) .menuModeBtn.potd-started:not(.potd-solved)::after {
     cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-#menuLeaderboardBtn:hover {
-    background: rgba(60, 40, 70, 0.9);
-    border-color: rgba(255, 215, 0, 0.75);
-    color: #FFD700;
+/* Same iOS-Safari "first-tap-hovers, second-tap-clicks" fix as the
+   .menuModeBtn:hover above — gate hover styling on actual-hover
+   devices so mobile taps fire on the FIRST tap. */
+@media (hover: hover) and (pointer: fine) {
+    #menuLeaderboardBtn:hover {
+        background: rgba(60, 40, 70, 0.9);
+        border-color: rgba(255, 215, 0, 0.75);
+        color: #FFD700;
+    }
 }
 
 /* ----- Settings (menu-only) -----
@@ -1134,7 +1437,8 @@ html.mode-debug #settingsOverlay { display: none !important; }
    row appeared even on zero-score / non-ranking game-overs. Attribute-selector
    specificity (.class[attr] beats .class) restores the intended hide behavior. */
 .gameOverNameRow[hidden] { display: none; }
-#gameOverName {
+#gameOverName,
+#potdSolveName {
     padding: 0.55rem 0.9rem;
     background: rgba(20, 24, 50, 0.85);
     color: #fff;
@@ -1145,12 +1449,14 @@ html.mode-debug #settingsOverlay { display: none !important; }
     width: 12rem;
     max-width: 60vw;
 }
-#gameOverName:focus {
+#gameOverName:focus,
+#potdSolveName:focus {
     outline: none;
     border-color: rgba(255, 215, 0, 0.7);
 }
 #gameOverSaveBtn,
-#gameOverMenuBtn {
+#gameOverMenuBtn,
+#potdSolveSaveBtn {
     padding: 0.6rem 1.4rem;
     background: rgba(40, 60, 100, 0.7);
     color: rgba(220, 240, 255, 0.95);
@@ -1163,13 +1469,137 @@ html.mode-debug #settingsOverlay { display: none !important; }
 }
 #gameOverMenuBtn { margin-top: 0.4rem; }
 #gameOverSaveBtn:hover,
-#gameOverMenuBtn:hover {
+#gameOverMenuBtn:hover,
+#potdSolveSaveBtn:hover {
     background: rgba(60, 90, 140, 0.9);
     border-color: rgba(160, 210, 255, 0.7);
 }
-#gameOverSaveBtn:disabled {
+#gameOverSaveBtn:disabled,
+#potdSolveSaveBtn:disabled {
     opacity: 0.5;
     cursor: default;
+}
+
+/* ============================================================
+   iOS-STANDALONE ON-SCREEN KEYBOARD
+   ----------------------------------------------------------
+   Painted by marathon.js's setupMobileKeyboard() ONLY when
+   window.navigator.standalone === true (iOS PWA in
+   "Add to Home Screen" standalone mode), where the system
+   keyboard doesn't reliably appear on input focus. Desktop,
+   Android, and iOS Safari (non-standalone) skip this entirely
+   and use the native keyboard.
+
+   Fixed to the bottom of the viewport so the player can see
+   the input field above (the #gameOver card is centered, so
+   there's almost always room between the input and the
+   keyboard). z-index sits above #gameOver (35) and the
+   credits overlay (~1000) so it's always tappable.
+
+   Tap-action manipulation + tap-highlight removal keep iOS
+   from injecting the gray double-tap-zoom delay or the gray
+   tap-flash that'd leak through the buttons during a fast
+   sequence of taps.
+   ============================================================ */
+#customKeyboard {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.4rem 0.5rem 0.6rem;
+    background: linear-gradient(180deg, rgba(8, 10, 28, 0.96) 0%, rgba(16, 22, 50, 0.96) 100%);
+    border-top: 1px solid rgba(255, 215, 0, 0.55);
+    box-shadow: 0 -0.4rem 1.2rem rgba(0, 0, 0, 0.45);
+    /* Respect iOS home-indicator inset so the bottom row doesn't sit
+       behind the system gesture bar. env() falls back to 0 on browsers
+       without notch insets. */
+    padding-bottom: calc(0.6rem + env(safe-area-inset-bottom, 0px));
+    user-select: none;
+    -webkit-user-select: none;
+}
+#customKeyboard .kbdRow {
+    display: flex;
+    justify-content: center;
+    gap: 0.25rem;
+    width: 100%;
+}
+#customKeyboard .kbdKey {
+    flex: 1 1 0;
+    min-width: 0;
+    /* Cap each key so a 10-character number row doesn't stretch the
+       letters wider than they should be on tablet-class viewports. */
+    max-width: 2.4rem;
+    /* Touch targets need to read as ~36×40 minimum on mobile to be
+       comfortable. Slight clamp on font so it scales with viewport. */
+    padding: 0.55rem 0;
+    background: rgba(40, 60, 100, 0.7);
+    color: rgba(220, 240, 255, 0.95);
+    border: 1px solid rgba(120, 180, 240, 0.45);
+    border-radius: 0.35rem;
+    font-family: inherit;
+    font-size: clamp(0.9rem, 2.4vh, 1.1rem);
+    font-weight: 600;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.08s ease, transform 0.05s ease;
+}
+#customKeyboard .kbdKey:active {
+    background: rgba(60, 90, 140, 0.95);
+    transform: translateY(1px);
+}
+/* Function-key variants: wider, color-coded for affordance.
+   Shift turns green when caps lock is on so the player has feedback
+   their next character will be upper-case (matches TANTЯO's behavior). */
+#customKeyboard .kbdShift,
+#customKeyboard .kbdBack {
+    max-width: 3.4rem;
+    background: rgba(40, 30, 50, 0.85);
+    color: rgba(220, 200, 230, 0.9);
+    border-color: rgba(200, 180, 220, 0.4);
+}
+#customKeyboard .kbdShift.active {
+    background: rgba(40, 140, 90, 0.85);
+    color: #fff;
+    border-color: rgba(120, 220, 160, 0.7);
+}
+#customKeyboard .kbdSpace {
+    max-width: none;
+    flex: 4 1 0;       /* eat most of the function row's width */
+}
+#customKeyboard .kbdEnter {
+    max-width: 5rem;
+    background: rgba(255, 215, 0, 0.18);
+    color: rgba(255, 215, 0, 0.95);
+    border-color: rgba(255, 215, 0, 0.55);
+    font-weight: 700;
+}
+#customKeyboard .kbdEnter:active {
+    background: rgba(255, 215, 0, 0.35);
+}
+
+/* Short-viewport (landscape phone) tightening so the keyboard doesn't
+   eat half the screen — keys flatter, rows tighter. */
+@media (max-height: 500px) {
+    #customKeyboard {
+        gap: 0.2rem;
+        padding: 0.25rem 0.4rem 0.4rem;
+        padding-bottom: calc(0.4rem + env(safe-area-inset-bottom, 0px));
+    }
+    #customKeyboard .kbdRow { gap: 0.18rem; }
+    #customKeyboard .kbdKey {
+        padding: 0.32rem 0;
+        font-size: clamp(0.8rem, 2.6vh, 1rem);
+        max-width: 2.1rem;
+    }
+    #customKeyboard .kbdShift,
+    #customKeyboard .kbdBack { max-width: 2.8rem; }
+    #customKeyboard .kbdEnter { max-width: 4rem; }
 }
 
 /* ============================================================
@@ -1435,6 +1865,25 @@ html.mode-debug #settingsOverlay { display: none !important; }
     text-indent: 2em;
     margin: 0;
 }
+/* Link inside the credits disclaimer (the ASPCA donation link, plus
+   any future external links rolled into the credits text). Browser
+   defaults render as dark blue / purple-once-visited, which is
+   illegible against the credits' dark background and reads as "broken
+   link." Light cyan stays readable on dark, matches the cool palette
+   the in-game UI already uses (#6eb5ff section headings), and the
+   gold-on-hover ties it to the leaderboard/rank accent that signals
+   "interactive" elsewhere. visited gets the same color so it doesn't
+   wash out after the player has clicked through once. */
+.credits-disclaimer a,
+.credits-disclaimer a:visited {
+    color: #7ee0ff;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+    transition: color 0.15s ease;
+}
+.credits-disclaimer a:hover {
+    color: #ffd700;
+}
 
 .credits-copyright {
     font-size: 18px;
@@ -1626,15 +2075,47 @@ body.credits-rolling #potdSolveTransition.visible {
     color: rgba(255, 215, 0, 0.95);
     border-bottom-color: rgba(255, 215, 0, 0.75);
 }
-#leaderboardSelect {
-    padding: 0.55rem 1rem;
-    background: rgba(20, 24, 50, 0.85);
-    color: #fff;
-    border: 1px solid rgba(150, 170, 220, 0.4);
-    border-radius: 0.4rem;
-    font-family: inherit;
-    font-size: clamp(0.9rem, 1.8vw, 1.05rem);
+/* Two-tier sub-tab rows under the PotD/Marathon mode tabs:
+     #leaderboardTileTabs — 2 buttons (Singular / Quad)
+     #leaderboardPathTabs — 4 buttons (1/2/3/4 paths)
+   Both share the .lbSubTab class so they look identical and the
+   active-state highlight is consistent. Visual language is a softer
+   variant of the .lbTab style (PotD/Marathon tabs above) so the
+   hierarchy reads as "section tabs above, slot tabs below" rather
+   than three competing tab strips at the same weight. */
+#leaderboardTileTabs,
+#leaderboardPathTabs {
+    display: flex;
+    gap: 0.3rem;
+    width: clamp(20rem, 70vw, 36rem);
+}
+.lbSubTab {
+    flex: 1;
+    padding: 0.45rem 0.4rem;
+    background: rgba(20, 24, 50, 0.55);
+    color: rgba(220, 220, 220, 0.6);
+    border: 1px solid rgba(150, 170, 220, 0.25);
+    border-radius: 0.35rem;
     cursor: pointer;
+    font-family: inherit;
+    font-weight: 500;
+    font-size: clamp(0.85rem, 1.7vw, 1rem);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.lbSubTab.active {
+    color: rgba(255, 215, 0, 0.95);
+    border-color: rgba(255, 215, 0, 0.6);
+    background: rgba(40, 30, 50, 0.85);
+}
+/* iOS-Safari-style "first-tap-hovers" fix scopes hover to actual-hover
+   devices only — matches the menu cards' treatment. */
+@media (hover: hover) and (pointer: fine) {
+    .lbSubTab:hover:not(.active) {
+        color: rgba(220, 220, 220, 0.9);
+        background: rgba(30, 36, 70, 0.7);
+    }
 }
 #leaderboardEntries {
     list-style: none;
@@ -1646,10 +2127,13 @@ body.credits-rolling #potdSolveTransition.visible {
 }
 #leaderboardEntries li {
     display: grid;
-    /* 5 columns: rank, name, solved, time, watch button. The watch column
-       is reserved even on entries without a button so every row's button
-       slot aligns vertically on the far right. */
-    grid-template-columns: 2rem 1fr auto auto auto;
+    /* Marathon needs 6 columns: rank, name, solved, hints, time, watch
+       button. PotD entries only fill 4 (rank, name, time, watch) but
+       inherit the same grid — the extra columns sit empty for PotD rows,
+       which keeps the leaderboard tab switch visually stable. The watch
+       column is reserved even on entries without a button so every row's
+       button slot aligns vertically on the far right. */
+    grid-template-columns: 2rem 1fr auto auto auto auto;
     align-items: center;
     gap: 0.8rem;
     padding: 0.4rem 0.4rem;
@@ -1677,6 +2161,10 @@ body.credits-rolling #potdSolveTransition.visible {
 #leaderboardEntries li .lbRank { color: rgba(255, 215, 0, 0.85); font-weight: 600; }
 #leaderboardEntries li .lbName { font-weight: 600; }
 #leaderboardEntries li .lbSolved { color: rgba(180, 220, 180, 0.95); }
+/* Hints column — slightly muted compared to "solved" since it's a
+   tiebreaker, not the primary metric. Light-blue tint distinguishes it
+   from the green "solved" and the cooler-gray time column. */
+#leaderboardEntries li .lbHints  { color: rgba(180, 200, 230, 0.85); font-size: 0.92em; }
 #leaderboardEntries li .lbTime { color: rgba(200, 210, 230, 0.7); font-size: 0.92em; }
 #leaderboardEmpty {
     color: rgba(200, 210, 230, 0.7);
@@ -1911,11 +2399,17 @@ body.credits-rolling #potdSolveTransition.visible {
     font-size: max(1.2vh, 10px);
     opacity: 0.7;
 }
-.menu-dropdown-btn:hover {
-    background: linear-gradient(180deg, #3a3a4a 0%, #2a2a3a 100%);
-    border-color: rgba(110, 181, 255, 0.5);
-    color: #fff;
-    transform: translateY(-1px);
+/* Same iOS-Safari first-tap-hovers fix — and especially important
+   here because the hover includes a transform (translateY(-1px))
+   that visibly "lifts" the chip on first tap, telegraphing
+   "responded" without actually firing the chip's click handler. */
+@media (hover: hover) and (pointer: fine) {
+    .menu-dropdown-btn:hover {
+        background: linear-gradient(180deg, #3a3a4a 0%, #2a2a3a 100%);
+        border-color: rgba(110, 181, 255, 0.5);
+        color: #fff;
+        transform: translateY(-1px);
+    }
 }
 .menu-dropdown-btn:active {
     transform: translateY(0);
@@ -2013,6 +2507,92 @@ body.credits-rolling #potdSolveTransition.visible {
     background: linear-gradient(180deg, #ffd060 0%, #c4942c 100%);
 }
 
+/* First-play educational tooltip — floating card in the top-LEFT
+   corner. Non-modal (no backdrop) so it doesn't block puzzle solving,
+   modeled on TANTЯO's .hint-popup. tooltip.js toggles `hidden` to
+   show/hide. On narrow viewports the card shifts to the bottom strip
+   so it doesn't compete with the HUD that runs across the top.
+   Left side specifically chosen to stay clear of the HUD Quit button
+   in the top-right and the now-playing widget in the bottom-right. */
+#tooltipCard {
+    position: fixed;
+    top: 4.5rem;          /* below the HUD strip */
+    left: 1rem;
+    max-width: min(22rem, 90vw);
+    background: linear-gradient(135deg, rgba(20, 20, 50, 0.96) 0%, rgba(10, 25, 55, 0.96) 100%);
+    border: 1px solid rgba(255, 215, 0, 0.5);
+    border-radius: 0.6rem;
+    padding: 1rem 1.1rem;
+    color: rgba(230, 240, 255, 0.96);
+    font-size: clamp(0.9rem, 1.6vw, 1.05rem);
+    line-height: 1.45;
+    box-shadow: 0 0.4rem 1.5rem rgba(0, 0, 0, 0.55),
+                0 0 1.8rem rgba(255, 215, 0, 0.18);
+    z-index: 100;          /* above HUD but below modal-overlay (z-index 2000) */
+    animation: tooltipCardFadeIn 0.3s ease-out;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    /* Use grid so the icon sits to the left of the text + button stack.
+       Gives the message room to wrap multi-line while the icon stays
+       vertically anchored at the top-left. */
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 0.7rem;
+    row-gap: 0;
+    align-items: start;
+}
+#tooltipCard[hidden] { display: none; }
+#tooltipIcon {
+    /* Circled gold "ℹ" — signals "informational" at a glance and ties
+       the card visually to the gold border + accent color. line-height:1
+       so the glyph aligns with the first line of body text. */
+    grid-row: 1 / span 2;  /* icon spans both message + button rows */
+    color: rgba(255, 215, 0, 0.95);
+    font-size: 1.6em;
+    line-height: 1;
+    font-weight: 600;
+    user-select: none;
+    -webkit-user-select: none;
+}
+#tooltipCard p {
+    margin: 0 0 0.8rem 0;
+    grid-column: 2;
+}
+#tooltipCard #tooltipGotItBtn {
+    grid-column: 2;
+    justify-self: end;     /* right-align the button within its grid cell */
+    background: rgba(255, 215, 0, 0.15);
+    color: rgba(255, 215, 0, 0.95);
+    border: 1px solid rgba(255, 215, 0, 0.55);
+    padding: 0.4rem 1.1rem;
+    border-radius: 0.35rem;
+    font-family: inherit;
+    font-size: 0.95em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+#tooltipCard #tooltipGotItBtn:hover {
+    background: rgba(255, 215, 0, 0.28);
+    border-color: rgba(255, 215, 0, 0.85);
+}
+@keyframes tooltipCardFadeIn {
+    0%   { opacity: 0; transform: translateY(-0.6rem) scale(0.96); }
+    100% { opacity: 1; transform: translateY(0)        scale(1);    }
+}
+/* Narrow viewport (phones / tablets in portrait): shift the tip to
+   bottom-center where it has more room and doesn't compete with the
+   HUD's top-right Quit button. */
+@media (max-width: 600px) {
+    #tooltipCard {
+        top: auto;
+        left: 0.6rem;
+        right: 0.6rem;
+        bottom: 1rem;
+        max-width: none;
+    }
+}
+
 /* Selection options inside the modal */
 .selection-modal {
     /* combo-modal already sets the box; selection-modal is just a hook
@@ -2061,4 +2641,361 @@ body.credits-rolling #potdSolveTransition.visible {
 }
 .selection-option.selected .challenge-description {
     color: #aaa;
+}
+
+/* ============================================================
+   SHORT-VIEWPORT SQUEEZE  (landscape phones, max-height: 500px)
+   ----------------------------------------------------------
+   Existing clamps key off vw (viewport width), which scales
+   gracefully in portrait but doesn't account for the very
+   limited vertical real estate of a landscape phone (e.g.
+   iPhone 12 Pro lying flat is 844×390). Without this block:
+     - the main menu's two sections + title + chip overflow
+       the viewport and require scrolling
+     - the Settings popup grows past the screen vertically
+     - the post-game "Time's up!" card with end credits
+       behind it dominates the screen, hiding the credits
+     - HUD labels are sized for tablet-class viewports and
+       crowd each other left of the centered timer
+   The fix is uniformly vh-based shrinking + tighter spacing,
+   gated on max-height so wider/taller viewports are
+   unaffected. Per universal rule 2: relative units only.
+   ============================================================ */
+@media (max-height: 500px) {
+    /* ----- Main menu ----- */
+    /* Tighter top/bottom padding + smaller inter-element gap
+       so the title + chip + 2 sections + leaderboard button
+       all fit a ~390px-tall viewport without scrolling. */
+    #menu {
+        padding: clamp(0.4rem, 2vh, 0.9rem) clamp(0.6rem, 3vw, 1.4rem);
+        gap: 0.25rem;
+        justify-content: flex-start;
+    }
+    /* Title block — clamp against vh so it shrinks proportionally
+       with the shorter viewport. titleMazeO canvas is em-sized so
+       it scales along automatically. */
+    .titleFrame {
+        font-size: clamp(1.3rem, 8vh, 2.2rem);
+        margin-bottom: 0.2rem;
+    }
+    /* MODE dropdown: the default sizing (max-width 340px, ~10-14px
+       padding + 14px font + ~14px label above) gives a ~50px-tall
+       block that dominates a 390px landscape viewport. Trim padding,
+       font, and label so the dropdown takes ~30px instead, freeing
+       ~20px for the puzzle thumbnails below. Narrower max-width too
+       so it doesn't visually crowd the title. */
+    .menu-dropdown-wrapper {
+        max-width: 16rem;
+    }
+    .menu-dropdown-label {
+        font-size: clamp(0.55rem, 1.6vh, 0.7rem);
+        margin: 0 0 0.1rem 0;
+        /* text-align left to match the desktop dropdown — left-aligned
+           tag-style label over the wider button reads as a labeled control
+           rather than a centered heading. */
+    }
+    .menu-dropdown-btn {
+        padding: 0.35rem 0.7rem;
+        font-size: clamp(0.75rem, 2.4vh, 0.95rem);
+        border-radius: 0.4rem;
+    }
+    .menu-dropdown-btn::after {
+        font-size: clamp(0.55rem, 1.6vh, 0.7rem);
+    }
+    #menu .menuSubtitle {
+        font-size: clamp(0.7rem, 2.6vh, 0.9rem);
+        margin: 0.2rem 0 0.3rem;
+    }
+    .menuSection {
+        padding: 0.35rem 0.7rem;
+        gap: 0.25rem;
+        min-width: clamp(16rem, 50vw, 28rem);
+    }
+    .menuSection h2 {
+        font-size: clamp(0.7rem, 2.4vh, 0.9rem);
+        margin-bottom: 0.1rem;
+        letter-spacing: 0.08em;
+    }
+    .menuModeRow { gap: 0.3rem; }
+    .menuModeBtn {
+        padding: 0.25rem 0.35rem;
+        font-size: clamp(0.65rem, 2vh, 0.8rem);
+        gap: 0.2rem;
+        min-width: 4rem;
+    }
+    /* Thumbnails: switch from vw-based to vh-based so they
+       shrink with the shorter viewport. Ceiling pushed up to 5.5rem
+       (was 4.5rem, originally 4rem) and the vh percentage bumped to
+       16vh — earlier iterations were conservative on the assumption
+       cards would push the LEADERBOARDS button off-screen, but the
+       chip + section shrinks above leave noticeable headroom at
+       390px tall, so the cards can grow into it. */
+    .menuModeBtn .modeThumb {
+        width: clamp(2.8rem, 16vh, 5.5rem);
+        height: clamp(2.8rem, 16vh, 5.5rem);
+    }
+    /* PotD slot badges: shrink the ✓ / ! circles in proportion
+       so they don't dominate the now-smaller thumbnail. */
+    .menuModeBtn.potd-solved::after,
+    .menuModeBtn.potd-started:not(.potd-solved)::after {
+        width: 0.9rem;
+        height: 0.9rem;
+        font-size: 0.7rem;
+        top: 0.2rem;
+        right: 0.25rem;
+    }
+    #menuLeaderboardBtn {
+        margin-top: 0.2rem;
+        padding: 0.35rem 1.2rem;
+        font-size: clamp(0.7rem, 2.2vh, 0.9rem);
+    }
+    /* Settings gear: smaller + closer to the corner so it doesn't
+       crowd the title at this size. */
+    #settingsBtn {
+        width: 2rem;
+        height: 2rem;
+        font-size: 1.05rem;
+        top: 0.4rem;
+        right: 0.4rem;
+    }
+
+    /* ----- HUD top bar ----- */
+    /* Reduce vertical bulk + tighten labels. The 10rem offset
+       on hudLevel / hudHintBtn from center was tuned for ~1024px+
+       viewports; at 844px wide it pushes hudLevel left almost
+       into hudType, which the user sees as the labels "overlapping
+       on the left." Drop the offset to 6rem and trim padding so
+       the four left items each get breathing room. */
+    #hud {
+        padding: 0.3rem 0.5rem;
+        gap: 0.4rem;
+    }
+    #hud > div {
+        font-size: clamp(0.7rem, 2.4vh, 0.9rem);
+        padding: 0.2rem 0.5rem;
+    }
+    #hudLevel  { right: calc(50% + 6rem); }
+    #hudHintBtn { left:  calc(50% + 6rem); }
+    #hudTimer   { min-width: 3.6rem; }
+    #hudHintBtn,
+    #hudQuitBtn {
+        padding: 0.25rem 0.55rem;
+        font-size: clamp(0.65rem, 2vh, 0.8rem);
+    }
+    #hudSettingsBtn {
+        padding: 0.25rem 0.45rem;
+        font-size: clamp(0.8rem, 2.2vh, 0.95rem);
+    }
+
+    /* ----- Settings popup -----
+       9 rows + title + reset link + close button is a lot to fit in
+       a 390px-tall viewport. Aggressive shrink across the board so
+       the close button stays visible without forcing scroll on the
+       typical landscape phone. Cap at 95vh as a safety net for
+       even shorter viewports. */
+    #settingsPopup {
+        padding: 0.55rem 0.9rem 0.7rem;
+        gap: 0.35rem;
+        max-height: 95vh;
+        overflow-y: auto;
+    }
+    /* Title still tight but with a hair more breathing room now that
+       the smaller close button + extra popup padding give the popup
+       room to grow taller without overflowing. */
+    #settingsPopup h2 {
+        font-size: clamp(0.85rem, 2.8vh, 1rem);
+        margin: 0 0 0.2rem 0;
+    }
+    .settingsRow {
+        padding: 0.3rem 0.2rem;
+        gap: 0.5rem;
+    }
+    .settingsRow label,
+    .settingsVisualLabel {
+        font-size: clamp(0.7rem, 2.2vh, 0.85rem);
+        min-width: 5rem;
+    }
+    .settingsVolumeRow { padding: 0.15rem 0.2rem; gap: 0.4rem; }
+    .settingsSelect { font-size: 0.8rem; padding: 3px 8px; }
+    .settingsVolumeLabel { font-size: 0.6rem; min-width: 2rem; }
+    .settingsVolumePercent { font-size: 0.6rem; min-width: 2rem; }
+    .settingsMuteBtn { padding: 0.15rem 0.35rem; font-size: 0.85rem; }
+    /* Color swatches: shrink to roughly toggle-switch proportions so
+       the right-edge controls all read at the same visual weight
+       across the rows. */
+    .settingsColor  { width: 2.2rem; height: 1.1rem; }
+    /* Toggle switch: smaller knob + track so the Background Image
+       row matches the visual weight of the other rows' right-edge
+       controls instead of dominating. */
+    .toggleSwitch {
+        width: 1.9rem;
+        height: 1rem;
+    }
+    .toggleKnob {
+        width: 0.75rem;
+        height: 0.75rem;
+        left: 0.1rem;
+    }
+    .toggleSwitch[aria-checked="true"] .toggleKnob {
+        left: calc(100% - 0.75rem - 0.1rem);
+    }
+    /* Slider thumbs shrink slightly so each row's content stays
+       within the tighter row padding without the thumb's
+       16×16 hitbox poking past it. */
+    .settingsSlider::-webkit-slider-thumb,
+    .settingsSlider::-moz-range-thumb {
+        width: 13px;
+        height: 13px;
+    }
+    .settingsResetRow { margin-top: -0.1rem; }
+    .settingsResetBtn { padding: 0.1rem 0.3rem; font-size: 0.7rem; }
+    /* Close button: kept compact at this size so the rows above
+       have room to breathe (was the larger cue that pushed the rows
+       into too-tight scrunch). Smaller padding + font + a slightly
+       tighter letter-spacing so the button still reads as a button
+       but no longer dominates the popup's bottom. */
+    #settingsCloseBtn {
+        margin-top: 0.15rem;
+        padding: 0.2rem 0.85rem;
+        font-size: clamp(0.65rem, 1.9vh, 0.8rem);
+        letter-spacing: 0.04em;
+    }
+
+    /* ----- Leaderboard view -----
+       Default sizing fits ~4 entries in a 390px-tall landscape
+       viewport because each entry is ~38px tall and the
+       tabs/dropdown/close chrome eats ~160px. Two-pronged shrink:
+       (1) trim every chrome element + entry row vertically so each
+           entry drops from ~38px to ~26px (8 visible before scroll);
+       (2) make the entries LIST scroll internally with a vh-based
+           max-height so the tabs, dropdown, and CLOSE button stay
+           anchored — scrolling past 8 still shows the rest, just
+           the chrome doesn't move and the player never loses CLOSE. */
+    #leaderboard {
+        padding: clamp(0.3rem, 1.5vh, 0.7rem) clamp(0.6rem, 3vw, 1.4rem);
+        gap: 0.35rem;
+    }
+    #leaderboard h2 {
+        font-size: clamp(1rem, 4vh, 1.4rem);
+        margin-top: 0.2rem;
+        margin-bottom: 0;
+    }
+    #leaderboardTabs {
+        width: clamp(18rem, 80vw, 32rem);
+    }
+    #leaderboardTabs .lbTab {
+        padding: 0.3rem 0.5rem;
+        font-size: clamp(0.75rem, 2.4vh, 0.9rem);
+    }
+    #leaderboardTileTabs,
+    #leaderboardPathTabs {
+        width: clamp(18rem, 80vw, 32rem);
+        gap: 0.2rem;
+    }
+    .lbSubTab {
+        padding: 0.25rem 0.3rem;
+        font-size: clamp(0.7rem, 2.2vh, 0.85rem);
+    }
+    #leaderboardEntries {
+        width: clamp(18rem, 80vw, 32rem);
+        padding: 0.3rem 0.5rem;
+        /* Scroll internally instead of letting the leaderboard panel
+           scroll as a whole. Keeps tabs + dropdown above the list and
+           CLOSE below it always reachable. Calc covers the chrome:
+           ~30px tabs + ~30px dropdown + ~30px close + paddings + gaps
+           ≈ 130px, so the list gets the rest of the 100vh. */
+        max-height: calc(100vh - 8.5rem);
+        overflow-y: auto;
+    }
+    #leaderboardEntries li {
+        padding: 0.2rem 0.3rem;
+        gap: 0.5rem;
+        font-size: clamp(0.75rem, 2.2vh, 0.9rem);
+        /* Narrower rank column at this size so the name has more room
+           and the time/Watch don't push off the right edge. */
+        grid-template-columns: 1.6rem 1fr auto auto auto;
+    }
+    #leaderboardEntries li .lbWatch {
+        padding: 0.1rem 0.5rem;
+        font-size: 0.85em;
+    }
+    #leaderboardCloseBtn {
+        padding: 0.3rem 1rem;
+        font-size: clamp(0.75rem, 2.2vh, 0.9rem);
+        margin-top: 0.2rem;
+    }
+
+    /* ----- Replay HUD (the top banner during a leaderboard replay) -----
+       Default sizing tuned for desktop — at 390px tall the ~35px banner
+       eats meaningful canvas room. Trim padding, font, and button so
+       the banner is ~22px tall and the puzzle gets the rest. */
+    #replayHud {
+        padding: 0.25rem 0.6rem;
+        font-size: clamp(0.7rem, 2.2vh, 0.85rem);
+        gap: 0.5rem;
+    }
+    #replayStopBtn {
+        padding: 0.2rem 0.65rem;
+        font-size: clamp(0.65rem, 2vh, 0.8rem);
+        letter-spacing: 0.04em;
+    }
+
+    /* ----- PotD solve-transition card -----
+       (Marathon's game-over card is a separate element shrunk further
+       down; this is the PotD-mode "Solved!" / "Already solved" card
+       that floats over the puzzle + credits.) The default ~1.2rem/2.4rem
+       padding + ~33px headline + 1.3rem body lines + share row pushes the
+       card to ~200px tall, which at top:22% on a 390px viewport puts the
+       top edge above the screen. Shrink the headline, body, and padding
+       so the card is ~120-140px and fits with credits room behind. */
+    #potdSolveTransition {
+        padding: 0.6rem 1.2rem 0.7rem;
+        max-width: min(75vw, 22rem);
+    }
+    #potdSolveHeadline {
+        font-size: clamp(1rem, 5vh, 1.5rem);
+        margin-bottom: 0.2rem;
+    }
+    #potdSolveTime,
+    #potdSolveRank,
+    #potdSolveIneligible,
+    #potdSolveOffline {
+        font-size: clamp(0.75rem, 2.6vh, 0.95rem);
+    }
+    #potdSolveContinue {
+        margin-top: 0.35rem;
+        font-size: clamp(0.7rem, 2.2vh, 0.85rem);
+        letter-spacing: 0.06em;
+    }
+
+    /* ----- Game-over card with credits rolling behind ----- */
+    /* The default credits-rolling override pins the card to
+       top: clamp(1rem, 6vh, 4rem) and lets it grow to its content
+       size — fine on desktop, but on a 390px-tall viewport the
+       card eats most of the screen and the scrolling credits are
+       barely visible underneath. Pull the card much tighter:
+       smaller heading, smaller body text, smaller share icons,
+       so the credits get the bulk of the viewport. */
+    body.credits-rolling #gameOver.visible {
+        top: 0.4rem;
+        padding: 0.5rem 1rem 0.6rem;
+        max-width: min(70vw, 22rem);
+        gap: 0.3rem;
+    }
+    #gameOver h2 {
+        font-size: clamp(1rem, 5vh, 1.6rem);
+        margin-bottom: 0.2rem;
+    }
+    #gameOver p {
+        font-size: clamp(0.75rem, 2.6vh, 0.95rem);
+    }
+    #gameOverMenuBtn,
+    #gameOverSaveBtn {
+        padding: 0.3rem 1rem;
+        font-size: clamp(0.7rem, 2.2vh, 0.9rem);
+    }
+    #gameOverMenuBtn { margin-top: 0.2rem; }
+    .shareRow { margin-top: 0.3rem; gap: 0.35rem; }
+    .shareIcon { width: 1.4rem; height: 1.4rem; }
+    .shareIcon svg { width: 0.75rem; height: 0.75rem; }
 }

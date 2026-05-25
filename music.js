@@ -33,11 +33,24 @@ const Music = (function () {
                           ? MUSIC_SHUFFLE_LIST_NAME : null;
     const CREDITS_NAME  = (typeof MUSIC_CREDITS_LIST_NAME === 'string' && MUSIC_CREDITS_LIST_NAME)
                           ? MUSIC_CREDITS_LIST_NAME : null;
-    // Cache schema changed at v4 (three pools instead of two), so
-    // bumping the key cleanly drops old v3 caches that have the wrong shape.
-    const CACHE_KEY        = PROJECT_SLUG + '_songLibrary_v4';
-    const INTRO_REMAIN_KEY = PROJECT_SLUG + '_introRemaining_v1';
-    const INTRO_FINGER_KEY = PROJECT_SLUG + '_introFingerprint_v1';
+    const MENU_NAME     = (typeof MUSIC_MENU_LIST_NAME === 'string' && MUSIC_MENU_LIST_NAME)
+                          ? MUSIC_MENU_LIST_NAME : null;
+    // Cache schema bumped to v5 — added the menu pool. Old v4 caches
+    // (three pools without menu) are dropped cleanly by the key change
+    // rather than mis-parsed as the new shape.
+    const CACHE_KEY          = PROJECT_SLUG + '_songLibrary_v5';
+    const INTRO_REMAIN_KEY   = PROJECT_SLUG + '_introRemaining_v1';
+    const INTRO_FINGER_KEY   = PROJECT_SLUG + '_introFingerprint_v1';
+    // Credits shuffle-bag persistence. Same pattern as intro warnings'
+    // shuffle (per-player, survives across sessions). Without this, every
+    // end-credits sequence would start from a fresh random song — but the
+    // player would still tend to hear "the song I just heard last time"
+    // since each fresh shuffle is independent and the first index is
+    // uniformly random over the whole list. Persisting the *remaining*
+    // indices means each play cycles through the pool deterministically
+    // before any song repeats.
+    const CREDITS_REMAIN_KEY = PROJECT_SLUG + '_creditsRemaining_v1';
+    const CREDITS_FINGER_KEY = PROJECT_SLUG + '_creditsFingerprint_v1';
     const API_URL          = (typeof AppConfig === 'object' && AppConfig && AppConfig.AUTH_API)
                              ? AppConfig.AUTH_API + '/api/songs?game=' + PROJECT_SLUG : null;
 
@@ -52,14 +65,20 @@ const Music = (function () {
     let playMode      = 'game_playlist';
     let forceCredits  = false;
 
-    // Three pools, parsed from the API. introPlaylist preserves the curated
+    // Four pools, parsed from the API. introPlaylist preserves the curated
     // position order; shufflePlaylist holds the post-intro random pool
     // (may === introPlaylist if no separate SHUFFLE list is configured).
     // creditsPlaylist is the end-credits pool (falls back to shufflePlaylist
-    // if missing, so the credits sequence isn't silent).
+    // if missing, so the credits sequence isn't silent). menuPlaylist is the
+    // main-menu / lobby shuffle pool — played whenever inMenuPhase is true
+    // (set by intro dismiss + marathon/potd quit-to-menu, cleared on game
+    // start). If menuPlaylist is empty, the menu phase falls through to the
+    // intro-then-shuffle pipeline below — so adding a menu-only list to the
+    // admin is purely additive; deleting it reverts to the old behavior.
     let introPlaylist   = [];
     let shufflePlaylist = [];
     let creditsPlaylist = [];
+    let menuPlaylist    = [];
     // Per-player intro progress: song IDs not yet played, in curated order.
     // null = uninitialized (loaded lazily after the playlist is known).
     let introRemaining  = null;
@@ -67,20 +86,60 @@ const Music = (function () {
     // Shuffle bag (post-intro phase). Indices into the active pool — the
     // pool depends on playMode: shufflePlaylist for 'game_playlist',
     // [...shufflePlaylist, ...creditsPlaylist] for 'game_plus_credits'.
-    // 'credits' mode uses a separate creditsPos cursor below (fixed order).
+    // 'credits' mode uses a separate persisted creditsBag below.
     let queue        = [];
     let queuePos     = 0;
     let queueMode    = 'game_playlist';   // mode the queue was built for
     let lastPlayedId = null;
 
-    // Credits-mode cursor — plays creditsPlaylist in fixed order, loops.
-    let creditsPos   = 0;
+    // Credits-mode shuffle bag — array of remaining indices into
+    // creditsPlaylist that haven't been played yet in the current cycle.
+    // Persisted across sessions via CREDITS_REMAIN_KEY so a player never
+    // hears the same credits song twice until the whole pool is exhausted.
+    // null sentinel = "not yet loaded from localStorage this session"; an
+    // empty array = bag drained, will refill on next pick. lastCreditsPlayedId
+    // is used to avoid the bag-boundary edge case where a fresh refill
+    // happens to put the just-played song first again.
+    let creditsBag          = null;
+    let lastCreditsPlayedId = null;
+
+    // Menu-phase shuffle bag — independent of the gameplay shuffle (queue)
+    // so switching between menu and game doesn't constantly invalidate the
+    // bag and cause clumpy "same song twice in a row" behavior.
+    let menuQueue        = [];
+    let menuQueuePos     = 0;
+    let lastMenuPlayedId = null;
+    // Phase flag — true while the player is sitting on the main menu (or
+    // the opening intro is up), false while a game is active. pickNext
+    // checks this first and routes to menuPlaylist when true and that
+    // pool has songs.
+    let inMenuPhase  = true;
 
     let audio        = null;   // single reusable HTMLAudioElement
     let shouldPlay   = false;  // true while in a Marathon game session
     let muted        = false;  // mirror of Settings.isMusicMuted()
     let paused       = false;  // user-initiated pause via the now-playing ⏸ button
     let volume       = 0.6;    // 0..1, mirror of Settings.musicVolume slider
+
+    // Consecutive-error counter for the audio element's 'error' listener.
+    // Without a cap, a persistent failure (single-song pool with a bad URL,
+    // network down, GitHub redirect quirk) would spin advanceToNext →
+    // playSong → error → advanceToNext forever, flooding the console and
+    // burning CPU on rejected .play() promises. Reset to 0 by the 'playing'
+    // listener on any successful playback start.
+    const MAX_CONSECUTIVE_ERRORS = 4;
+    let consecutiveErrors = 0;
+
+    // True once the player has interacted with the page (click, touch,
+    // keypress). Browsers block <audio>.play() before the first user
+    // gesture; localhost dev + Chrome's Media Engagement Index let it
+    // slip through in some setups, but a fresh production visitor would
+    // get nothing. start() refuses to begin playback until this flips
+    // so we don't depend on browser leniency. The capture-phase
+    // listener below flips it ahead of any bubble-phase handler that
+    // calls start() inside the same event (intro dismiss button, mode
+    // selector, etc.), so those calls proceed normally.
+    let gestureReady = false;
 
     let currentSong  = null;             // last song handed to playSong; null when nothing playing
     let onSongChange = null;             // callback fn(currentSong, paused) — wired by the UI
@@ -103,6 +162,7 @@ const Music = (function () {
                 if (Array.isArray(data.intro))   introPlaylist   = data.intro;
                 if (Array.isArray(data.shuffle)) shufflePlaylist = data.shuffle;
                 if (Array.isArray(data.credits)) creditsPlaylist = data.credits;
+                if (Array.isArray(data.menu))    menuPlaylist    = data.menu;
             }
         }
     } catch (e) {}
@@ -130,28 +190,40 @@ const Music = (function () {
             const introRows   = (INTRO_NAME   && Array.isArray(lists[INTRO_NAME]))   ? lists[INTRO_NAME]   : [];
             const shuffleRows = (SHUFFLE_NAME && Array.isArray(lists[SHUFFLE_NAME])) ? lists[SHUFFLE_NAME] : [];
             const creditsRows = (CREDITS_NAME && Array.isArray(lists[CREDITS_NAME])) ? lists[CREDITS_NAME] : [];
+            const menuRows    = (MENU_NAME    && Array.isArray(lists[MENU_NAME]))    ? lists[MENU_NAME]    : [];
             // Defensive: don't wipe a populated cache with an empty API
             // response (could be a bad deploy on the admin side). If ALL
             // lists came back empty, keep the existing cached pools.
-            if (introRows.length === 0 && shuffleRows.length === 0 && creditsRows.length === 0) {
-                if (typeof Logger !== 'undefined') Logger.warn('Music: API returned no songs for intro="' + INTRO_NAME + '", shuffle="' + SHUFFLE_NAME + '", or credits="' + CREDITS_NAME + '"; keeping cached pools');
+            if (introRows.length === 0 && shuffleRows.length === 0 && creditsRows.length === 0 && menuRows.length === 0) {
+                if (typeof Logger !== 'undefined') Logger.warn('Music: API returned no songs for intro="' + INTRO_NAME + '", shuffle="' + SHUFFLE_NAME + '", credits="' + CREDITS_NAME + '", or menu="' + MENU_NAME + '"; keeping cached pools');
                 return;
             }
             introPlaylist   = mapAndSort(introRows);
             shufflePlaylist = mapAndSort(shuffleRows);
             creditsPlaylist = mapAndSort(creditsRows);
+            menuPlaylist    = mapAndSort(menuRows);
             if (shufflePlaylist.length === 0) shufflePlaylist = introPlaylist;
             if (creditsPlaylist.length === 0) creditsPlaylist = shufflePlaylist;
+            // menuPlaylist is intentionally NOT given a fallback — if it's
+            // empty, pickNext falls through to the regular intro/shuffle
+            // path even at the menu, which matches the pre-menu-list
+            // behavior.
             try {
                 localStorage.setItem(CACHE_KEY, JSON.stringify({
                     intro:   introPlaylist,
                     shuffle: (shufflePlaylist === introPlaylist) ? [] : shufflePlaylist,
                     credits: (creditsPlaylist === shufflePlaylist || creditsPlaylist === introPlaylist) ? [] : creditsPlaylist,
+                    menu:    menuPlaylist,
                 }));
             } catch (e) {}
-            // Shuffle bag invalidates on membership change; intro state
+            // Shuffle bags invalidate on membership change; intro state
             // re-syncs (fingerprint mismatch → restart intro for player).
-            queue = []; queuePos = 0; creditsPos = 0;
+            // Credits bag clears its in-memory state; the next pick will
+            // either restore a still-valid persisted bag (fingerprint
+            // match) or freshly shuffle if the credits pool changed.
+            queue = []; queuePos = 0;
+            menuQueue = []; menuQueuePos = 0;
+            creditsBag = null;
             syncIntroState();
             // If a game was started before this API call landed (cache was
             // empty / nothing to play), kick off playback now. Without
@@ -220,8 +292,33 @@ const Music = (function () {
         audio = new Audio();
         audio.preload = 'auto';
         audio.addEventListener('ended', advanceToNext);
+        // Reset the consecutive-error counter on any successful start —
+        // if we made it to 'playing', the most recent song was fine and
+        // we should let future failures get the full retry budget again.
+        audio.addEventListener('playing', function () { consecutiveErrors = 0; });
         audio.addEventListener('error', function () {
+            // Skip the spurious "no source" error that some browsers fire
+            // when audio.load() runs after removeAttribute('src') in stop().
+            // That error isn't a song failure — it's the element resetting —
+            // and counting it would burn through the retry budget on a
+            // non-problem. After src is properly set, this guard is false
+            // and real errors get logged + counted as expected.
+            const hasSrc = !!audio.src && audio.src !== window.location.href;
+            if (!hasSrc) return;
             if (typeof Logger !== 'undefined') Logger.warn('Music: audio error, skipping song', audio.error);
+            consecutiveErrors++;
+            if (consecutiveErrors > MAX_CONSECUTIVE_ERRORS) {
+                // Persistent failure — bail rather than spin. shouldPlay=false
+                // makes advanceToNext short-circuit so naturally-firing 'ended'
+                // events don't restart the cascade. The next user-initiated
+                // start() call (Settings toggle, mode change, etc.) re-arms
+                // shouldPlay and gives the system another shot.
+                if (typeof Logger !== 'undefined') {
+                    Logger.warn('Music: ' + consecutiveErrors + ' consecutive errors — giving up until next start()');
+                }
+                shouldPlay = false;
+                return;
+            }
             advanceToNext();
         });
         return audio;
@@ -273,6 +370,18 @@ const Music = (function () {
         };
         ['click', 'touchend', 'keydown'].forEach(function (evt) {
             document.addEventListener(evt, blessOnGesture, { capture: true });
+        });
+    }
+
+    // First-gesture detection for the autoplay gate. Capture-phase so this
+    // fires BEFORE any bubble-phase handler that calls Music.start() inside
+    // the same event (intro Continue button, mode buttons, settings unmute).
+    // Without that ordering, the first gesture-blessed start() call would
+    // still see gestureReady=false and skip.
+    if (typeof document !== 'undefined') {
+        const markGestureReady = function () { gestureReady = true; };
+        ['click', 'touchend', 'keydown'].forEach(function (evt) {
+            document.addEventListener(evt, markGestureReady, { capture: true });
         });
     }
 
@@ -343,18 +452,123 @@ const Music = (function () {
         if (song) lastPlayedId = song.id;
         return song;
     }
-    // Credits-mode pick: walk creditsPlaylist in fixed order, loop at end.
-    // Used both by 'credits' mode (Settings dropdown choice) and by the
-    // end-credits sequence (forceCredits flag set in startCreditsSequence).
+    // Credits-mode pick: shuffle-bag walk through creditsPlaylist that
+    // cycles every song before any repeats. Used by both the 'credits'
+    // playMode (Settings dropdown choice) and by the end-credits sequence
+    // (forceCredits flag set in startCreditsSequence). Persisted across
+    // sessions via CREDITS_REMAIN_KEY so the cycling survives page
+    // reloads — without that, every visit would tend to start credits
+    // with a uniformly-random song, which in practice often lands on the
+    // same one a couple of times in a row.
+    function creditsFingerprint() {
+        return creditsPlaylist.map(function (s) { return s.id; }).join('|');
+    }
+    function persistCreditsBag() {
+        try {
+            localStorage.setItem(CREDITS_REMAIN_KEY, JSON.stringify(creditsBag || []));
+            localStorage.setItem(CREDITS_FINGER_KEY, creditsFingerprint());
+        } catch (e) { /* private mode / quota — degrade to in-memory bag */ }
+    }
+    function loadCreditsBagFromStorage() {
+        // Returns the persisted bag if the playlist hasn't changed since,
+        // null otherwise (caller falls back to a fresh shuffle). Validates
+        // each index against the current playlist length so a partial /
+        // corrupt write can't crash later picks.
+        try {
+            const fp = localStorage.getItem(CREDITS_FINGER_KEY);
+            if (fp !== creditsFingerprint()) return null;
+            const raw = localStorage.getItem(CREDITS_REMAIN_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return null;
+            for (let i = 0; i < parsed.length; i++) {
+                const v = parsed[i];
+                if (!Number.isInteger(v) || v < 0 || v >= creditsPlaylist.length) return null;
+            }
+            return parsed;
+        } catch (e) { return null; }
+    }
+    function refillCreditsBag() {
+        if (creditsPlaylist.length === 0) { creditsBag = []; return; }
+        const indices = [];
+        for (let i = 0; i < creditsPlaylist.length; i++) indices.push(i);
+        // Fisher-Yates shuffle in place.
+        for (let i = indices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const tmp = indices[i]; indices[i] = indices[j]; indices[j] = tmp;
+        }
+        // Bag-boundary avoidance: if the freshly-shuffled first index is
+        // the song that JUST played at the end of the previous cycle,
+        // swap with position 1 so the player doesn't hear a back-to-back
+        // repeat. Skip when the pool has 0 or 1 entries (no alternative).
+        if (lastCreditsPlayedId && indices.length > 1
+            && creditsPlaylist[indices[0]].id === lastCreditsPlayedId) {
+            const tmp = indices[0]; indices[0] = indices[1]; indices[1] = tmp;
+        }
+        creditsBag = indices;
+    }
     function pickCreditsSong() {
         if (creditsPlaylist.length === 0) return null;
-        if (creditsPos >= creditsPlaylist.length) creditsPos = 0;
-        const song = creditsPlaylist[creditsPos++];
-        if (song) lastPlayedId = song.id;
+        // First access this session: try to restore the persisted bag,
+        // fall back to a fresh shuffle. The persisted bag is only
+        // accepted if its fingerprint still matches the current playlist
+        // — admin reorders / additions / deletions invalidate it.
+        if (creditsBag === null) {
+            const persisted = loadCreditsBagFromStorage();
+            creditsBag = persisted !== null ? persisted : [];
+            if (creditsBag.length === 0) refillCreditsBag();
+        }
+        // Drained — start a new cycle. lastCreditsPlayedId guards
+        // against the just-played song landing first again.
+        if (creditsBag.length === 0) refillCreditsBag();
+        if (creditsBag.length === 0) return null;   // empty playlist
+        const idx = creditsBag.shift();
+        const song = creditsPlaylist[idx];
+        if (song) {
+            lastCreditsPlayedId = song.id;
+            lastPlayedId = song.id;
+        }
+        persistCreditsBag();
+        return song;
+    }
+    // Menu-phase shuffle bag (separate from gameplay queue so toggling
+    // phase doesn't reset the gameplay shuffle position). Same Fisher-Yates
+    // + back-to-back avoidance pattern as pickShuffleSong.
+    function refillMenuQueue() {
+        if (menuPlaylist.length === 0) { menuQueue = []; menuQueuePos = 0; return; }
+        const indices = [];
+        for (let i = 0; i < menuPlaylist.length; i++) indices.push(i);
+        for (let i = indices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const tmp = indices[i]; indices[i] = indices[j]; indices[j] = tmp;
+        }
+        if (lastMenuPlayedId && menuPlaylist.length > 1 && menuPlaylist[indices[0]].id === lastMenuPlayedId) {
+            const tmp = indices[0]; indices[0] = indices[1]; indices[1] = tmp;
+        }
+        menuQueue = indices;
+        menuQueuePos = 0;
+    }
+    function pickMenuSong() {
+        if (menuPlaylist.length === 0) return null;
+        if (menuQueuePos >= menuQueue.length) refillMenuQueue();
+        if (menuQueue.length === 0) return null;
+        const idx = menuQueue[menuQueuePos++];
+        const song = menuPlaylist[idx];
+        if (song) { lastMenuPlayedId = song.id; lastPlayedId = song.id; }
         return song;
     }
     function pickNext() {
+        // forceCredits (the end-credits sequence kicked off from
+        // game-over) overrides everything — including menu phase, since
+        // the credits roll after the player just finished a game and
+        // we DON'T want to switch back to menu music yet.
         if (forceCredits) return pickCreditsSong();
+        // Menu phase: shuffle from the menu pool while the player sits
+        // on the main menu (or the opening intro is up). Falls through
+        // to the regular intro/shuffle pipeline if the menu pool is
+        // empty, so projects without a menu_only list get the old
+        // behavior unchanged.
+        if (inMenuPhase && menuPlaylist.length > 0) return pickMenuSong();
         if (playMode === 'credits') return pickCreditsSong();
         // Both 'game_playlist' and 'game_plus_credits' play the intro first.
         return pickIntroSong() || pickShuffleSong();
@@ -364,11 +578,22 @@ const Music = (function () {
         return null;
     }
     function findById(id) {
-        return findInList(introPlaylist, id) || findInList(shufflePlaylist, id) || findInList(creditsPlaylist, id);
+        return findInList(introPlaylist, id)
+            || findInList(shufflePlaylist, id)
+            || findInList(creditsPlaylist, id)
+            || findInList(menuPlaylist, id);
     }
 
     function playSong(song) {
         if (!song) return;
+        // Fade any lingering one-shot SFX (audience_cheer, applause_long,
+        // etc.) the instant a new song starts. Without this, a player who
+        // finishes a PotD puzzle hears the cheer SFX continue playing
+        // over the menu music when they navigate back. Loops (like
+        // glitch_overlap) are untouched — fadeOneShots specifically
+        // excludes them, since they tend to track ongoing gameplay
+        // state that survives across song transitions.
+        if (typeof Sfx !== 'undefined' && Sfx.fadeOneShots) Sfx.fadeOneShots();
         currentSong = song;
         paused      = false;
         notifySongChange();
@@ -385,6 +610,14 @@ const Music = (function () {
     }
     function advanceToNext() {
         if (!shouldPlay || muted) return;
+        // Scripted playback (replay) owns the next-song timeline via
+        // setTimeout. The audio's 'ended' handler still fires when a
+        // song finishes naturally — but it should NOT pick a fresh
+        // song from pickNext, because the scripted schedule will play
+        // the next song at its own pre-determined time. Silence
+        // between two events is intentional (matches what the
+        // original player heard if a song ended early).
+        if (scriptedPlayback) return;
         // If skipPrev rewound us into history, going forward replays the
         // existing sequence rather than diverging into a fresh next.
         if (historyPos < history.length - 1) {
@@ -401,10 +634,19 @@ const Music = (function () {
     }
 
     function start() {
+        // Pre-gesture autoplay gate. The boot path (Marathon.init →
+        // goToMenu → Music.start) hits this before the player has
+        // interacted with the page; staying silent here avoids stashing
+        // shouldPlay=true and having refreshFromAPI's auto-start hook
+        // fire later without a gesture behind it. After the player
+        // clicks anywhere — the intro Continue button, a mode button,
+        // even a stray tap — the capture-phase listener above flips
+        // gestureReady and the next start() call proceeds.
+        if (!gestureReady) return;
         shouldPlay = true;
         paused     = false;
         if (muted) return;
-        if (introPlaylist.length === 0 && shufflePlaylist.length === 0 && creditsPlaylist.length === 0) return;  // nothing to play yet
+        if (introPlaylist.length === 0 && shufflePlaylist.length === 0 && creditsPlaylist.length === 0 && menuPlaylist.length === 0) return;  // nothing to play yet
         const a = ensureAudio();
         // Resume mid-song if we have one queued (e.g. mute toggled off
         // mid-game, or the player un-paused after a long settings dive).
@@ -440,7 +682,12 @@ const Music = (function () {
     // rather than fading into whatever was playing.
     function startCreditsSequence() {
         forceCredits = true;
-        creditsPos   = 0;   // restart credits playlist from the top
+        // Note: deliberately NOT resetting the credits shuffle bag here.
+        // The bag's whole purpose is to cycle through every song before
+        // repeating any — resetting on each credits roll would defeat
+        // that, putting us back to the "first song every time" behavior
+        // the bag was added to fix. The bag's fingerprint check + lazy
+        // refill handle pool-changed and bag-drained cases naturally.
         // Don't poke the audio if the user has muted music — start() is a
         // no-op when muted anyway, but skipping the pause/load churn keeps
         // the silent-mode startup cheap.
@@ -495,12 +742,18 @@ const Music = (function () {
     }
 
     // --- Now-playing controls -----------------------------------------
+    // Both skip controls short-circuit during scripted playback —
+    // the replay's audio is supposed to faithfully reproduce what the
+    // original player heard, so the watcher manually skipping would
+    // desync the audio from the scripted timeline.
     function skipNext() {
         if (!shouldPlay) return;
+        if (scriptedPlayback) return;
         advanceToNext();
     }
     function skipPrev() {
         if (!shouldPlay) return;
+        if (scriptedPlayback) return;
         if (historyPos > 0) {
             historyPos--;
             const song = findById(history[historyPos]);
@@ -536,11 +789,121 @@ const Music = (function () {
         }
     }
     function setOnSongChange(cb) { onSongChange = (typeof cb === 'function') ? cb : null; }
+    // Multi-subscriber song-change listeners (separate from the legacy
+    // single-slot onSongChange used by the now-playing UI). Recorder
+    // and any future multi-listener consumer use add/remove here.
+    const songChangeListeners = [];
+    function addSongChangeListener(cb) {
+        if (typeof cb !== 'function') return;
+        if (songChangeListeners.indexOf(cb) >= 0) return;
+        songChangeListeners.push(cb);
+    }
+    function removeSongChangeListener(cb) {
+        const i = songChangeListeners.indexOf(cb);
+        if (i >= 0) songChangeListeners.splice(i, 1);
+    }
     function notifySongChange() {
         if (onSongChange) {
             try { onSongChange(currentSong, paused); }
             catch (e) { if (typeof Logger !== 'undefined') Logger.warn('Music: onSongChange threw', e); }
         }
+        for (let i = 0; i < songChangeListeners.length; i++) {
+            try { songChangeListeners[i](currentSong, paused); }
+            catch (e) { if (typeof Logger !== 'undefined') Logger.warn('Music: songChangeListener threw', e); }
+        }
+    }
+
+    // --- Scripted playback (for replay) -------------------------------
+    // Plays a fixed schedule of songs at fixed times instead of pulling
+    // from the normal pickNext pipeline. Used by the leaderboard replay
+    // feature so a player watching another player's run hears the same
+    // songs in the same order at the same timestamps the original
+    // player heard. Events shape: [{ t: ms, songId: string }, ...]
+    // where t is ms-since-replay-start; t=0 means "play immediately on
+    // start." Sort order doesn't have to be guaranteed — we sort
+    // defensively below.
+    //
+    // While scriptedPlayback is active, the normal advanceToNext /
+    // skipNext / skipPrev paths short-circuit so the scheduled timeline
+    // owns playback fully. Pause/resume on the audio element still
+    // works (player can pause a replay) but won't picked the next
+    // scripted song — that's driven by setTimeout.
+    let scriptedPlayback = null;   // { timers: [Number] } when active, null when not
+    function startScriptedPlayback(events) {
+        stopScriptedPlayback();
+        if (!events || !Array.isArray(events) || events.length === 0) return;
+        scriptedPlayback = { timers: [] };
+        // Sort by time ascending so the first event (often t=0) fires first.
+        const sorted = events.slice().sort(function (a, b) {
+            return (a.t || 0) - (b.t || 0);
+        });
+        for (let i = 0; i < sorted.length; i++) {
+            const e = sorted[i];
+            const songId = e.songId || (e.song && e.song.id);
+            if (!songId) continue;
+            const delay = Math.max(0, e.t || 0);
+            // The FIRST sorted event (index 0) is the "song that was
+            // playing at this recording's start" anchor — not a deliberate
+            // song change. In multi-puzzle marathon replays, each puzzle
+            // calls startScriptedPlayback with its own musicEvents, and
+            // the next puzzle's anchor frequently matches the song still
+            // playing from the previous puzzle (because the original
+            // player didn't skip). Without the continuity check below,
+            // we'd reset the audio to t=0 on every cross-puzzle handoff
+            // — the song the watcher is enjoying would start over every
+            // time a puzzle solves. Subsequent events (i > 0) are
+            // recorded song CHANGES the original player triggered, so
+            // those always fire playSong unconditionally.
+            const isAnchor = (i === 0);
+            const playIt = function () {
+                if (!scriptedPlayback) return;   // stopped between schedule and fire
+                if (isAnchor && currentSong && currentSong.id === songId) {
+                    // Same song already playing — let it keep going from
+                    // wherever the audio element currently is. Later
+                    // events in this recording will still fire on their
+                    // own setTimeout schedule.
+                    return;
+                }
+                const s = findById(songId);
+                if (s) playSong(s);
+            };
+            if (delay === 0) {
+                playIt();
+            } else {
+                scriptedPlayback.timers.push(setTimeout(playIt, delay));
+            }
+        }
+    }
+    function stopScriptedPlayback() {
+        if (!scriptedPlayback) return;
+        for (let i = 0; i < scriptedPlayback.timers.length; i++) {
+            clearTimeout(scriptedPlayback.timers[i]);
+        }
+        scriptedPlayback = null;
+    }
+    function isScriptedPlayback() { return scriptedPlayback !== null; }
+
+    // Called by intro (true on dismiss), marathon/potd (false on game
+    // start, true on quit-to-menu). Toggling the flag DOESN'T interrupt
+    // the currently-playing song — the new phase takes effect on the
+    // next pickNext (i.e. when the current song ends), which keeps
+    // transitions smooth. If the player skips with the ⏭ button right
+    // after a phase change, the new pool kicks in immediately.
+    function setMenuPhase(on) {
+        inMenuPhase = !!on;
+    }
+    // True iff currentSong's id is in the menu pool. Lets callers (e.g.
+    // marathon goToMenu) skip the stop+start "restart menu music"
+    // chain when the player is ALREADY hearing menu music — closing
+    // the leaderboard while a menu song is playing shouldn't yank that
+    // song off and replace it with a fresh menu song. Returns false
+    // when nothing is playing or the song is from another pool.
+    function isMenuSongPlaying() {
+        if (!currentSong) return false;
+        for (let i = 0; i < menuPlaylist.length; i++) {
+            if (menuPlaylist[i].id === currentSong.id) return true;
+        }
+        return false;
     }
 
     return {
@@ -556,9 +919,16 @@ const Music = (function () {
         setVolume:             setVolume,
         getVolume:             getVolume,
         getCurrentSong:        getCurrentSong,
-        setOnSongChange:       setOnSongChange,
+        setOnSongChange:        setOnSongChange,
+        addSongChangeListener:    addSongChangeListener,
+        removeSongChangeListener: removeSongChangeListener,
+        startScriptedPlayback:    startScriptedPlayback,
+        stopScriptedPlayback:     stopScriptedPlayback,
+        isScriptedPlayback:       isScriptedPlayback,
         setMode:               setMode,
         getMode:               getMode,
+        setMenuPhase:          setMenuPhase,
+        isMenuSongPlaying:     isMenuSongPlaying,
         startCreditsSequence:  startCreditsSequence,
         stopCreditsSequence:   stopCreditsSequence,
     };

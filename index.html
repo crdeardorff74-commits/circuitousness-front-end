@@ -33,6 +33,58 @@
     </script>
 
     <main id="app">
+        <!-- Opening intro / warning splash. Painted by intro.js on page
+             load, dismissed by the "I agree to solve responsibly" button
+             (or the Escape key). Mirrors TANTЯO's intro screen pattern:
+             title at top, music + fullscreen toggles, and a primary
+             call-to-action that doubles as the user-gesture needed to
+             unblock the AudioContext + iOS audio blessing. The intro is
+             hidden in debug mode (?debug=true) — debug bypasses the
+             menu entirely so it'd be in the way. -->
+        <div id="introOverlay">
+            <!-- Title — reuses the same markup + class as the main
+                 menu title so the maze-O canvas and styling are
+                 identical. titleOCanvas can only exist once in the DOM,
+                 so we give the intro version a different ID. -->
+            <div class="titleFrame introTitleFrame">
+                <span class="bracket bracket-tl"></span>
+                <span class="bracket bracket-tr"></span>
+                <span class="bracket bracket-bl"></span>
+                <span class="bracket bracket-br"></span>
+                <h1 id="introTitle">
+                    <span class="titleInitial" style="position: relative; left: 0.12em;">C</span><span class="titleWord" style="position: relative; left: 0.12em; z-index: 99;">IRCUIT</span><span class="titleMazeO" style="position: relative; top: 0.04em;" aria-label="O"><canvas id="introTitleOCanvas" width="160" height="160"></canvas></span><span class="titleWord" style="position: relative; left: -0.12em; z-index: 99;">USNESS</span>
+                </h1>
+            </div>
+
+            <!-- Big Ridiculousness-style WARNING + randomized silly
+                 activity. introBody's {activity} placeholder is filled
+                 at runtime from warnings.txt by intro.js. -->
+            <div class="introWarningBlock">
+                <div class="introWarning" data-i18n="intro.warning">WARNING</div>
+                <!-- No data-i18n on this body: intro.js sets textContent
+                     manually after picking an activity, since data-i18n
+                     would re-insert the literal "{activity}" placeholder
+                     on every language switch and stomp the live text. -->
+                <p class="introBody" id="introBody">&nbsp;</p>
+            </div>
+
+            <!-- Toggles row — music + full-screen. Hidden on phones
+                 (the OS keyboards already shrink the viewport hard,
+                 and mobile browsers have their own full-screen UI). -->
+            <div class="introToggles" id="introToggles">
+                <label class="introToggle">
+                    <input type="checkbox" id="introMusicCheckbox" checked>
+                    <span data-i18n="intro.music">Music</span>
+                </label>
+                <label class="introToggle">
+                    <input type="checkbox" id="introFullscreenCheckbox">
+                    <span data-i18n="intro.fullscreen">Full Screen</span>
+                </label>
+            </div>
+
+            <button id="introAgreeBtn" type="button" data-i18n="intro.agree">I agree to solve responsibly</button>
+        </div>
+
         <canvas id="maze"></canvas>
         <button id="hintBtn" type="button" data-i18n="hint.button">Hint</button>
         <!-- Now Playing — populated by music.js setOnSongChange callback.
@@ -83,7 +135,7 @@
                 <span class="bracket bracket-bl"></span>
                 <span class="bracket bracket-br"></span>
                 <h1 id="menuTitle">
-                    <span class="titleInitial">C</span><span class="titleWord">IRCUIT</span><span class="titleMazeO" aria-label="O"><canvas id="titleOCanvas" width="160" height="160"></canvas></span><span class="titleWord">USNESS</span>
+					<span class="titleInitial" style="position: relative; left: 0.12em;">C</span><span class="titleWord" style="position: relative; left: 0.12em; z-index: 99;">IRCUIT</span><span class="titleMazeO" style="position: relative; top: 0.04em;" aria-label="O"><canvas id="titleOCanvas" width="160" height="160"></canvas></span><span class="titleWord" style="position: relative; left: -0.12em; z-index: 99;">USNESS</span>
                 </h1>
             </div>
             <!-- Mode picker (chip + modal, lifted from TANTЯO's
@@ -128,6 +180,15 @@
             <div id="potdSolveRank" hidden></div>
             <div id="potdSolveIneligible" data-i18n="potd.solved.ineligible" hidden>Not counted on the leaderboard.</div>
             <div id="potdSolveOffline" data-i18n="potd.solved.offline" hidden>Offline — not submitted.</div>
+            <!-- Name entry row, shown only on eligible online runs. Mirrors
+                 marathon's gameOverNameRow pattern. stopPropagation lets the
+                 player tap inside the input/button without dismissing the
+                 modal (the surrounding card has its own click handler for
+                 the tap-to-continue path used on ineligible/offline runs). -->
+            <div class="gameOverNameRow" id="potdSolveNameRow" onclick="event.stopPropagation()" hidden>
+                <input id="potdSolveName" type="text" maxlength="16" data-i18n-attr="placeholder:marathon.namePlaceholder" placeholder="Your name">
+                <button id="potdSolveSaveBtn" type="button" data-i18n="marathon.save">Save</button>
+            </div>
             <!-- Minimalist share row — wired by Share.init via [data-share-platform].
                  Click bubbling is stopped per-button so a tap doesn't also
                  dismiss the modal (which has its own tap-anywhere handler). -->
@@ -179,6 +240,22 @@
                     <button class="combo-modal-btn apply" id="potdDisclaimerContinueBtn" type="button" data-i18n="potd.disclaimer.continue">Continue</button>
                 </div>
             </div>
+        </div>
+
+        <!-- First-play educational tooltips. Floating card in the
+             top-right corner — non-blocking (no backdrop), so the player
+             can keep solving while the tip is visible. Modeled on
+             TANTЯO's .hint-popup pattern but adapted for circuitousness's
+             layout (no side panel). Shown once-each via the Tooltip
+             module (tooltip.js); text is set per-trigger. -->
+        <div id="tooltipCard" hidden>
+            <!-- Static info-icon prefix signals "this is informational"
+                 at a glance. aria-hidden because it's decorative — the
+                 message text alone conveys the content for assistive
+                 tech. -->
+            <span id="tooltipIcon" aria-hidden="true">ℹ</span>
+            <p id="tooltipText"></p>
+            <button id="tooltipGotItBtn" type="button" data-i18n="tooltip.gotIt">Got it!</button>
         </div>
 
         <!-- Mode picker modal (lifted from TANTЯO's combo-modal pattern).
@@ -338,7 +415,7 @@
                 <button class="share-close" id="shareCloseBtn" type="button" aria-label="Close">&times;</button>
                 <div class="share-emoji">🧩</div>
                 <div class="share-title" data-i18n="share.title">Enjoying the game?</div>
-                <div class="share-subtitle" data-i18n="share.subtitle">It's completely free — please share it with a friend!</div>
+                <div class="share-subtitle" data-i18n="share.subtitle">It's completely free — all I ask is that you share it with a friend!</div>
                 <div class="share-grid">
                     <a class="share-btn" data-share-platform="twitter"  href="#" title="Share on X">
                         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
@@ -392,10 +469,6 @@
                             <span class="credits-role">Programming</span>
                             <span class="credits-name">Claude AI (Anthropic)</span>
                         </div>
-                        <div class="credits-row">
-                            <span class="credits-role"></span>
-                            <span class="credits-name">C. Ryan Deardorff</span>
-                        </div>
                     </div>
 
                     <div class="credits-section">
@@ -422,7 +495,7 @@
                         <div class="soundtrack-heading">Soundtrack Available On</div>
                         <!-- div class="soundtrack-title">Circuitousness (Original Motion Tiles Game Soundtrack)</div -->
                         <div class="soundtrack-links">
-                            <a id="creditsSuno1" data-credit-link="suno-digeratist" href="https://suno.com/@digeratist" target="_blank" class="soundtrack-link">
+                            <a data-credit-link="suno-digeratist" href="https://suno.com/@digeratist" target="_blank" class="soundtrack-link">
                                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
                                 Suno
                             </a>
@@ -453,7 +526,15 @@
                     <div class="credits-disclaimer">
                         <sup>*</sup>Upon learning that <a href="https://suno.com/s/btXK4xYyXNkvTBBO" data-credit-link="imaginary-friend" target="_blank">my imaginary friend</a> refused to take part in another silly Easter egg in one of my games, a certain aforementioned Muppet
                         went ballistic and tried to attack him.  Unfortunately for him, Jimmy knows Muay Thai.
+						<div class="soundtrack-links" style="transform: scale(0.74)">
+							<a data-credit-link="suno-animal" href="https://suno.com/s/ZLGVE4GMxKOk7HJX" target="_blank" class="soundtrack-link">
+								<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+								Suno
+							</a>
+						</div>
                     </div>
+
+                    <div class="credits-spacer-large"></div>
 
                     <div class="credits-spacer-large"></div>
 
@@ -465,7 +546,46 @@
 					
 					<div class="credits-easter">That puzzle is history.  Try solving another one!</div>
 					
-					<div class="credits-spacer-large"></div>
+					<div class="credits-spacer-large"></div>	
+					
+					<div class="credits-spacer-large"></div>						
+					
+					<div class="credits-disclaimer">Tell your dog I said hi.
+						<div class="soundtrack-links" style="transform: scale(0.74)">
+							<a data-credit-link="suno-dog" href="https://suno.com/s/3AqzydXncFiSWrCg" target="_blank" class="soundtrack-link">
+								<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+								Suno
+							</a>
+						</div>
+					</div>
+					
+					<div class="credits-spacer-large"></div>	
+					
+					<div class="credits-spacer-large"></div>	
+					
+					<div class="credits-disclaimer">
+						As long as you're still here, I may as well ask you to please consider <a href="https://secure.aspca.org/donate/donate" data-credit-link="aspca" target="_blank">making a donation to the ASPCA</a>.
+					</div>
+					
+					<div class="credits-spacer-large"></div>	
+					
+					<div class="credits-spacer-large"></div>	
+					
+					<div class="credits-disclaimer">Seriously?  I'm not Chuck Lorre...</div>
+					
+					<div class="credits-spacer-large"></div>	
+					
+					<div class="credits-spacer-large"></div>	
+					
+					<div class="credits-disclaimer">
+						Are you just digging the music?  I get that.  I wish I could take credit for it.  All I did was introduce Claude to Suno.
+						<div class="soundtrack-links" style="transform: scale(0.74)">
+							<a data-credit-link="suno-claude-and-suno" href="https://suno.com/s/6sPNsnZ9pcAQFNUB" target="_blank" class="soundtrack-link">
+								<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+								Suno
+							</a>
+						</div>
+					</div>
 
                 </div>
             </div>
@@ -483,7 +603,23 @@
                 <button class="lbTab" type="button" data-mode="marathon"
                         data-i18n="mode.marathon.name">🏃 Marathon</button>
             </div>
-            <select id="leaderboardSelect"></select>
+            <!-- Two-tier board selector: tile-type tab row (Singular /
+                 Quad) above, path-count tab row (1-4 paths) below.
+                 Combined they identify the slot ('s1'..'s4', 'q1'..'q4').
+                 marathon.js's init() wires both rows' click handlers
+                 and the helpers getActiveBoardType / setActiveBoardType
+                 compose/decompose the slot identifier from the active
+                 button in each row. -->
+            <div id="leaderboardTileTabs" role="tablist">
+                <button class="lbSubTab" type="button" data-tile="s" data-i18n="marathon.singular">Singular</button>
+                <button class="lbSubTab" type="button" data-tile="q" data-i18n="marathon.quad">Quad</button>
+            </div>
+            <div id="leaderboardPathTabs" role="tablist">
+                <button class="lbSubTab" type="button" data-paths="1" data-i18n="marathon.path1">1 path</button>
+                <button class="lbSubTab" type="button" data-paths="2" data-i18n="marathon.path2">2 paths</button>
+                <button class="lbSubTab" type="button" data-paths="3" data-i18n="marathon.path3">3 paths</button>
+                <button class="lbSubTab" type="button" data-paths="4" data-i18n="marathon.path4">4 paths</button>
+            </div>
             <ol id="leaderboardEntries"></ol>
             <p id="leaderboardEmpty" data-i18n="marathon.boardEmpty" hidden>No scores yet — be the first!</p>
             <button id="leaderboardCloseBtn" type="button" data-i18n="marathon.close">Close</button>
@@ -545,12 +681,6 @@
         <label class="check">
             <input type="checkbox" id="quadModeCheck"> Quad Tiles
         </label>
-        <label class="check">
-            <input type="checkbox" id="animateRotCheck" checked> Animate Rotations
-        </label>
-        <label class="check">
-            <input type="checkbox" id="completeCircuitsCheck" checked> Complete circuits
-        </label>
         <button type="button" id="replayBtn" hidden>Replay solve</button>
         <div id="preGenStatus">Next: idle</div>
         <!-- DEV: wipe today's PotD state on the server (puzzles, scores,
@@ -565,16 +695,24 @@
              playable (use Reset PotD above for those). -->
         <button type="button" id="wipeLeaderboardsBtn">Wipe Leaderboards</button>
         <div id="wipeLeaderboardsStatus" style="font-size: 0.8em; color: #aaa;"></div>
+        <!-- DEV: wipe ALL PageVisit rows — drops the whole visitation
+             funnel + tracking history (referrers, devices, share/credits
+             breakdowns, etc.). Doesn't touch score data. Mirrors Wipe
+             Leaderboards' shape: POST to admin endpoint, status line
+             reports the deleted row count. Remove this block (markup +
+             handler + endpoint) before public release. -->
+        <button type="button" id="wipeVisitsBtn">Wipe Visit Stats</button>
+        <div id="wipeVisitsStatus" style="font-size: 0.8em; color: #aaa;"></div>
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.19';</script>
+    <script>var PAGE_VERSION = '0.20';</script>
     <!-- DEV: cache-bust script srcs so iterative edits are picked up without manual hard-reload.
          Remove the inline loader and restore plain <script src="..."> tags before /release. -->
     <script>
     (function() {
         var t = Date.now();
-        var srcs = ['config.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','maze.js','gates.js','render.js','title-renderer.js','marathon.js','mode-picker.js','potd.js','game.js','dev-mode.js','tracking.js','share.js'];
+        var srcs = ['config.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','marathon.js','mode-picker.js','potd.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
         for (var i = 0; i < srcs.length; i++) {
             document.write('<script src="' + srcs[i] + '?t=' + t + '"><\/script>');
         }
@@ -663,26 +801,6 @@
             });
         }
 
-        // Animate Rotations checkbox — pure render-side; tiles spin smoothly
-        // to their new orientation instead of snapping. Maze state still
-        // mutates instantly on click, so doesn't affect generation/pre-gen.
-        var animCheck = document.getElementById('animateRotCheck');
-        if (animCheck) {
-            animCheck.addEventListener('change', function() {
-                if (Render && Render.setAnimateRotations) Render.setAnimateRotations(animCheck.checked);
-            });
-        }
-
-        // Complete circuits checkbox — when off, entry/exit paths just
-        // stretch straight out to the canvas edge instead of wrapping
-        // around the perimeter to close the loop.
-        var ccCheck = document.getElementById('completeCircuitsCheck');
-        if (ccCheck) {
-            ccCheck.addEventListener('change', function() {
-                if (Render && Render.setCompleteCircuits) Render.setCompleteCircuits(ccCheck.checked);
-            });
-        }
-
         // DEV: "Reset PotD (today)" button — calls Potd.devReset() which
         // wipes today's server-side puzzles/scores/sessions AND the
         // browser's localStorage state, then nukes the in-memory cache.
@@ -761,6 +879,42 @@
                 wipeLbBtn.disabled = false;
             });
         }
+
+        // DEV: "Wipe Visit Stats" button — POSTs to /api/admin/wipe-visits
+        // (back-end deletes every PageVisit row). Mirrors Wipe Leaderboards
+        // in shape: status line reports the deleted row count, the button
+        // self-disables during the round-trip. No local cache to clear —
+        // visit stats live entirely server-side. Remove this block
+        // (markup + handler + endpoint) before public release.
+        var wipeVisitsBtn    = document.getElementById('wipeVisitsBtn');
+        var wipeVisitsStatus = document.getElementById('wipeVisitsStatus');
+        if (wipeVisitsBtn) {
+            wipeVisitsBtn.addEventListener('click', async function() {
+                wipeVisitsBtn.disabled = true;
+                if (wipeVisitsStatus) wipeVisitsStatus.textContent = 'Wiping…';
+                var serverResult = null;
+                var serverErr    = null;
+                try {
+                    if (AppConfig && AppConfig.GAME_API) {
+                        var resp = await fetch(AppConfig.GAME_API + '/admin/wipe-visits', { method: 'POST' });
+                        if (resp.ok) serverResult = await resp.json();
+                        else         serverErr    = 'HTTP ' + resp.status;
+                    } else {
+                        serverErr = 'no API base configured';
+                    }
+                } catch (e) { serverErr = (e && e.message) || String(e); }
+                if (wipeVisitsStatus) {
+                    if (serverResult) {
+                        wipeVisitsStatus.textContent =
+                            'Server: ' + serverResult.visits + ' visits deleted at ' +
+                            new Date().toLocaleTimeString() + '.';
+                    } else {
+                        wipeVisitsStatus.textContent = 'Server: ' + serverErr + '.';
+                    }
+                }
+                wipeVisitsBtn.disabled = false;
+            });
+        }
     })();
     </script>
 
@@ -768,9 +922,27 @@
     if ('serviceWorker' in navigator) {
         let updateHandled = false;
 
+        // Snapshot the controller state at page-load time. If the page is
+        // ALREADY controlled by an SW when we register, that SW is a known
+        // prior version, so any subsequent activate event represents a real
+        // upgrade and we should reload to pick up new bytes. If the page
+        // is NOT already controlled (fresh install, or just after a cache
+        // clear), the SW that activates is the first one — it has no prior
+        // version to be incompatible with, and the page is already running
+        // the latest files. Reloading in that case is a wasted bounce that
+        // shows up as a "flash" mid-page-load.
+        var wasControlled = !!navigator.serviceWorker.controller;
+
         function handleUpdate(version) {
             if (updateHandled) return;
             updateHandled = true;
+            if (!wasControlled) {
+                // First-install scenario — no previous SW to be stale against.
+                // Skip the reload; the page already has fresh files from the
+                // network request that loaded it.
+                console.log('PWA: Initial SW install (v' + (version || '?') + ') — no reload needed');
+                return;
+            }
             console.log('PWA: New version available' + (version ? ' (v' + version + ')' : ''));
 
             // Auto-refresh once per session if user hasn't started anything yet.

@@ -180,6 +180,16 @@ const Sfx = (function () {
     function fadeOutAll() {
         for (const entry of active) fadeOutEntry(entry);
     }
+    // Public-API variant: fade only the one-shot entries (those without
+    // a loopKey). Leaves sustained loops alone — relevant when a
+    // transition wants to silence celebratory cues like audience_cheer
+    // / applause_long but shouldn't kill the glitch_overlap loop that
+    // signals an ongoing path-crossing state.
+    function fadeOneShots() {
+        for (const entry of active) {
+            if (!entry.loopKey) fadeOutEntry(entry);
+        }
+    }
 
     // Internal one-shot start. Handles both regular plays and looped
     // plays (opts.loop=true sets source.loop, opts.loopKey tracks it
@@ -389,6 +399,11 @@ const Sfx = (function () {
         playLoop: playLoop,
         stopLoop: stopLoop,
         stopAllLoops: stopAllLoops,
+        // Fade out every one-shot currently in `active` (skips loops).
+        // Used by Music's playSong + the menu/leaderboard exit paths so
+        // a lingering audience_cheer doesn't bleed into the next song
+        // or the main menu.
+        fadeOneShots: fadeOneShots,
         click: click,
         gateClick: gateClick,
         setVolume: setVolume,

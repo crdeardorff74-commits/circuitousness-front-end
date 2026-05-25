@@ -49,8 +49,13 @@ const Gates = (() => {
     const TIP_LENGTH_FRAC   = 0.135;
 
     // Buffer zone past the gate's bounding box for hit-testing — clicks
-    // within this margin still count as gate clicks.
-    const HIT_BUFFER_FRAC = 0.20;
+    // within this margin still count as gate clicks. 0.07 = ~7% of
+    // cellSize (e.g. ~4px on a 60px cell) — enough fat-finger forgiveness
+    // for touch without stealing taps from adjacent tiles. Was 0.20
+    // originally, which was generous enough that clicks meaningfully
+    // far from a gate's drawn silhouette still rotated the gate
+    // instead of the tile under the cursor.
+    const HIT_BUFFER_FRAC = 0.07;
 
     // Bright red palette. faceAlpha = 1 forces opacity since the default
     // TILE_FACE_ALPHA would render the gate translucent over the tile under.
