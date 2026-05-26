@@ -2,6 +2,20 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-05-25 — Release v0.24
+
+- **Shuffle bag persistence** (music.js): the gameplay shuffle bag + the menu-phase bag now persist to localStorage (`<slug>_shuffleRemaining_v1` / `_shuffleFingerprint_v1`, same shape for menu). Previously the bags were in-memory only — every page reload reset them, so a player could hear a song they'd just played because the new bag's first pick was a fresh uniform random over the full pool. Mirrors TANTЯO's pattern (and Circuitousness's existing credits-bag persistence).
+- **Bag refactor**: `queue`/`queuePos` collapsed into a single "remaining indices" array, `.shift()` to consume. Same shape as the existing `creditsBag`. Fingerprint includes pool IDs in order + `playMode` for shuffle (so a Settings mode change invalidates cleanly). Lazy-load on first pick, validate against current pool, fall back to fresh shuffle on any mismatch.
+- **Behavior**: bag now picks up exactly where it left off after a reload — if you'd heard 3 of 10 songs before the reload, the next song is one of the remaining 7. Full N-song cycle completes before any repeats, across sessions.
+
+## 2026-05-25 — Release v0.23
+
+- **PotD hints policy reversed**: hint use no longer disqualifies — it's the primary leaderboard tiebreaker ahead of time_ms (fewer hints wins, same shape as Marathon's `solved DESC, hints ASC, time ASC` model). `potd.js` tracks `hintsUsed`, sends it in the submit payload; `noteHintUsed` increments instead of flipping `eligible`. The pre-hint confirmation modal in `game.js`'s handler is GONE — matches Marathon's no-prompt behavior; the tooltip educates instead. `tooltip.potdHint` and `potd.hintConfirm.body` updated across all 15 languages to "hurts your rank" wording.
+- **Leaderboard shows hints for PotD too**: `paintLeaderboard`'s PotD branch previously emitted an empty padding span where the hints column lives — replaced with a real `lbHints` span using the same `marathon.lbHints` i18n key as the marathon branch. Legacy rows without a `hintsUsed` field default to 0. Back-end `PotdScore` gains a `hints_used` column + new composite index `(date, slot, hints_used, time_ms)` (migrations baked into `_COLUMN_MIGRATIONS`, including index DROP/CREATE) — requires Render redeploy.
+- **Email notifications on completion**: TANTЯO-parity Gmail-SMTP path on the back-end. Every Marathon submit (which is gated by `solved >= 1` already) and every eligible PotD submit fires `send_score_notification('marathon'|'potd', ...)` after the rank query. Requires `GMAIL_APP_PASSWORD` env var on Render — same secret already configured for TANTЯO works.
+- **Credits scroll**: time-based motion (30px/sec, was 0.5px/frame at 60fps). Frame-rate independent — iPad Safari's rAF throttling no longer drops the speed to ~1/4. Render via `transform: translate3d` (GPU compositing + sub-pixel rendering) instead of `top:` for smooth motion at slow speeds.
+- **Blue bar at bottom in iPad PWA**: `<meta name="theme-color">` changed from `#0a0a2e` to `#000000` (matches TANTЯO's pattern) — iPadOS PWA fullscreen tints the home-indicator strip with the meta theme-color, NOT the manifest's. `html { background-color }` also `#000` now. Bar is still there, just black instead of blue. Open follow-up: dynamic theme-color matching the current bg-image's bottom edge color (see prior NOTES entry).
+
 ## 2026-05-25 — Open: dynamic theme-color for PWA bottom bar
 
 - iPad PWA fullscreen mode (launching from home-screen icon, NOT regular Safari) draws a strip at the bottom for the home-indicator gesture area, tinted with the meta `theme-color`. `viewport-fit=cover` doesn't extend the page render INTO that strip — it's iOS-reserved chrome. v0.22 set the meta `theme-color` to `#000` (matching TANTЯO's pattern) so the bar is black against dark UI; against colorful background images (level1-50.jpg) the black bar is still visible but less obtrusive than the prior dark-navy.

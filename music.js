@@ -51,6 +51,19 @@ const Music = (function () {
     // before any song repeats.
     const CREDITS_REMAIN_KEY = PROJECT_SLUG + '_creditsRemaining_v1';
     const CREDITS_FINGER_KEY = PROJECT_SLUG + '_creditsFingerprint_v1';
+    // Same persistence story for the gameplay shuffle bag + the menu-phase
+    // shuffle bag — without these, reloading the page (or the SW kicking
+    // off a fresh load on update) reset the in-memory bag and the player
+    // could hear a "song they just heard" because the new bag's first
+    // pick was independent of the old bag's history. Storing the
+    // *remaining* indices means the bag carries across sessions and
+    // every song actually plays once before any repeats. Fingerprint
+    // includes playMode for shuffle so a Settings mode change
+    // invalidates the bag cleanly.
+    const SHUFFLE_REMAIN_KEY = PROJECT_SLUG + '_shuffleRemaining_v1';
+    const SHUFFLE_FINGER_KEY = PROJECT_SLUG + '_shuffleFingerprint_v1';
+    const MENU_REMAIN_KEY    = PROJECT_SLUG + '_menuRemaining_v1';
+    const MENU_FINGER_KEY    = PROJECT_SLUG + '_menuFingerprint_v1';
     const API_URL          = (typeof AppConfig === 'object' && AppConfig && AppConfig.AUTH_API)
                              ? AppConfig.AUTH_API + '/api/songs?game=' + PROJECT_SLUG : null;
 
@@ -83,14 +96,27 @@ const Music = (function () {
     // null = uninitialized (loaded lazily after the playlist is known).
     let introRemaining  = null;
 
-    // Shuffle bag (post-intro phase). Indices into the active pool — the
-    // pool depends on playMode: shufflePlaylist for 'game_playlist',
-    // [...shufflePlaylist, ...creditsPlaylist] for 'game_plus_credits'.
-    // 'credits' mode uses a separate persisted creditsBag below.
+    // Shuffle bag (post-intro phase) — array of REMAINING indices into
+    // the active pool that haven't been played yet in the current cycle.
+    // `.shift()` consumes the next pick; when the array is empty, refill
+    // re-shuffles. Pool depends on playMode: shufflePlaylist for
+    // 'game_playlist', [...shufflePlaylist, ...creditsPlaylist] for
+    // 'game_plus_credits'. 'credits' mode uses a separate persisted
+    // creditsBag below.
+    //
+    // Persisted across sessions via SHUFFLE_REMAIN_KEY (see persist /
+    // load helpers) so reloading the page doesn't reset which songs
+    // have already played this cycle — without persistence, a fresh
+    // load + the bag's "any random song from the pool" first-pick
+    // semantics frequently sounded like an immediate repeat of
+    // something the player heard moments ago.
     let queue        = [];
-    let queuePos     = 0;
     let queueMode    = 'game_playlist';   // mode the queue was built for
     let lastPlayedId = null;
+    // Set to true after the first pickShuffleSong call attempts a
+    // localStorage restore — ensures we only try the load once per
+    // session, even if the bag is later drained and refilled.
+    let shuffleBagLoaded = false;
 
     // Credits-mode shuffle bag — array of remaining indices into
     // creditsPlaylist that haven't been played yet in the current cycle.
@@ -105,10 +131,11 @@ const Music = (function () {
 
     // Menu-phase shuffle bag — independent of the gameplay shuffle (queue)
     // so switching between menu and game doesn't constantly invalidate the
-    // bag and cause clumpy "same song twice in a row" behavior.
+    // bag and cause clumpy "same song twice in a row" behavior. Same
+    // remaining-indices + persist pattern as the gameplay queue above.
     let menuQueue        = [];
-    let menuQueuePos     = 0;
     let lastMenuPlayedId = null;
+    let menuBagLoaded    = false;
     // Phase flag — true while the player is sitting on the main menu (or
     // the opening intro is up), false while a game is active. pickNext
     // checks this first and routes to menuPlaylist when true and that
@@ -218,12 +245,17 @@ const Music = (function () {
             } catch (e) {}
             // Shuffle bags invalidate on membership change; intro state
             // re-syncs (fingerprint mismatch → restart intro for player).
-            // Credits bag clears its in-memory state; the next pick will
-            // either restore a still-valid persisted bag (fingerprint
-            // match) or freshly shuffle if the credits pool changed.
-            queue = []; queuePos = 0;
-            menuQueue = []; menuQueuePos = 0;
+            // All three bags (credits/shuffle/menu) clear their in-memory
+            // state; the next pick will either restore a still-valid
+            // persisted bag (fingerprint match) or freshly shuffle if the
+            // corresponding pool changed. Reset shuffleBagLoaded /
+            // menuBagLoaded so the lazy-load logic re-attempts the
+            // localStorage restore against the new pool.
+            queue = [];
+            menuQueue = [];
             creditsBag = null;
+            shuffleBagLoaded = false;
+            menuBagLoaded    = false;
             syncIntroState();
             // If a game was started before this API call landed (cache was
             // empty / nothing to play), kick off playback now. Without
@@ -421,9 +453,43 @@ const Music = (function () {
         }
         return shufflePlaylist;
     }
+    function shuffleFingerprint() {
+        // playMode is part of the fingerprint because activeShufflePool()
+        // returns a different pool for 'game_plus_credits' than for
+        // 'game_playlist'. Same `shufflePlaylist` membership but a
+        // mode change still invalidates the bag (indices would point
+        // into the wrong pool).
+        return playMode + '|' + activeShufflePool().map(function (s) { return s.id; }).join(',');
+    }
+    function persistShuffleBag() {
+        try {
+            localStorage.setItem(SHUFFLE_REMAIN_KEY, JSON.stringify(queue || []));
+            localStorage.setItem(SHUFFLE_FINGER_KEY, shuffleFingerprint());
+        } catch (e) { /* private mode / quota — degrade to in-memory */ }
+    }
+    function loadShuffleBagFromStorage() {
+        // Returns the persisted bag if the pool + mode haven't changed
+        // since, null otherwise (caller falls back to a fresh shuffle).
+        // Validates each index against the current pool length so a
+        // partial / corrupt write can't crash later picks.
+        try {
+            const fp = localStorage.getItem(SHUFFLE_FINGER_KEY);
+            if (fp !== shuffleFingerprint()) return null;
+            const raw = localStorage.getItem(SHUFFLE_REMAIN_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return null;
+            const pool = activeShufflePool();
+            for (let i = 0; i < parsed.length; i++) {
+                const v = parsed[i];
+                if (!Number.isInteger(v) || v < 0 || v >= pool.length) return null;
+            }
+            return parsed;
+        } catch (e) { return null; }
+    }
     function refillShuffleQueue() {
         const pool = activeShufflePool();
-        if (pool.length === 0) { queue = []; queuePos = 0; return; }
+        if (pool.length === 0) { queue = []; return; }
         const indices = [];
         for (let i = 0; i < pool.length; i++) indices.push(i);
         // Fisher-Yates.
@@ -436,20 +502,32 @@ const Music = (function () {
             const tmp = indices[0]; indices[0] = indices[1]; indices[1] = tmp;
         }
         queue = indices;
-        queuePos = 0;
         queueMode = playMode;
     }
     function pickShuffleSong() {
+        // First access this session: try to restore the persisted bag.
+        // Only accepted if the fingerprint still matches (same pool +
+        // same playMode) — otherwise fall through to a fresh shuffle
+        // via the empty-queue refill below.
+        if (!shuffleBagLoaded) {
+            shuffleBagLoaded = true;
+            const persisted = loadShuffleBagFromStorage();
+            if (persisted !== null) {
+                queue = persisted;
+                queueMode = playMode;
+            }
+        }
         // Mode change since last fill invalidates the queue — the indices
         // point into a stale pool that may not match the new mode.
-        if (queueMode !== playMode) { queue = []; queuePos = 0; }
+        if (queueMode !== playMode) { queue = []; }
         const pool = activeShufflePool();
         if (pool.length === 0) return null;
-        if (queuePos >= queue.length) refillShuffleQueue();
+        if (queue.length === 0) refillShuffleQueue();
         if (queue.length === 0) return null;
-        const idx = queue[queuePos++];
+        const idx = queue.shift();
         const song = pool[idx];
         if (song) lastPlayedId = song.id;
+        persistShuffleBag();
         return song;
     }
     // Credits-mode pick: shuffle-bag walk through creditsPlaylist that
@@ -533,9 +611,35 @@ const Music = (function () {
     }
     // Menu-phase shuffle bag (separate from gameplay queue so toggling
     // phase doesn't reset the gameplay shuffle position). Same Fisher-Yates
-    // + back-to-back avoidance pattern as pickShuffleSong.
+    // + back-to-back avoidance pattern as pickShuffleSong, plus the same
+    // persistence pattern so a page reload during menu music doesn't
+    // restart the bag's cycle.
+    function menuFingerprint() {
+        return menuPlaylist.map(function (s) { return s.id; }).join(',');
+    }
+    function persistMenuBag() {
+        try {
+            localStorage.setItem(MENU_REMAIN_KEY, JSON.stringify(menuQueue || []));
+            localStorage.setItem(MENU_FINGER_KEY, menuFingerprint());
+        } catch (e) {}
+    }
+    function loadMenuBagFromStorage() {
+        try {
+            const fp = localStorage.getItem(MENU_FINGER_KEY);
+            if (fp !== menuFingerprint()) return null;
+            const raw = localStorage.getItem(MENU_REMAIN_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return null;
+            for (let i = 0; i < parsed.length; i++) {
+                const v = parsed[i];
+                if (!Number.isInteger(v) || v < 0 || v >= menuPlaylist.length) return null;
+            }
+            return parsed;
+        } catch (e) { return null; }
+    }
     function refillMenuQueue() {
-        if (menuPlaylist.length === 0) { menuQueue = []; menuQueuePos = 0; return; }
+        if (menuPlaylist.length === 0) { menuQueue = []; return; }
         const indices = [];
         for (let i = 0; i < menuPlaylist.length; i++) indices.push(i);
         for (let i = indices.length - 1; i > 0; i--) {
@@ -546,15 +650,22 @@ const Music = (function () {
             const tmp = indices[0]; indices[0] = indices[1]; indices[1] = tmp;
         }
         menuQueue = indices;
-        menuQueuePos = 0;
     }
     function pickMenuSong() {
         if (menuPlaylist.length === 0) return null;
-        if (menuQueuePos >= menuQueue.length) refillMenuQueue();
+        // First access this session: try to restore the persisted bag.
+        // Same fingerprint-validated pattern as pickShuffleSong above.
+        if (!menuBagLoaded) {
+            menuBagLoaded = true;
+            const persisted = loadMenuBagFromStorage();
+            if (persisted !== null) menuQueue = persisted;
+        }
+        if (menuQueue.length === 0) refillMenuQueue();
         if (menuQueue.length === 0) return null;
-        const idx = menuQueue[menuQueuePos++];
+        const idx = menuQueue.shift();
         const song = menuPlaylist[idx];
         if (song) { lastMenuPlayedId = song.id; lastPlayedId = song.id; }
+        persistMenuBag();
         return song;
     }
     function pickNext() {
@@ -672,7 +783,7 @@ const Music = (function () {
         // Invalidate the shuffle queue so the next pull picks from the
         // correct pool. Credits cursor preserves position — moving away
         // from credits mode and back resumes where the player left off.
-        queue = []; queuePos = 0;
+        queue = [];
     }
     function getMode() { return playMode; }
 
@@ -723,10 +834,13 @@ const Music = (function () {
             audio.removeAttribute('src');
             audio.load();
         }
-        // INTENTIONALLY preserve `queue` / `queuePos` / `history` /
-        // `lastPlayedId` / `introRemaining` across stops so the curated
-        // playlist progresses BETWEEN games. Only the audio element +
-        // current-song bookkeeping reset (so the Now Playing UI hides).
+        // INTENTIONALLY preserve `queue` (remaining shuffle indices) /
+        // `history` / `lastPlayedId` / `introRemaining` across stops so
+        // the curated playlist progresses BETWEEN games. Only the audio
+        // element + current-song bookkeeping reset (so the Now Playing
+        // UI hides). The shuffle bag is ALSO persisted to localStorage
+        // by persistShuffleBag() so it additionally survives page
+        // reloads — see SHUFFLE_REMAIN_KEY at top of module.
         currentSong = null;
         notifySongChange();
     }
