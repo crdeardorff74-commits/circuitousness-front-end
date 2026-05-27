@@ -392,17 +392,36 @@ const Potd = (() => {
     // at "Loading today's puzzles…" for the entire window of one really
     // long hang. Worst case (both attempts time out): ~16.5s, then
     // ensurePuzzleAvailable falls through to local generation.
-    const FETCH_TIMEOUT_MS     = 8000;
-    const FETCH_MAX_ATTEMPTS   = 2;
+    // Per-attempt timeouts — short-first / longer-retry pattern.
+    //
+    // ATTEMPT 1 (4s): catches the common case where the response would
+    // have come in <1s but momentarily stalled (TCP-keepalive idle,
+    // brief DB hiccup, request hitting a slow worker). If the issue is
+    // TRANSIENT, the retry usually hits a different path / connection
+    // / worker and succeeds quickly. Failing fast here is strictly
+    // better than waiting on a stuck request when the retry is likely
+    // to succeed.
+    //
+    // ATTEMPT 2 (12s): covers the SUSTAINED-slow case where /today is
+    // actually doing real work that just takes a while (large response
+    // serialization on a warm-but-laden process, etc.). If attempt 1
+    // failed, give attempt 2 enough room to actually land before
+    // falling through to the expensive local-gen fallback.
+    //
+    // Worst case (both timeouts hit): ~16.5s before fallback — same
+    // as the prior 8s×2 budget but with the time-budget redistributed
+    // to favor fast-success first, long-fallback second.
+    const FETCH_TIMEOUTS_MS    = [4000, 12000];
+    const FETCH_MAX_ATTEMPTS   = FETCH_TIMEOUTS_MS.length;
     const FETCH_RETRY_DELAY_MS = 500;
 
     // Single fetch attempt — returns { ok, data } on success or
     // { ok: false, reason } on any failure (network error, abort,
     // non-2xx). Separated from the outer retry loop so each attempt
     // gets its own AbortController + timeout pair.
-    async function attemptFetchTodaysPuzzles(base) {
+    async function attemptFetchTodaysPuzzles(base, timeoutMs) {
         const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, FETCH_TIMEOUT_MS) : null;
+        const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, timeoutMs) : null;
         try {
             const resp = await fetch(base + '/potd/today', ctrl ? { signal: ctrl.signal } : undefined);
             if (resp.ok) {
@@ -412,7 +431,7 @@ const Potd = (() => {
             return { ok: false, reason: 'http ' + resp.status };
         } catch (e) {
             return { ok: false, reason: e && e.name === 'AbortError'
-                ? 'timeout after ' + FETCH_TIMEOUT_MS + 'ms'
+                ? 'timeout after ' + timeoutMs + 'ms'
                 : (e && e.message) || String(e) };
         } finally {
             if (timer) clearTimeout(timer);
@@ -424,7 +443,8 @@ const Potd = (() => {
         if (!base) return null;
         let lastReason = null;
         for (let attempt = 1; attempt <= FETCH_MAX_ATTEMPTS; attempt++) {
-            const result = await attemptFetchTodaysPuzzles(base);
+            const timeoutMs = FETCH_TIMEOUTS_MS[attempt - 1];
+            const result = await attemptFetchTodaysPuzzles(base, timeoutMs);
             if (result.ok) {
                 const data = result.data;
                 const set = { date: data.date, byslot: {} };
@@ -492,12 +512,15 @@ const Potd = (() => {
     // unbounded fetch was the silent-hang root cause, and one retry
     // covers transient back-end slowness (DB pool exhaustion, brief GC
     // pause) without making the player wait 30+s on a truly down server.
-    const SEED_TIMEOUT_MS     = 8000;
-    const SEED_MAX_ATTEMPTS   = 2;
+    // Same short-first / long-retry pattern as FETCH_TIMEOUTS_MS — see
+    // the long comment above for the rationale (fast catch on transient
+    // hiccups, longer fallback for genuine slowness).
+    const SEED_TIMEOUTS_MS    = [4000, 12000];
+    const SEED_MAX_ATTEMPTS   = SEED_TIMEOUTS_MS.length;
     const SEED_RETRY_DELAY_MS = 500;
-    async function attemptSeedSingle(base, date, slot, snapshot) {
+    async function attemptSeedSingle(base, date, slot, snapshot, timeoutMs) {
         const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, SEED_TIMEOUT_MS) : null;
+        const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, timeoutMs) : null;
         try {
             const resp = await fetch(base + '/potd/seed', Object.assign({
                 method:  'POST',
@@ -507,7 +530,7 @@ const Potd = (() => {
             return { ok: resp.ok, status: resp.status };
         } catch (e) {
             return { ok: false, status: 0, reason: e && e.name === 'AbortError'
-                ? 'timeout after ' + SEED_TIMEOUT_MS + 'ms'
+                ? 'timeout after ' + timeoutMs + 'ms'
                 : (e && e.message) || String(e) };
         } finally {
             if (timer) clearTimeout(timer);
@@ -518,7 +541,8 @@ const Potd = (() => {
         if (!base) return { ok: false, status: 0 };
         let last = null;
         for (let attempt = 1; attempt <= SEED_MAX_ATTEMPTS; attempt++) {
-            last = await attemptSeedSingle(base, date, slot, snapshot);
+            const timeoutMs = SEED_TIMEOUTS_MS[attempt - 1];
+            last = await attemptSeedSingle(base, date, slot, snapshot, timeoutMs);
             // 201 = success, 409 = lost race (caller handles). Both are
             // terminal — no retry. Only transient failures (5xx, network
             // abort, timeout) get retried.
