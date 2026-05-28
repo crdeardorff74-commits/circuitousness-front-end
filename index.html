@@ -15,11 +15,12 @@
     <meta name="theme-color" content="#000000">
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
 
-    <!-- DEV: cache-bust the stylesheet so iterative CSS edits are picked up
-         without manual hard-reload (the service worker would otherwise serve
-         the cached copy). Restore the plain <link rel="stylesheet"
-         href="styles.css"> tag before /release. -->
-    <script>document.write('<link rel="stylesheet" href="styles.css?t=' + Date.now() + '">');</script>
+    <!-- Stylesheet. On localhost ONLY we append a cache-bust query so iterative
+         CSS edits show up without a hard-reload (mirrors the SW's localhost
+         cache bypass in sw.js). In production the href stays plain + cacheable
+         so the service worker can serve it offline — no manual "strip before
+         release" step. -->
+    <script>(function(){var dev=location.hostname==='localhost'||location.hostname==='127.0.0.1';document.write('<link rel="stylesheet" href="styles.css'+(dev?'?t='+Date.now():'')+'">');})();</script>
 </head>
 <body>
     <!-- URL param gate: ?debug=true enables the existing free-form puzzle UI
@@ -775,15 +776,20 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.26';</script>
-    <!-- DEV: cache-bust script srcs so iterative edits are picked up without manual hard-reload.
-         Remove the inline loader and restore plain <script src="..."> tags before /release. -->
+    <script>var PAGE_VERSION = '0.28';</script>
+    <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
+         iterative JS edits show up without a hard-reload (mirrors the SW's
+         localhost cache bypass in sw.js). In production the srcs stay plain +
+         cacheable so the service worker can serve them offline — no manual
+         "strip before release" step. The array stays the single source of
+         truth for load order. -->
     <script>
     (function() {
-        var t = Date.now();
+        var dev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        var bust = dev ? ('?t=' + Date.now()) : '';
         var srcs = ['config.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','marathon.js','mode-picker.js','potd.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
         for (var i = 0; i < srcs.length; i++) {
-            document.write('<script src="' + srcs[i] + '?t=' + t + '"><\/script>');
+            document.write('<script src="' + srcs[i] + bust + '"><\/script>');
         }
     })();
     </script>
