@@ -373,6 +373,19 @@
                     <span id="settingSfxVolumeDisplay" class="settingsVolumePercent">60%</span>
                 </div>
 
+                <!-- Audience-reactions sub-toggle. Gates the audience_* and
+                     applause / applause_long sound-effect categories so the
+                     player can have mechanical SFX on (puzzle-start bass,
+                     glitch overlap, hint jump-scare) without the crowd
+                     reacting. Row is .disabled when the parent SFX setting
+                     is muted — no effect when SFX is off so we gray it out
+                     to communicate that. settings.js syncToggleUI manages
+                     the .disabled class. -->
+                <div class="settingsRow" id="settingAudienceReactionsRow">
+                    <label for="settingAudienceReactions" data-i18n="settings.audienceReactions">Audience reactions</label>
+                    <button id="settingAudienceReactions" class="toggleSwitch" type="button" role="switch" aria-checked="true"><span class="toggleKnob"></span></button>
+                </div>
+
                 <!-- Background image toggle (Circuitousness-specific). -->
                 <div class="settingsRow">
                     <label for="settingBackground" data-i18n="settings.background">Background</label>
@@ -762,7 +775,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.25';</script>
+    <script>var PAGE_VERSION = '0.26';</script>
     <!-- DEV: cache-bust script srcs so iterative edits are picked up without manual hard-reload.
          Remove the inline loader and restore plain <script src="..."> tags before /release. -->
     <script>

@@ -708,6 +708,16 @@ const Music = (function () {
         currentSong = song;
         paused      = false;
         notifySongChange();
+        // Respect the player's mute setting on EVERY song-switch path,
+        // not just the start()-initiated ones. advanceToNext is already
+        // gated on `muted` at its top, but scripted playback (replay)
+        // calls playSong directly from its scheduled timers — without
+        // this guard, replaying a game with music muted would still
+        // re-fire audio playback on every recorded song change.
+        // currentSong + notifySongChange above still fire so the
+        // Now Playing UI reflects what WOULD have been playing during
+        // the replay, just silently.
+        if (muted) return;
         const a = ensureAudio();
         a.src = song.url;
         a.volume = volume;
@@ -947,6 +957,12 @@ const Music = (function () {
         stopScriptedPlayback();
         if (!events || !Array.isArray(events) || events.length === 0) return;
         scriptedPlayback = { timers: [] };
+        // Refresh the Now Playing UI so it knows replay just started —
+        // its callback hides the prev/pause/next controls during
+        // scripted playback (since those are owned by the scripted
+        // timeline). Without this, the controls stay visible until the
+        // first recorded song-change event actually fires playSong.
+        notifySongChange();
         // Sort by time ascending so the first event (often t=0) fires first.
         const sorted = events.slice().sort(function (a, b) {
             return (a.t || 0) - (b.t || 0);
@@ -994,6 +1010,10 @@ const Music = (function () {
             clearTimeout(scriptedPlayback.timers[i]);
         }
         scriptedPlayback = null;
+        // Mirror the start side — refresh Now Playing so the controls
+        // come back (and the panel itself may need to hide if the user
+        // had music muted before the replay started).
+        notifySongChange();
     }
     function isScriptedPlayback() { return scriptedPlayback !== null; }
 
@@ -1064,13 +1084,28 @@ const Music = (function () {
         if (nextBtn)  nextBtn.addEventListener('click',  function () { Music.skipNext(); });
         if (pauseBtn) pauseBtn.addEventListener('click', function () { Music.togglePause(); });
 
+        const controlsEl = document.getElementById('nowPlayingControls');
         Music.setOnSongChange(function (song, paused) {
-            if (song && !Music.isMuted()) {
+            // Replay (Music.isScriptedPlayback()) takes precedence over
+            // the muted check: even with music muted, the watcher sees
+            // the title of what WOULD be playing in the original run,
+            // since the music history is part of the recording. Controls
+            // are hidden during replay because skipNext/skipPrev/pause
+            // are owned by the scripted timeline and the buttons would
+            // be dead UI.
+            const replaying = (typeof Music.isScriptedPlayback === 'function' && Music.isScriptedPlayback());
+            if (song && (replaying || !Music.isMuted())) {
                 el.classList.add('visible');
                 titleEl.textContent = song.name || '';
                 if (pauseBtn) pauseBtn.textContent = paused ? '▶' : '⏸';
+                if (controlsEl) controlsEl.style.display = replaying ? 'none' : '';
             } else {
                 el.classList.remove('visible');
+                // Restore control visibility for the next showing — the
+                // panel could be hidden mid-replay (e.g. mute toggled
+                // while scriptedPlayback is null) and we don't want
+                // stale display:none lingering on the controls.
+                if (controlsEl) controlsEl.style.display = '';
             }
         });
     }

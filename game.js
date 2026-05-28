@@ -556,6 +556,22 @@
                         }
                     }
                 }
+                // Detect completed-path BREAKS (any pathsWon[i] going from
+                // true → false). Fires audience_awww — the "aww, you broke
+                // a finished path" reaction. Fires on any cause that
+                // disconnects a previously-won entry-to-exit path: own
+                // rotation undoing the last winning move, twin twist
+                // breaking a remote chain, hint replacing a tile that
+                // was part of a completed chain, etc. The twin-twist
+                // OR-pick (fail/disappointed/gasp) in handlePointer is
+                // a separate, partial-chain-break reaction; this one
+                // requires the broken chain to have been complete.
+                for (let i = 0; i < 4; i++) {
+                    if (!cur[i] && lastPathsWon[i]) {
+                        Sfx.play('audience_awww');
+                        break;
+                    }
+                }
                 lastPathsWon = [!!cur[0], !!cur[1], !!cur[2], !!cur[3]];
 
                 // Two-paths-overlap loop: rising edge starts the glitch loop,
@@ -1168,10 +1184,18 @@
                         let lost = null;
                         for (const k of pre) if (!post.has(k)) (lost || (lost = new Set())).add(k);
                         if (!lost) continue;
-                        // A in lost? Player's tile broke this path on its own.
-                        let aInLost = false;
-                        for (const k of aCells) if (lost.has(k)) { aInLost = true; break; }
-                        if (aInLost) continue;
+                        // (Previously had an `aInLost` filter here that skipped
+                        // the path when the rotated tile A's own cell was in
+                        // `lost`. The intent was "don't fire on player rotating
+                        // and breaking their own simple path." But in a twin
+                        // twist, A and B BOTH rotate — so a CCW rotation that
+                        // happens to disconnect A's lane (in addition to B
+                        // breaking things downstream) was getting filtered out
+                        // even though it was a legitimate twin-twist break.
+                        // The remaining checks below — bOldLaneGone (B's old
+                        // lane is gone) plus remainderUnits.size >= 2 (2+
+                        // cells lost downstream of B) — already establish
+                        // that B is meaningfully contributing to the break.)
                         // B's old lane gone? True if any pre-walk entry through
                         // B's cells has no matching (same port-pair) entry in
                         // post. Strictly broader than "B in lost": catches the
@@ -1224,6 +1248,10 @@
                         }
                     }
                     if (sfxEligible) {
+                        // Twin-twist break: surprise reactions only.
+                        // audience_awww moved to refresh()'s pathsWon
+                        // true→false detection so it fires for ANY
+                        // completed-path break, not just twin twists.
                         Sfx.play(['fail', 'audience_disappointed', 'audience_gasp']);
                         if (Render.fadeLanes) Render.fadeLanes(fadeEntries);
                     }

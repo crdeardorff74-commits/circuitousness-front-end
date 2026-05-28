@@ -15,6 +15,14 @@ const Settings = (function () {
     const MUSIC_MODE_KEY  = PROJECT_SLUG + '_setting_musicMode';
     const MUSIC_PRIOR_KEY = PROJECT_SLUG + '_setting_musicPriorMode';
     const SFX_MUTED_KEY   = PROJECT_SLUG + '_setting_sfxMuted';
+    // Sub-mute that gates ONLY the audience-flavored SFX (anything starting
+    // with `audience_` or `applause`/`applause_long`). When false, the
+    // celebratory/dismay reactions stay quiet but the mechanical cues
+    // (cinematic_bass on puzzle start, fail/gasp on twin-twist surprise,
+    // glitch_overlap on path crossing, jump_scare on hint) still play.
+    // Forced off (UI grayed out, effective value = false) when sfxMuted
+    // is true — there's no audible difference, so we mirror that state.
+    const AUDIENCE_REACTIONS_KEY = PROJECT_SLUG + '_setting_audienceReactions';
     const MUSIC_VOL_KEY   = PROJECT_SLUG + '_setting_musicVolume';
     const SFX_VOL_KEY     = PROJECT_SLUG + '_setting_sfxVolume';
     const BG_ENABLED_KEY  = PROJECT_SLUG + '_setting_backgroundEnabled';
@@ -91,6 +99,7 @@ const Settings = (function () {
     if (musicMode !== 'none') priorMode = musicMode;
 
     let sfxMuted          = loadBool(SFX_MUTED_KEY,   false);
+    let audienceReactions = loadBool(AUDIENCE_REACTIONS_KEY, true);
     // Default volumes: music slightly below full so peaks have headroom on
     // built-in laptop/phone speakers; SFX noticeably lower so the puzzle
     // cues (cinematic_bass, applause, fail) don't overpower a song playing
@@ -119,6 +128,14 @@ const Settings = (function () {
     function getMusicVolume()     { return musicVolume; }
     function getSfxVolume()       { return sfxVolume; }
     function isBackgroundEnabled(){ return backgroundEnabled; }
+    // Persisted user preference for audience reactions. Returns the raw
+    // stored value — DOESN'T short-circuit on sfxMuted; callers that
+    // want the "effective" enabled state (false when SFX is muted)
+    // use isAudienceReactionsEffective() below. The raw getter is for
+    // the UI toggle's checked state — when SFX is later unmuted, the
+    // user expects their preference to be remembered as it was.
+    function isAudienceReactionsEnabled() { return audienceReactions; }
+    function isAudienceReactionsEffective() { return !sfxMuted && audienceReactions; }
 
     function setMusicMode(mode) {
         if (MUSIC_MODES.indexOf(mode) === -1) return;
@@ -147,6 +164,23 @@ const Settings = (function () {
         sfxMuted = !!v;
         storeBool(SFX_MUTED_KEY, sfxMuted);
         if (typeof Sfx !== 'undefined' && Sfx.setMuted) Sfx.setMuted(sfxMuted);
+        // SFX mute also gates the audience-reactions sub-toggle: the
+        // EFFECTIVE state (used by Sfx.play to filter audience_*/applause_*)
+        // is (!sfxMuted && audienceReactions). Push that re-resolved value
+        // to Sfx so the filter tracks the SFX-mute change without needing
+        // the user to also toggle audience-reactions explicitly. UI sync
+        // below also grays out the audience-reactions row when sfxMuted.
+        if (typeof Sfx !== 'undefined' && Sfx.setAudienceReactionsEnabled) {
+            Sfx.setAudienceReactionsEnabled(isAudienceReactionsEffective());
+        }
+        syncToggleUI();
+    }
+    function setAudienceReactionsEnabled(v) {
+        audienceReactions = !!v;
+        storeBool(AUDIENCE_REACTIONS_KEY, audienceReactions);
+        if (typeof Sfx !== 'undefined' && Sfx.setAudienceReactionsEnabled) {
+            Sfx.setAudienceReactionsEnabled(isAudienceReactionsEffective());
+        }
         syncToggleUI();
     }
     function setMusicVolume(v) {
@@ -231,7 +265,7 @@ const Settings = (function () {
     // DOM refs. The mute-button-as-speaker pattern is lifted from TANTЯO;
     // the music playlist dropdown drives playMode (none / game playlist /
     // credits / game playlist + credits).
-    let musicPlaylistEl, musicMuteBtnEl, sfxMuteBtnEl, bgToggleEl;
+    let musicPlaylistEl, musicMuteBtnEl, sfxMuteBtnEl, bgToggleEl, audienceToggleEl, audienceRowEl;
     let musicVolEl, sfxVolEl, musicVolPctEl, sfxVolPctEl;
     let tileColorEl, tileFaceEl, pathColorEl, pathAlphaEl, pathWidthEl, bevelEl;
     let tileFacePctEl, pathAlphaPctEl, pathWidthPctEl, bevelPctEl;
@@ -254,6 +288,14 @@ const Settings = (function () {
             musicPlaylistEl.value = musicMode;
         }
         if (bgToggleEl) bgToggleEl.setAttribute('aria-checked', backgroundEnabled ? 'true' : 'false');
+        // Audience reactions toggle: aria-checked reflects the raw stored
+        // preference (so toggling SFX mute off later restores the user's
+        // visible setting). The row gets a .disabled class when SFX is
+        // muted — styles.css fades it + the CSS pointer-events:none on
+        // .disabled stops clicks. The toggle's own click handler also
+        // bails when sfxMuted as belt-and-braces.
+        if (audienceToggleEl) audienceToggleEl.setAttribute('aria-checked', audienceReactions ? 'true' : 'false');
+        if (audienceRowEl) audienceRowEl.classList.toggle('disabled', sfxMuted);
     }
     function syncVolumeUI() {
         if (musicVolEl)    musicVolEl.value    = Math.round(musicVolume * 100);
@@ -296,6 +338,8 @@ const Settings = (function () {
         musicMuteBtnEl   = document.getElementById('settingMusicMuteBtn');
         sfxMuteBtnEl     = document.getElementById('settingSfxMuteBtn');
         bgToggleEl       = document.getElementById('settingBackground');
+        audienceToggleEl = document.getElementById('settingAudienceReactions');
+        audienceRowEl    = document.getElementById('settingAudienceReactionsRow');
         musicVolEl       = document.getElementById('settingMusicVolume');
         sfxVolEl         = document.getElementById('settingSfxVolume');
         musicVolPctEl    = document.getElementById('settingMusicVolumeDisplay');
@@ -321,6 +365,10 @@ const Settings = (function () {
         if (typeof Sfx !== 'undefined') {
             if (Sfx.setVolume) Sfx.setVolume(sfxVolume);
             if (Sfx.setMuted)  Sfx.setMuted(sfxMuted);
+            // Push the resolved (sfxMuted-aware) audience-reactions
+            // setting so the Sfx filter is correct from the first play(),
+            // not just after a settings toggle.
+            if (Sfx.setAudienceReactionsEnabled) Sfx.setAudienceReactionsEnabled(isAudienceReactionsEffective());
         }
         if (typeof Music !== 'undefined') {
             if (Music.setVolume) Music.setVolume(musicVolume);
@@ -396,6 +444,16 @@ const Settings = (function () {
         if (bgToggleEl) {
             bgToggleEl.addEventListener('click', () => setBackgroundEnabled(!backgroundEnabled));
         }
+        if (audienceToggleEl) {
+            audienceToggleEl.addEventListener('click', () => {
+                // Defensive: refuse the toggle when SFX is muted. The
+                // .disabled CSS already blocks pointer-events but a stray
+                // keyboard activation or programmatic click would still
+                // get through without this guard.
+                if (sfxMuted) return;
+                setAudienceReactionsEnabled(!audienceReactions);
+            });
+        }
         // Esc closes the popup. Cheap escape hatch on top of the close
         // button — feels natural for a modal.
         document.addEventListener('keydown', (ev) => {
@@ -418,6 +476,8 @@ const Settings = (function () {
         getMusicVolume:       getMusicVolume,
         getSfxVolume:         getSfxVolume,
         isBackgroundEnabled:  isBackgroundEnabled,
+        isAudienceReactionsEnabled:   isAudienceReactionsEnabled,
+        isAudienceReactionsEffective: isAudienceReactionsEffective,
         getTileColor:         getTileColor,
         getTileFaceOpacity:   getTileFaceOpacity,
         getPathColor:         getPathColor,
@@ -430,6 +490,7 @@ const Settings = (function () {
         setMusicVolume:       setMusicVolume,
         setSfxVolume:         setSfxVolume,
         setBackgroundEnabled: setBackgroundEnabled,
+        setAudienceReactionsEnabled: setAudienceReactionsEnabled,
         setTileColor:         setTileColor,
         setTileFaceOpacity:   setTileFaceOpacity,
         setPathColor:         setPathColor,

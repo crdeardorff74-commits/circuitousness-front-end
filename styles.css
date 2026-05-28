@@ -1307,6 +1307,15 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
     gap: 0.7rem;
     padding: 0.5rem 0.3rem;
 }
+/* Grayed-out state — currently applied to #settingAudienceReactionsRow
+   when sfxMuted is true (set/cleared by settings.js's syncToggleUI).
+   Visually softens the row so the player sees it's not effective,
+   and pointer-events:none short-circuits all clicks (settings.js's
+   own click handler also bails on sfxMuted as belt-and-braces). */
+.settingsRow.disabled {
+    opacity: 0.4;
+    pointer-events: none;
+}
 .settingsRow label {
     color: #ddd;
     font-size: clamp(0.9rem, 1.8vw, 1rem);

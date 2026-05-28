@@ -1923,14 +1923,47 @@ const Maze = (() => {
         }
         const tile = grid[row][col];
         const target = tile._solution;
-        const delta = (target - tile.rotation + 4) & 3;
-        tile.rotation = target;
+        // Port-equivalence check: if the tile's CURRENT rotation already
+        // gives the same port pairs as the solution rotation, a visible
+        // rotation would be wasted — the lit path through the tile would
+        // enter and exit at the same ports before and after. User
+        // observed this when a hint picked a CROSS (or other rotationally-
+        // symmetric tile) lit with the wrong path index: the tile spun
+        // 180° but the path didn't change, leaving them feeling cheated
+        // out of a hint. Solution: skip the rotation entirely; the lock
+        // still applies, which conveys the hint's actual intent ("this
+        // tile is at the right orientation — work elsewhere").
+        //
+        // Twin coupling: also check if rotating the twin partner by the
+        // same delta would be port-equivalent for it too. Twins typically
+        // share tile type so their port-equivalence tracks A's, but the
+        // explicit check guards against mismatched-type edge cases —
+        // if rotating B would meaningfully change its port topology,
+        // we apply the rotation normally to keep the puzzle consistent.
+        let delta = (target - tile.rotation + 4) & 3;
+        let canSkipRotation = (delta !== 0) && rotationsHaveSamePorts(tile.type, tile.rotation, target);
+        if (canSkipRotation && tile._twin) {
+            const [tr, tc] = tile._twin.partner.split(',').map(Number);
+            const twinTile = grid[tr][tc];
+            const twinTarget = (twinTile.rotation + delta) & 3;
+            if (!rotationsHaveSamePorts(twinTile.type, twinTile.rotation, twinTarget)) {
+                canSkipRotation = false;
+            }
+        }
+        if (canSkipRotation) {
+            delta = 0;
+        } else {
+            tile.rotation = target;
+            if (tile._twin) {
+                const [tr, tc] = tile._twin.partner.split(',').map(Number);
+                grid[tr][tc].rotation = (grid[tr][tc].rotation + delta) & 3;
+            }
+        }
         tile._hinted = true;
         tile._playerLocked = false;
         locked.add(row + ',' + col);
         if (tile._twin) {
             const [tr, tc] = tile._twin.partner.split(',').map(Number);
-            grid[tr][tc].rotation = (grid[tr][tc].rotation + delta) & 3;
             grid[tr][tc]._playerLocked = false;
             locked.add(tile._twin.partner);
         }
@@ -2053,11 +2086,142 @@ const Maze = (() => {
             }
             return true;
         }
+        // QUAD-LEVEL port equivalence check: walks the internal lane
+        // structure to find which pairs of the quad's 8 external ports
+        // (perimeter positions) are connected, then checks whether the
+        // planned rotation preserves that set of pairs.
+        //
+        // External port indexing — CW from TL.N (port 0):
+        //   0: TL.N   (top edge, left half)
+        //   1: TR.N   (top edge, right half)
+        //   2: TR.E   (right edge, top half)
+        //   3: BR.E   (right edge, bottom half)
+        //   4: BR.S   (bottom edge, right half)
+        //   5: BL.S   (bottom edge, left half)
+        //   6: BL.W   (left edge, bottom half)
+        //   7: TL.W   (left edge, top half)
+        //
+        // When the quad rotates 90° CW, all sub-tiles + their lanes rotate
+        // rigidly as a unit. External ports shift by 2 positions (since
+        // 8 ports / 4 quarter-turns = 2 ports per quarter-turn). So if
+        // (a, b) was a connection in the original quad, the corresponding
+        // connection in the rotated quad is at ((a + 2*turns) % 8,
+        // (b + 2*turns) % 8). If the SET of all connection pairs is
+        // invariant under this shift, the rotation produces an identical
+        // external-port behavior — functionally wasted.
+        //
+        // Example: a quad of all-STRAIGHT tiles oriented E-W. External
+        // connections: TL.W ↔ TR.E (ports 7 ↔ 2) and BL.W ↔ BR.E (ports
+        // 6 ↔ 3). Under 180° rotation (shift +4): {(2,7), (3,6)} maps to
+        // {(6,3), (7,2)} = {(3,6), (2,7)} — same set. Quad correctly
+        // identified as port-equivalent and skipped.
+        function quadExternalConnections(qr, qc) {
+            const r0 = qr * 2, c0 = qc * 2;
+            // extToCell[i] = [dr, dc, sub-tile-port]
+            const extToCell = [
+                [0, 0, N], [0, 1, N],   // 0, 1: top
+                [0, 1, E], [1, 1, E],   // 2, 3: right
+                [1, 1, S], [1, 0, S],   // 4, 5: bottom
+                [1, 0, W], [0, 0, W],   // 6, 7: left
+            ];
+            const cellToExt = {};
+            for (let i = 0; i < 8; i++) {
+                const [dr, dc, p] = extToCell[i];
+                cellToExt[dr + ',' + dc + ',' + p] = i;
+            }
+            // Base lane sets for each tile type at rotation 0. Rotated
+            // versions computed on demand below by adding rotation to
+            // each port modulo 4.
+            const baseLanesByType = {
+                [T_STRAIGHT]: [[N, S]],
+                [T_ELBOW]:    [[N, E]],
+                [T_CROSS]:    [[N, S], [E, W]],
+            };
+            function effectiveLanes(tile) {
+                const base = baseLanesByType[tile.type] || [];
+                const r = tile.rotation & 3;
+                return base.map(function (lane) { return [(lane[0] + r) & 3, (lane[1] + r) & 3]; });
+            }
+            // Walk from an external port into the quad, return the
+            // external port it exits at (or null if it dead-ends).
+            function walkOut(startDr, startDc, startPort) {
+                let dr = startDr, dc = startDc, p = startPort;
+                for (let hops = 0; hops < 16; hops++) {
+                    const tile = grid[r0 + dr][c0 + dc];
+                    const lanes = effectiveLanes(tile);
+                    let other = null;
+                    for (const lane of lanes) {
+                        if (lane[0] === p) { other = lane[1]; break; }
+                        if (lane[1] === p) { other = lane[0]; break; }
+                    }
+                    if (other === null) return null;       // dead-end
+                    const exitKey = dr + ',' + dc + ',' + other;
+                    if (cellToExt[exitKey] !== undefined) {
+                        return cellToExt[exitKey];          // exited the quad
+                    }
+                    // Step to adjacent sub-tile WITHIN the quad
+                    if      (other === N) { dr -= 1; p = S; }
+                    else if (other === E) { dc += 1; p = W; }
+                    else if (other === S) { dr += 1; p = N; }
+                    else if (other === W) { dc -= 1; p = E; }
+                    if (dr < 0 || dr > 1 || dc < 0 || dc > 1) return null;
+                }
+                return null;
+            }
+            const connections = new Set();
+            const seen = new Array(8).fill(false);
+            for (let ext = 0; ext < 8; ext++) {
+                if (seen[ext]) continue;
+                seen[ext] = true;
+                const [dr, dc, p] = extToCell[ext];
+                const dest = walkOut(dr, dc, p);
+                if (dest !== null && dest !== ext) {
+                    seen[dest] = true;
+                    const lo = Math.min(ext, dest);
+                    const hi = Math.max(ext, dest);
+                    connections.add(lo * 8 + hi);
+                }
+            }
+            return connections;
+        }
+        // Stricter than quadAlreadyPortEquivalent: returns true when the
+        // SET of external port pair connections is invariant under the
+        // planned rotation. User-requested behavior: "If the path is
+        // going to enter and exit through the same QUAD ports once
+        // rotated, then it should be skipped — rotating it will only
+        // create a visual difference, not a functional one."
+        function quadConnectionsInvariantUnderRotation(qr, qc) {
+            const turns = (4 - quadScramble[qr][qc]) & 3;
+            if (turns === 0) return true;
+            const shift = (2 * turns) & 7;
+            const conns = quadExternalConnections(qr, qc);
+            for (const key of conns) {
+                const lo = Math.floor(key / 8);
+                const hi = key % 8;
+                const lo2 = (lo + shift) & 7;
+                const hi2 = (hi + shift) & 7;
+                const newLo = Math.min(lo2, hi2);
+                const newHi = Math.max(lo2, hi2);
+                if (!conns.has(newLo * 8 + newHi)) return false;
+            }
+            return true;
+        }
         function quadEligible(qr, qc) {
             if (locked.has((qr*2) + ',' + (qc*2))) return false;
             if (!quadHasPathTile(qr, qc)) return false;
             if (quadAnyTileCorrect(qr, qc)) return false;
             if (quadAlreadyPortEquivalent(qr, qc)) return false;
+            // QUAD-LEVEL port-equivalence: skip if the set of external
+            // port pair connections is unchanged after rotation. Player's
+            // request — if the path is going to enter/exit the same
+            // QUAD ports after rotation, rotating produces only a
+            // visual change. This is broader than the existing
+            // quadAlreadyPortEquivalent (which checks per-position
+            // tile-vs-tile port equivalence at every position) — this
+            // check looks at the EXTERNAL behavior of the quad. A quad
+            // with internal rearrangement that produces the same set of
+            // outer-port-to-outer-port connections is caught here.
+            if (quadConnectionsInvariantUnderRotation(qr, qc)) return false;
             // Twin partner quad must also pass the "no correct tile"
             // check — hinting cascades to it, and locking a partner
             // that contains correctly-placed tiles wastes the hint.
@@ -2109,7 +2273,8 @@ const Maze = (() => {
             // problems, and belong to the fallback tier. Filter them out
             // here so the walk targets only genuine wrong-rotation tiles.
             const t = grid[r][c];
-            return !rotationsHaveSamePorts(t.type, t.rotation, t._solution);
+            const result = !rotationsHaveSamePorts(t.type, t.rotation, t._solution);
+            return result;
         }
         function hintCellOrQuad(r, c) {
             if (quadMode) {
@@ -2219,6 +2384,21 @@ const Maze = (() => {
             for (let c = 0; c < COLS; c++) {
                 if (!tileEligible(r, c)) continue;
                 const t = grid[r][c];
+                // User preference: never hint a port-equivalent tile.
+                // tileShouldSkip (called inside tileEligible) considers
+                // these eligible when their lit lane has a wrong path
+                // index, on the theory that locking them red signals
+                // "the rotation is right; the routing is wrong." But
+                // because they're port-equivalent, the applyHintAt
+                // rotation is a no-op for connectivity — the player
+                // sees the tile spin but their path doesn't change,
+                // which feels like a wasted hint. User chose to drop
+                // these from the picker entirely so every hint
+                // actually rotates something meaningful. Edge case:
+                // in nearly-solved puzzles where every remaining
+                // eligible tile is port-equivalent, hint() will
+                // return null (no useful rotation to apply).
+                if (rotationsHaveSamePorts(t.type, t.rotation, t._solution)) continue;
                 const correct = t.rotation === t._solution;
                 if (t._playerLocked && correct) fallback.push({ r, c });
                 else                            preferred.push({ r, c });

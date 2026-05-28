@@ -1158,6 +1158,15 @@ const Potd = (() => {
         hintsUsed = 0;
         startTimerDisplay();
 
+        // Cinematic_bass at puzzle-ready — mirrors marathon.js's
+        // onPuzzleReady SFX. PotD didn't have this before because its
+        // start flow is structured differently (loads a server snapshot
+        // instead of routing through Game.newPuzzle's onPuzzleReady
+        // callback), but the audible cue is the same intent: signal
+        // that a puzzle is now playable. Sfx.play self-filters on the
+        // player's muted setting — no extra gating needed.
+        if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
+
         // Music kicks in once the puzzle is actually loaded and about to be
         // playable — matches marathon.js's "music starts at game-start"
         // pattern. Music.stop() lives in quitToMenu so PotD's solve→menu

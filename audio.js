@@ -1,9 +1,11 @@
 // Sound effects for Circuitousness.
 //
 // Triggers (wired by marathon.js / game.js):
-//   new puzzle starts      → cinematic_bass
+//   new puzzle starts      → cinematic_bass  (Marathon onPuzzleReady + PotD startPuzzle)
 //   two paths overlap      → glitch  (looped while the overlap persists)
 //   twin twist breaks line → fail | audience_disappointed | audience_gasp
+//   completed path broken  → audience_awww (fires on ANY pathsWon true→false,
+//                            including own-rotation, twin twist, hint, etc.)
 //   join one path of many  → applause
 //   puzzle solved          → applause_long
 //   game over, no rank     → fail_long | audience_disappointed
@@ -38,6 +40,7 @@ const Sfx = (function () {
     const POOLS = {
         applause:                4,
         applause_long:           7,
+        audience_awww:           6,
         audience_cheer:          5,
         audience_cheer_long:     1,
         audience_disappointed:   3,
@@ -52,6 +55,24 @@ const Sfx = (function () {
 
     let volume = 0.6;
     let muted  = false;
+    // Sub-mute that gates the audience-flavored SFX only (anything matching
+    // audience_* or applause | applause_*). True = play normally; false =
+    // play() silently no-ops for those types. Settings module pushes the
+    // effective value (false when sfxMuted is true) so Sfx doesn't need
+    // to re-check the parent mute setting. Default true so a fresh
+    // install hears the full reaction palette.
+    let audienceReactionsEnabled = true;
+    // Test whether a type belongs to the "audience reactions" category.
+    // Anything starting with audience_ (gasp / awww / cheer / etc.) plus
+    // applause and applause_long. cinematic_bass, fail*, glitch,
+    // jump_scare etc. stay independent of this toggle — those are
+    // mechanical cues, not audience reactions.
+    function isAudienceReactionType(type) {
+        if (!type) return false;
+        return type === 'applause'
+            || type.indexOf('audience_') === 0
+            || type.indexOf('applause_') === 0;
+    }
 
     // Per-type throttle: don't replay an effect of the same type within
     // THROTTLE_MS. Players chaining the same trigger rapidly (twisting
@@ -213,7 +234,15 @@ const Sfx = (function () {
         source.onended = function () {
             if (entry.fadeT) { clearTimeout(entry.fadeT); entry.fadeT = null; }
             active.delete(entry);
-            if (entry.loopKey) loops.delete(entry.loopKey);
+            // Only clear the loops slot if WE still own it. A stale entry
+            // that's finishing its fade-out must not evict a newer loop
+            // that re-claimed the same key (e.g. glitch_overlap toggling
+            // off→on faster than FADE_OUT_MS) — otherwise the new loop is
+            // orphaned: audible but untracked, so stopLoop can never find
+            // it and it plays forever.
+            if (entry.loopKey && loops.get(entry.loopKey) === entry) {
+                loops.delete(entry.loopKey);
+            }
         };
         active.add(entry);
         try { source.start(0); } catch (e) {
@@ -246,6 +275,11 @@ const Sfx = (function () {
                 }
                 continue;
             }
+            // Audience-reactions sub-mute filter. When disabled, every
+            // audience_* / applause / applause_long type drops out of the
+            // OR-pool. Mechanical cues (cinematic_bass, fail, glitch,
+            // jump_scare, etc.) are unaffected.
+            if (!audienceReactionsEnabled && isAudienceReactionType(t)) continue;
             if (!skipThrottle) {
                 const last = lastPlayedAt.get(t) || 0;
                 if (now - last < THROTTLE_MS) continue;
@@ -369,6 +403,9 @@ const Sfx = (function () {
         muted = !!b;
         if (muted) stopAllLoops();
     }
+    function setAudienceReactionsEnabled(b) {
+        audienceReactionsEnabled = !!b;
+    }
 
     // Eager preload: kicks off fetches+decodes for every variant at
     // module init so the first play doesn't pay a network round-trip
@@ -408,5 +445,6 @@ const Sfx = (function () {
         gateClick: gateClick,
         setVolume: setVolume,
         setMuted: setMuted,
+        setAudienceReactionsEnabled: setAudienceReactionsEnabled,
     };
 })();
