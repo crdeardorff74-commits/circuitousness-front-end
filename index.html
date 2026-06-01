@@ -299,6 +299,36 @@
             </div>
         </div>
 
+        <!-- PotD watch-ineligibility warning — shown when the player clicks
+             Watch on a leaderboard replay for a slot they haven't played
+             yet. Watching reveals the solution, so continuing forfeits
+             today's leaderboard eligibility for that slot. Replaces confirm(). -->
+        <div class="combo-modal-overlay" id="potdWatchWarnOverlay">
+            <div class="combo-modal potd-confirm-modal">
+                <div class="combo-modal-title" data-i18n="potd.watchWarn.title">Watch this replay?</div>
+                <p data-i18n="potd.watchWarn.body">You haven't played this puzzle yet. Watching a replay reveals the solution, so you'll no longer be eligible for today's leaderboard on this puzzle.</p>
+                <div class="combo-modal-buttons">
+                    <button class="combo-modal-btn cancel" id="potdWatchWarnCancelBtn" type="button" data-i18n="potd.watchWarn.cancel">Cancel</button>
+                    <button class="combo-modal-btn apply" id="potdWatchWarnContinueBtn" type="button" data-i18n="potd.watchWarn.continue">Watch anyway</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PotD watched-replay disclaimer — shown when the player starts a
+             slot they earlier watched a replay of. Eligibility was already
+             forfeited at watch time; this just confirms they still want to
+             play it (ineligibly). Distinct wording from the quit+retry one. -->
+        <div class="combo-modal-overlay" id="potdWatchedReplayOverlay">
+            <div class="combo-modal potd-confirm-modal">
+                <div class="combo-modal-title" data-i18n="potd.watchedReplay.title">Play this puzzle?</div>
+                <p data-i18n="potd.watchedReplay.body">You watched a replay of this puzzle, so playing it now won't be eligible for today's leaderboard.</p>
+                <div class="combo-modal-buttons">
+                    <button class="combo-modal-btn cancel" id="potdWatchedReplayCancelBtn" type="button" data-i18n="potd.watchedReplay.cancel">Cancel</button>
+                    <button class="combo-modal-btn apply" id="potdWatchedReplayContinueBtn" type="button" data-i18n="potd.watchedReplay.continue">Play anyway</button>
+                </div>
+            </div>
+        </div>
+
         <!-- First-play educational tooltips. Floating card in the
              top-right corner — non-blocking (no backdrop), so the player
              can keep solving while the tip is visible. Modeled on
@@ -776,7 +806,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.28';</script>
+    <script>var PAGE_VERSION = '0.30';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

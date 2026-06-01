@@ -210,7 +210,9 @@ const Potd = (() => {
 
     // ── localStorage state per slot per day ──
     //   key = <slug>_potd_<YYYY-MM-DD>_<slot>
-    //   value = 'started' | 'solved'
+    //   value = 'started' | 'solved' | 'watched'
+    //   'watched' = player watched a replay of this slot before ever playing
+    //   it (via guardWatch); still playable, but leaderboard-ineligible.
 
     function stateKey(slot, date) {
         return projectSlug() + '_potd_' + date + '_' + slot;
@@ -373,6 +375,7 @@ const Potd = (() => {
             const s = getSlotState(slot, date);
             btn.classList.toggle('potd-solved',  s === 'solved');
             btn.classList.toggle('potd-started', s === 'started');
+            btn.classList.toggle('potd-watched', s === 'watched');
         });
     }
 
@@ -1092,13 +1095,21 @@ const Potd = (() => {
         sessionToken = startData ? startData.sessionToken : null;
         eligible     = startData ? !!startData.eligible    : true;
 
-        // Disclaimer for ineligible retries — in-page modal (see #potdDisclaimerOverlay).
+        // Disclaimer for ineligible attempts — in-page modal. Two reasons a
+        // slot can be ineligible, with distinct wording:
+        //   - 'watched': player watched a replay of this slot (guardWatch
+        //     burned eligibility) → #potdWatchedReplayOverlay.
+        //   - otherwise: a normal quit+retry of a slot started earlier today
+        //     → #potdDisclaimerOverlay.
+        // `local` was read above, before the 'started' overwrite below.
         if (!eligible) {
             // Hide the loading banner so it doesn't sit underneath the
             // disclaimer card — the disclaimer is the player's full
             // attention here.
             hideBanner();
-            const ok = await showDisclaimerModal();
+            const ok = (local === 'watched')
+                       ? await showWatchedReplayModal()
+                       : await showDisclaimerModal();
             if (!ok) {
                 bailToMenu();
                 return;
@@ -1158,15 +1169,6 @@ const Potd = (() => {
         hintsUsed = 0;
         startTimerDisplay();
 
-        // Cinematic_bass at puzzle-ready — mirrors marathon.js's
-        // onPuzzleReady SFX. PotD didn't have this before because its
-        // start flow is structured differently (loads a server snapshot
-        // instead of routing through Game.newPuzzle's onPuzzleReady
-        // callback), but the audible cue is the same intent: signal
-        // that a puzzle is now playable. Sfx.play self-filters on the
-        // player's muted setting — no extra gating needed.
-        if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
-
         // Music kicks in once the puzzle is actually loaded and about to be
         // playable — matches marathon.js's "music starts at game-start"
         // pattern. Music.stop() lives in quitToMenu so PotD's solve→menu
@@ -1192,6 +1194,23 @@ const Potd = (() => {
             if (stillMenu && Music.stop) Music.stop();
             if (Music.start) Music.start();
         }
+
+        // Cinematic_bass at puzzle-ready — mirrors marathon.js's onPuzzleReady
+        // SFX (signals "puzzle is now playable"). PotD loads a server snapshot
+        // instead of routing through Game.newPuzzle's onPuzzleReady callback,
+        // so the cue is fired here by hand.
+        //
+        // ORDER MATTERS — this MUST run AFTER the Music block above. Music.start()
+        // → playSong() → Sfx.fadeOneShots(), which fades EVERY in-flight one-shot
+        // (intent: clear a lingering menu/celebration SFX before the new song).
+        // cinematic_bass is a one-shot too, so if it played first it'd be clipped
+        // ~200ms in — exactly the "bass cuts off almost instantly" bug. Marathon
+        // dodges this naturally: its Music.start() runs at puzzle-BUILD start,
+        // seconds before onPuzzleReady fires the bass. PotD has no build gap, so
+        // we order the two explicitly. Sfx.play self-filters on the player's
+        // muted setting — no extra gating needed.
+        if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
+
         // Engagement tracking: one start per PotD slot. The slot string
         // (s1..s4, q1..q4) goes into the gameType column so the admin
         // breakdown can distinguish PotD plays of each type.
@@ -1438,6 +1457,48 @@ const Potd = (() => {
 
     function showDisclaimerModal() {
         return showConfirmModal('potdDisclaimerOverlay', 'potdDisclaimerContinueBtn', 'potdDisclaimerCancelBtn');
+    }
+
+    function showWatchWarnModal() {
+        return showConfirmModal('potdWatchWarnOverlay', 'potdWatchWarnContinueBtn', 'potdWatchWarnCancelBtn');
+    }
+
+    // Play-time disclaimer for a slot the player earlier WATCHED a replay of
+    // (state === 'watched'). Eligibility was already forfeited at watch
+    // time; this just confirms they still want to play it (ineligibly).
+    function showWatchedReplayModal() {
+        return showConfirmModal('potdWatchedReplayOverlay', 'potdWatchedReplayContinueBtn', 'potdWatchedReplayCancelBtn');
+    }
+
+    // Leaderboard "Watch" gate for PotD boards. Watching a replay of a slot
+    // the player hasn't played today reveals the solution — a cheating
+    // vector for a still-eligible attempt. So:
+    //   - already played this slot today (started or solved) → allow
+    //     silently; there's nothing left to protect.
+    //   - not yet played → warn that continuing forfeits today's
+    //     eligibility for this slot. On confirm, mark it 'watched' locally
+    //     AND register a server PotdSession (postStart) so the player's
+    //     eventual real /start sees a prior attempt and comes back
+    //     eligible=false — identical enforcement to the quit+retry path,
+    //     so no new server code is needed.
+    // Uses the same date expression as startPuzzle so the burned session
+    // matches the one the real play will create. Returns true if the caller
+    // should proceed with the replay, false if the player cancelled.
+    async function guardWatch(slot) {
+        if (!slot || SLOTS.indexOf(slot) < 0) return true;
+        const date = (puzzles && puzzles.date) || todayUTC();
+        if (getSlotState(slot, date)) return true;   // already played → free
+        const ok = await showWatchWarnModal();
+        if (!ok) return false;
+        // Mark 'watched' locally first (distinct from 'started') so the
+        // menu indicator, the play-time disclaimer, and the don't-warn-twice
+        // check all reflect it even if the network call below fails.
+        setSlotState(slot, date, 'watched');
+        // Burn eligibility server-side. Fire-and-forget: a failure just
+        // leaves the local 'watched' mirror, which still drives the
+        // play-time disclaimer.
+        try { await postStart(date, slot); } catch (e) {}
+        return true;
     }
 
     // Show the post-solve modal.
@@ -1893,6 +1954,7 @@ const Potd = (() => {
         isBuilding:          () => state === STATE.BUILDING,
         isInSolveTransition: () => state === STATE.SOLVED,
         isEligible,
+        guardWatch,
         confirmHintUse,
         noteHintUsed,
         refreshMenuIndicators,
