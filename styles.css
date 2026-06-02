@@ -1009,17 +1009,44 @@ html.is-safari #introTitle .titleMazeO + .titleWord {
     line-height: 1;
     pointer-events: none;
 }
+/* .potd-watched = the player watched a replay of this slot (via the
+   leaderboard Watch button) before ever playing it. Still playable, but no
+   longer leaderboard-eligible — distinct from started. The violet ▶ badge
+   ties it back to the Watch action they took. */
+.menuModeBtn.potd-watched:not(.potd-solved):not(.potd-started) {
+    border-color: rgba(180, 140, 230, 0.7);
+}
+.menuModeBtn.potd-watched:not(.potd-solved):not(.potd-started)::after {
+    content: '▶';
+    position: absolute;
+    top: 0.3rem;
+    right: 0.4rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(150, 100, 210, 0.95);
+    color: #fff;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 0.9rem;
+    line-height: 1;
+    pointer-events: none;
+}
 /* Indicators are PotD-only. In marathon mode the buttons still carry the
    .potd-* classes (so the state is preserved when the player switches
    back), but the ::after badges are hidden. The .potd-solved border tint
    also hides — marathon doesn't have the "spent today" concept. */
 body:not(.mode-potd) .menuModeBtn.potd-solved,
-body:not(.mode-potd) .menuModeBtn.potd-started {
+body:not(.mode-potd) .menuModeBtn.potd-started,
+body:not(.mode-potd) .menuModeBtn.potd-watched {
     border-color: rgba(120, 180, 240, 0.45); /* restore default */
     box-shadow: none;
 }
 body:not(.mode-potd) .menuModeBtn.potd-solved::after,
-body:not(.mode-potd) .menuModeBtn.potd-started:not(.potd-solved)::after {
+body:not(.mode-potd) .menuModeBtn.potd-started:not(.potd-solved)::after,
+body:not(.mode-potd) .menuModeBtn.potd-watched:not(.potd-solved):not(.potd-started)::after {
     display: none;
 }
 /* In Marathon mode the .potd-solved class still rides on the buttons (so
@@ -1141,7 +1168,8 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
     }
     /* PotD slot badges: scale with the thumbnail. */
     .menuModeBtn.potd-solved::after,
-    .menuModeBtn.potd-started:not(.potd-solved)::after {
+    .menuModeBtn.potd-started:not(.potd-solved)::after,
+    .menuModeBtn.potd-watched:not(.potd-solved):not(.potd-started)::after {
         width: 1.25rem;
         height: 1.25rem;
         font-size: 0.9rem;
@@ -2013,6 +2041,19 @@ html.mode-debug #settingsOverlay { display: none !important; }
     transition: color 0.15s ease;
 }
 .share-dismiss:hover { color: rgba(220, 240, 255, 0.95); }
+.share-donate {
+    font-size: clamp(0.8rem, 1.5vw, 0.95rem);
+    color: rgba(230, 240, 255, 0.7);
+    line-height: 1.45;
+    margin-bottom: 1rem;
+}
+.share-donate a {
+    color: #6eb5ff;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+    transition: color 0.15s ease;
+}
+.share-donate a:hover { color: #9fd0ff; }
 
 
 /* ============================================================
@@ -2999,7 +3040,8 @@ body.credits-rolling #potdSolveTransition.visible {
     /* PotD slot badges: shrink the ✓ / ! circles in proportion
        so they don't dominate the now-smaller thumbnail. */
     .menuModeBtn.potd-solved::after,
-    .menuModeBtn.potd-started:not(.potd-solved)::after {
+    .menuModeBtn.potd-started:not(.potd-solved)::after,
+    .menuModeBtn.potd-watched:not(.potd-solved):not(.potd-started)::after {
         width: 0.9rem;
         height: 0.9rem;
         font-size: 0.7rem;

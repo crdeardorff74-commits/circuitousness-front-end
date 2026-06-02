@@ -7,6 +7,10 @@
 // official-intelligence-web/admin/circuitousness/.
 //
 // SUPPRESSION:
+//   - localhost / 127.0.0.1  — local dev loads never reach production
+//     stats, regardless of any ?dev / ?debug flag. ALL Tracking.*
+//     methods short-circuit before any POST. (Belt-and-braces: the
+//     back-end also drops visits whose origin/referrer is localhost.)
 //   - DevMode.isActive() (?dev=true)  — the dev's own runs don't
 //     pollute aggregate stats. ALL Tracking.* methods short-circuit
 //     before any POST when dev mode is on.
@@ -24,7 +28,18 @@ const Tracking = (function () {
     let visitId = 0;
     let inFlightVisit = false;
 
+    // Local dev loads (localhost / 127.0.0.1) must NEVER reach the
+    // production stats — not the visit row, not referrers, nothing. This
+    // mirrors sw.js's own localhost cache-bypass check so dev vs prod is
+    // one consistent signal. The back-end repeats this guard (origin /
+    // referrer) so a stale cached client predating this check is still
+    // dropped server-side.
+    function isLocalHost() {
+        if (typeof location === 'undefined' || !location.hostname) return false;
+        return location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    }
     function isSuppressed() {
+        if (isLocalHost()) return true;
         return (typeof DevMode !== 'undefined') && DevMode.isActive && DevMode.isActive();
     }
     function apiBase() {
@@ -162,6 +177,14 @@ const Tracking = (function () {
             });
         });
     }
+    // ASPCA donation-link click in the share popup. No payload — there's a
+    // single donation link, so the server just flips a sticky boolean
+    // (mirrors the shared_game flag, not the credits-CSV accumulator).
+    function recordDonateClick() {
+        withVisit(function (id) {
+            silentFetch(apiBase() + '/visit/' + id + '/donate-clicked', { method: 'PATCH' });
+        });
+    }
 
     return {
         recordVisit:        recordVisit,
@@ -169,6 +192,7 @@ const Tracking = (function () {
         recordFinish:       recordFinish,
         recordShare:        recordShare,
         recordCreditsClick: recordCreditsClick,
+        recordDonateClick:  recordDonateClick,
         // Exposed for diagnostics — admin/dev can paste
         // `Tracking.visitId()` in the console to see what they were
         // tagged with this session.

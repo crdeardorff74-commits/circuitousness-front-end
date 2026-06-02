@@ -158,12 +158,24 @@ const Share = (function () {
             hidePopup();
         });
 
-        // Credits-link click tracking. credits.txt's anchors get a
-        // [data-credit-link="<short-id>"] attribute in index.html; this
-        // delegate handler watches for any click whose target ancestor
-        // has that attribute and reports the click. Skipping links in
-        // dev mode is handled at the Tracking layer.
+        // Outbound-link click tracking (capture phase so it fires even if a
+        // link's own handler were to stop propagation). Two link families:
+        //   • ASPCA donation link in the share popup — matched STRUCTURALLY
+        //     (any <a> inside .share-donate), not by a data-attr, because
+        //     that <a> is injected via i18n innerHTML and a marker attribute
+        //     would have to be duplicated across all 15 translation strings
+        //     (and would be wiped + re-added on every language switch).
+        //   • Credits-scroll links — credits.txt's anchors carry a
+        //     [data-credit-link="<short-id>"] attribute set in index.html.
+        // Dev-mode / localhost suppression is handled at the Tracking layer.
         document.addEventListener('click', function (ev) {
+            const donateLink = ev.target && ev.target.closest && ev.target.closest('.share-donate a');
+            if (donateLink) {
+                if (typeof Tracking !== 'undefined' && Tracking.recordDonateClick) {
+                    Tracking.recordDonateClick();
+                }
+                return;
+            }
             let el = ev.target;
             while (el && el !== document.body) {
                 if (el.dataset && el.dataset.creditLink) {
