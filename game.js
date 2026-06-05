@@ -379,6 +379,16 @@
                 quadScramble: s.quadScramble ? s.quadScramble.map((row) => row.slice()) : null
             };
         }
+        // True when `id` is a menu-only-pool song. A game recording must
+        // never anchor on (or capture) menu music: on replay it would show a
+        // bogus menu title and fall silent when that one song ends, since
+        // scripted playback suppresses auto-advance. Delegates to Music's
+        // pool membership (exposed as Music.isMenuSong); defaults to false
+        // when Music is unavailable so we record the song rather than drop it.
+        function isMenuMusic(id) {
+            return !!(id && typeof Music !== 'undefined'
+                      && Music.isMenuSong && Music.isMenuSong(id));
+        }
         function startRecording() {
             recording = {
                 startTime: 0,                      // set lazily on first move
@@ -411,7 +421,11 @@
             const cur = (typeof Music !== 'undefined' && Music.getCurrentSong)
                         ? Music.getCurrentSong()
                         : null;
-            if (cur && cur.id) recording.musicEvents.push({ t: 0, songId: cur.id });
+            // Skip a menu-pool song: a game recording must never anchor on
+            // menu music (see recordSongChange).
+            if (cur && cur.id && !isMenuMusic(cur.id)) {
+                recording.musicEvents.push({ t: 0, songId: cur.id });
+            }
         }
         function recordMove(move) {
             if (!recording || isReplaying) return;
@@ -435,6 +449,14 @@
         function recordSongChange(song /*, paused */) {
             if (!recording || isReplaying) return;
             if (!song || !song.id) return;
+            // Never record menu music into a game recording. If the
+            // menu→game music handoff hasn't completed yet (iOS timing, or
+            // an older cached client), the menu track can momentarily be
+            // the current song; recording it makes replays show a bogus
+            // menu title and fall silent when it ends. Skipping leaves
+            // musicEvents empty until a real gameplay song starts — the
+            // replay side treats that as "just keep normal music playing".
+            if (isMenuMusic(song.id)) return;
             if (recording.startTime === 0) {
                 // Pre-first-move: track the initial song slot.
                 if (recording.musicEvents.length === 0) {
@@ -1308,6 +1330,35 @@
             }, 3500);
         }
 
+        // First-ever educational tooltip for a subtle trap: locking a
+        // STRAIGHT tile that has an ELBOW twin. A straight tile reads as
+        // "correct" in two rotations 180° apart (it's 2-fold symmetric),
+        // so the player can't tell which of the two it's actually in — but
+        // its lock-stepped elbow twin is NOT symmetric, so committing the
+        // straight in the wrong-but-identical-looking orientation freezes
+        // the elbow 180° off. Singular puzzles only (quad twins pair whole
+        // quads, not per-tile straight/elbow shapes). Lives here in the
+        // live long-press handler so it never fires from recorded-move
+        // replay. Tooltip.showOnce de-dupes + persists the seen flag.
+        function maybeShowTwinStraightLockTip(r, c) {
+            if (typeof Tooltip === 'undefined' || !Tooltip.showOnce) return;
+            if (Tooltip.isSeen && Tooltip.isSeen('twinStraightLock')) return;
+            if (Maze.quadMode) return;                       // Singular puzzles only
+            const tile = Maze.grid[r] && Maze.grid[r][c];
+            if (!tile || !tile._playerLocked) return;        // fired a lock, not an unlock / blocked toggle
+            if (tile.type !== Maze.T_STRAIGHT) return;       // the locked tile must be a straight
+            if (!tile._twin) return;                         // ...with a twin...
+            const parts = tile._twin.partner.split(',');
+            const tr = parseInt(parts[0], 10);
+            const tc = parseInt(parts[1], 10);
+            const twin = Maze.grid[tr] && Maze.grid[tr][tc];
+            if (!twin || twin.type !== Maze.T_ELBOW) return; // ...and that twin must be an elbow
+            Tooltip.showOnce('twinStraightLock',
+                (typeof I18n !== 'undefined' && I18n.t)
+                    ? I18n.t('tooltip.twinStraightLock')
+                    : 'Be careful when locking straight tiles that have an elbow twin! You could be locking the twin in the wrong orientation.');
+        }
+
         function clearPress() {
             if (pressTimer !== null) { clearTimeout(pressTimer); pressTimer = null; }
         }
@@ -1330,6 +1381,7 @@
                 recordMove({ type: 'lock', r: cell.row, c: cell.col });
                 longPressFired = true;
                 maybeShowLockToast(cell.row, cell.col);
+                maybeShowTwinStraightLockTip(cell.row, cell.col);
                 refresh();
             }, LONG_PRESS_MS);
         }
