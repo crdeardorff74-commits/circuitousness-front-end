@@ -352,19 +352,53 @@ const Intro = (() => {
                 || window.matchMedia('(display-mode: fullscreen)').matches;
             const isFullscreen = !!getFullscreenElement();
             const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-            // Skip the hint entirely when there's nothing to recommend:
-            // already in standalone, already in fullscreen, or not a
-            // touch device (desktop users handle fullscreen via F11).
-            if (isStandalone || isFullscreen || !isTouch) return;
+            // Running inside the installed app (incl. a Play Store TWA, which
+            // launches in standalone/fullscreen display mode) → nothing to
+            // suggest. Also skip when already fullscreen, or on desktop
+            // (those users handle fullscreen via F11).
+            const isTWA = document.referrer.startsWith('android-app://');
+            if (isStandalone || isFullscreen || isTWA || !isTouch) return;
             const ua = navigator.userAgent;
             const isIOS = /iphone|ipad|ipod/i.test(ua)
                 || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 2);
             const isAndroid = /android/i.test(ua);
-            let key = 'intro.fullscreenHint.generic';
-            if (isIOS)          key = 'intro.fullscreenHint.ios';
-            else if (isAndroid) key = 'intro.fullscreenHint.android';
-            hint.innerHTML = (typeof I18n !== 'undefined' && I18n.t) ? I18n.t(key) : '';
-            hint.style.display = 'block';
+            const t = (k) => (typeof I18n !== 'undefined' && I18n.t) ? I18n.t(k) : '';
+            // Chrome/Edge on Android fire beforeinstallprompt (captured early
+            // in index.html) → offer a real one-tap Install button. iOS has no
+            // install API so it always gets the manual "Add to Home Screen"
+            // hint; other browsers fall back to the manual hint too.
+            function paintHint() {
+                const dp = window.__deferredInstallPrompt;
+                if (dp && !isIOS) {
+                    hint.innerHTML = '';
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.id = 'installAppBtn';
+                    btn.textContent = t('intro.installApp');
+                    btn.style.cssText = 'cursor:pointer;font:inherit;font-weight:bold;'
+                        + 'color:#0a0a2e;background:#FFD700;border:none;'
+                        + 'border-radius:5px;padding:6px 14px;';
+                    btn.addEventListener('click', async () => {
+                        const p = window.__deferredInstallPrompt;
+                        if (!p) return;
+                        btn.disabled = true;
+                        p.prompt();
+                        try { await p.userChoice; } catch (_) {}
+                        window.__deferredInstallPrompt = null;
+                        hint.style.display = 'none';
+                    });
+                    hint.appendChild(btn);
+                } else {
+                    hint.innerHTML = isIOS ? t('intro.fullscreenHint.ios')
+                        : isAndroid ? t('intro.fullscreenHint.android')
+                        : t('intro.fullscreenHint.generic');
+                }
+                hint.style.display = 'block';
+            }
+            paintHint();
+            // Upgrade text → Install button if the prompt arrives after paint.
+            window.addEventListener('oi-installable', paintHint);
+            window.addEventListener('oi-installed', () => { hint.style.display = 'none'; });
             // Phones replace the in-page Music+Fullscreen toggles with
             // the install hint above (and the Settings popup for music).
             // Tablets keep the toggles — they can usually take fullscreen

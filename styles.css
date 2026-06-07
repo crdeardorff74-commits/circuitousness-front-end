@@ -2680,8 +2680,8 @@ body.credits-rolling #potdSolveTransition.visible {
     pointer-events: auto;
 }
 .menu-dropdown-label {
-    font-size: max(1.2vh, 10px);
-    color: #888;
+    font-size: max(1.45vh, 12px);
+    color: #c0c4d0;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin: 0 0 max(0.4vh, 3px) 0;
@@ -2726,6 +2726,26 @@ body.credits-rolling #potdSolveTransition.visible {
 }
 .menu-dropdown-btn:active {
     transform: translateY(0);
+}
+/* Gentle breathing glow on the mode chip so players notice it's a
+   changeable selector (Marathon exists alongside Puzzle of the Day),
+   not a static header. Animates ONLY box-shadow so it coexists with the
+   hover rule's border-color/transform. Scoped to #modeBtn — the only
+   chip that should call attention to itself. */
+#modeBtn {
+    animation: modeChipPulse 2.6s ease-in-out infinite;
+}
+@keyframes modeChipPulse {
+    0%, 100% { box-shadow: 0 0 max(0.5vh, 4px)  rgba(110, 181, 255, 0.12); }
+    50%      { box-shadow: 0 0 max(1.6vh, 13px) rgba(110, 181, 255, 0.40); }
+}
+/* Respect reduced-motion: drop the pulse but keep a steady glow so the
+   discoverability cue survives without animation. */
+@media (prefers-reduced-motion: reduce) {
+    #modeBtn {
+        animation: none;
+        box-shadow: 0 0 max(1vh, 8px) rgba(110, 181, 255, 0.28);
+    }
 }
 
 /* Modal overlay + container */
@@ -3001,7 +3021,7 @@ body.credits-rolling #potdSolveTransition.visible {
         max-width: 16rem;
     }
     .menu-dropdown-label {
-        font-size: clamp(0.55rem, 1.6vh, 0.7rem);
+        font-size: clamp(0.7rem, 1.9vh, 0.85rem);
         margin: 0 0 0.1rem 0;
         /* text-align left to match the desktop dropdown — left-aligned
            tag-style label over the wider button reads as a labeled control

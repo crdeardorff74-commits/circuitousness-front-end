@@ -1459,6 +1459,107 @@ const Maze = (() => {
         return paths;
     }
 
+    // Build a map of, for EACH quad, the set of COLORED external-port
+    // connections that solution paths use to cross it.
+    //   key   = "qr,qc"
+    //   value = Set of encoded (pathIdx*64 + lo*8 + hi), lo<hi being two
+    //           of the quad's 8 external port indices (CW from TL.N — see
+    //           the external-port doc on quadConnectionsInvariantUnderRotation).
+    //
+    // This is the GROUND TRUTH for "how do the solution paths thread this
+    // quad." Decoy filler pipes and unused cross-lanes never appear here
+    // because we only follow the solved entry→exit chains — fixing the
+    // long-standing wasted-hint bug where a quad rotated 90°/180° but the
+    // lit path's entry/exit ports were unchanged (the rotation only moved
+    // a non-path decoy pipe). Path color (pathIdx) is tracked so a rotation
+    // that SWAPS two differently-colored paths through the same ports is
+    // NOT treated as invariant — that still advances the solution and must
+    // stay hintable.
+    //
+    // Walks the SOLVED grid: in quad mode the live grid is scrambled, so we
+    // apply inverse quad rotations first (each sub-tile back to its solved
+    // position + rotation), walk, then restore — the same dance solutionPaths
+    // uses. quadScramble is saved/restored separately (restoreState doesn't
+    // round-trip it).
+    function quadSolutionConnections() {
+        // (dr,dc,dir) of a sub-tile face that points OUT of its quad → ext index.
+        const EXT_INDEX = {};
+        EXT_INDEX['0,0,' + N] = 0; EXT_INDEX['0,1,' + N] = 1;
+        EXT_INDEX['0,1,' + E] = 2; EXT_INDEX['1,1,' + E] = 3;
+        EXT_INDEX['1,1,' + S] = 4; EXT_INDEX['1,0,' + S] = 5;
+        EXT_INDEX['1,0,' + W] = 6; EXT_INDEX['0,0,' + W] = 7;
+
+        const map = new Map();
+        function record(qr, qc, pi, a, b) {
+            const key = qr + ',' + qc;
+            let set = map.get(key);
+            if (!set) { set = new Set(); map.set(key, set); }
+            const lo = Math.min(a, b), hi = Math.max(a, b);
+            set.add(pi * 64 + lo * 8 + hi);
+        }
+
+        const dance = quadMode && quadScramble;
+        let snap = null, savedQuadScramble = null;
+        if (dance) {
+            snap = snapshotState();
+            savedQuadScramble = quadScramble.map((row) => row.slice());
+            for (let qr = 0; qr < quadScramble.length; qr++) {
+                for (let qc = 0; qc < quadScramble[qr].length; qc++) {
+                    const turns = quadScramble[qr][qc];
+                    for (let i = 0; i < turns; i++) rotateQuad(qr * 2, qc * 2, true);
+                    quadScramble[qr][qc] = 0;
+                }
+            }
+        }
+        try {
+            const pairs = [[entry, exit], [entry2, exit2], [entry3, exit3], [entry4, exit4]];
+            const maxSteps = ROWS * COLS * 4;
+            let pi = -1;
+            for (const [eStart, eEnd] of pairs) {
+                if (!eStart || !eEnd) continue;
+                pi++;
+                let r = eStart.row, c = eStart.col;
+                let inPort = eStart.port;
+                // Open "run" = the quad we're currently traversing and the
+                // external port we entered it through. Closed (recorded) the
+                // moment the path leaves the quad through another external port.
+                let runQuad = null, runEntryExt = -1;
+                for (let step = 0; step < maxSteps; step++) {
+                    if (!inBounds(r, c)) break;
+                    const tile = grid[r][c];
+                    if (!tile || tile._solution === undefined) break;
+                    let outPort = -1;
+                    for (const pair of BASE_CONNECTIONS[tile.type]) {
+                        const ra = rot(pair[0], tile._solution);
+                        const rb = rot(pair[1], tile._solution);
+                        if (ra === inPort) { outPort = rb; break; }
+                        if (rb === inPort) { outPort = ra; break; }
+                    }
+                    if (outPort < 0) break;
+                    const qr = r >> 1, qc = c >> 1, dr = r & 1, dc = c & 1;
+                    const inExt  = EXT_INDEX[dr + ',' + dc + ',' + inPort];
+                    const outExt = EXT_INDEX[dr + ',' + dc + ',' + outPort];
+                    // Entered the quad from outside (or the grid edge at the
+                    // path's start): start a run at this external port.
+                    if (inExt !== undefined) { runQuad = qr + ',' + qc; runEntryExt = inExt; }
+                    // Leaving the quad through an external port: close the run.
+                    if (outExt !== undefined && runQuad === (qr + ',' + qc) && runEntryExt >= 0) {
+                        record(qr, qc, pi, runEntryExt, outExt);
+                        runQuad = null; runEntryExt = -1;
+                    }
+                    const nr = r + DELTA[outPort].dr;
+                    const nc = c + DELTA[outPort].dc;
+                    if (!inBounds(nr, nc)) break;
+                    r = nr; c = nc;
+                    inPort = (outPort + 2) & 3;
+                }
+            }
+        } finally {
+            if (dance) { restoreState(snap); quadScramble = savedQuadScramble; }
+        }
+        return map;
+    }
+
     // Highlights = union of (forward-walk-from-entry) and (backward-walk-from-exit),
     // tagged with `path` (0 or 1) so the renderer can color each path independently.
     // Two-path mode: each path can turn gold (won) on its own. `won` is the AND;
@@ -2025,6 +2126,11 @@ const Maze = (() => {
         // ── Helpers shared by both the path-walk strategy and the
         //    random-pick fallback below. ──
 
+        // Colored solution-path connections per quad (decoys excluded).
+        // Computed once here; quadConnectionsInvariantUnderRotation reads it
+        // to decide whether rotating a quad would actually move a path.
+        const quadConnMap = (quadMode && quadScramble) ? quadSolutionConnections() : null;
+
         function quadHasPathTile(qr, qc) {
             for (let dr = 0; dr < 2; dr++) {
                 for (let dc = 0; dc < 2; dc++) {
@@ -2086,123 +2192,46 @@ const Maze = (() => {
             }
             return true;
         }
-        // QUAD-LEVEL port equivalence check: walks the internal lane
-        // structure to find which pairs of the quad's 8 external ports
-        // (perimeter positions) are connected, then checks whether the
-        // planned rotation preserves that set of pairs.
+        // QUAD-LEVEL port equivalence check (user's exact spec): "If the
+        // path is going to enter and exit through the same QUAD ports once
+        // rotated, then it should be skipped — rotating it will only create
+        // a visual difference, not a functional one."
+        //
+        // Returns true when rotating this quad to its solution does NOT
+        // change how any solution path threads it — so the hint would only
+        // spin decoy pipes and feels wasted. Driven by quadConnMap (the
+        // colored solution-path connections from quadSolutionConnections),
+        // which excludes filler/decoy pipes entirely.
         //
         // External port indexing — CW from TL.N (port 0):
-        //   0: TL.N   (top edge, left half)
-        //   1: TR.N   (top edge, right half)
-        //   2: TR.E   (right edge, top half)
-        //   3: BR.E   (right edge, bottom half)
-        //   4: BR.S   (bottom edge, right half)
-        //   5: BL.S   (bottom edge, left half)
-        //   6: BL.W   (left edge, bottom half)
-        //   7: TL.W   (left edge, top half)
-        //
-        // When the quad rotates 90° CW, all sub-tiles + their lanes rotate
-        // rigidly as a unit. External ports shift by 2 positions (since
-        // 8 ports / 4 quarter-turns = 2 ports per quarter-turn). So if
-        // (a, b) was a connection in the original quad, the corresponding
-        // connection in the rotated quad is at ((a + 2*turns) % 8,
-        // (b + 2*turns) % 8). If the SET of all connection pairs is
-        // invariant under this shift, the rotation produces an identical
-        // external-port behavior — functionally wasted.
-        //
-        // Example: a quad of all-STRAIGHT tiles oriented E-W. External
-        // connections: TL.W ↔ TR.E (ports 7 ↔ 2) and BL.W ↔ BR.E (ports
-        // 6 ↔ 3). Under 180° rotation (shift +4): {(2,7), (3,6)} maps to
-        // {(6,3), (7,2)} = {(3,6), (2,7)} — same set. Quad correctly
-        // identified as port-equivalent and skipped.
-        function quadExternalConnections(qr, qc) {
-            const r0 = qr * 2, c0 = qc * 2;
-            // extToCell[i] = [dr, dc, sub-tile-port]
-            const extToCell = [
-                [0, 0, N], [0, 1, N],   // 0, 1: top
-                [0, 1, E], [1, 1, E],   // 2, 3: right
-                [1, 1, S], [1, 0, S],   // 4, 5: bottom
-                [1, 0, W], [0, 0, W],   // 6, 7: left
-            ];
-            const cellToExt = {};
-            for (let i = 0; i < 8; i++) {
-                const [dr, dc, p] = extToCell[i];
-                cellToExt[dr + ',' + dc + ',' + p] = i;
-            }
-            // Base lane sets for each tile type at rotation 0. Rotated
-            // versions computed on demand below by adding rotation to
-            // each port modulo 4.
-            const baseLanesByType = {
-                [T_STRAIGHT]: [[N, S]],
-                [T_ELBOW]:    [[N, E]],
-                [T_CROSS]:    [[N, S], [E, W]],
-            };
-            function effectiveLanes(tile) {
-                const base = baseLanesByType[tile.type] || [];
-                const r = tile.rotation & 3;
-                return base.map(function (lane) { return [(lane[0] + r) & 3, (lane[1] + r) & 3]; });
-            }
-            // Walk from an external port into the quad, return the
-            // external port it exits at (or null if it dead-ends).
-            function walkOut(startDr, startDc, startPort) {
-                let dr = startDr, dc = startDc, p = startPort;
-                for (let hops = 0; hops < 16; hops++) {
-                    const tile = grid[r0 + dr][c0 + dc];
-                    const lanes = effectiveLanes(tile);
-                    let other = null;
-                    for (const lane of lanes) {
-                        if (lane[0] === p) { other = lane[1]; break; }
-                        if (lane[1] === p) { other = lane[0]; break; }
-                    }
-                    if (other === null) return null;       // dead-end
-                    const exitKey = dr + ',' + dc + ',' + other;
-                    if (cellToExt[exitKey] !== undefined) {
-                        return cellToExt[exitKey];          // exited the quad
-                    }
-                    // Step to adjacent sub-tile WITHIN the quad
-                    if      (other === N) { dr -= 1; p = S; }
-                    else if (other === E) { dc += 1; p = W; }
-                    else if (other === S) { dr += 1; p = N; }
-                    else if (other === W) { dc -= 1; p = E; }
-                    if (dr < 0 || dr > 1 || dc < 0 || dc > 1) return null;
-                }
-                return null;
-            }
-            const connections = new Set();
-            const seen = new Array(8).fill(false);
-            for (let ext = 0; ext < 8; ext++) {
-                if (seen[ext]) continue;
-                seen[ext] = true;
-                const [dr, dc, p] = extToCell[ext];
-                const dest = walkOut(dr, dc, p);
-                if (dest !== null && dest !== ext) {
-                    seen[dest] = true;
-                    const lo = Math.min(ext, dest);
-                    const hi = Math.max(ext, dest);
-                    connections.add(lo * 8 + hi);
-                }
-            }
-            return connections;
-        }
-        // Stricter than quadAlreadyPortEquivalent: returns true when the
-        // SET of external port pair connections is invariant under the
-        // planned rotation. User-requested behavior: "If the path is
-        // going to enter and exit through the same QUAD ports once
-        // rotated, then it should be skipped — rotating it will only
-        // create a visual difference, not a functional one."
+        //   0: TL.N  1: TR.N  2: TR.E  3: BR.E  4: BR.S  5: BL.S  6: BL.W  7: TL.W
+        // A 90° CW quad rotation shifts every external port by +2 (8 ports /
+        // 4 quarter-turns). So connection (a,b) becomes (a+2*turns, b+2*turns)
+        // mod 8. If the SET of colored connections is invariant under that
+        // shift, the path entry/exit ports are unchanged → wasted rotation.
+        // (Invariance under +2*turns ⟺ under +2*quadScramble, since the two
+        // shifts are inverses on the 8-port cycle.)
         function quadConnectionsInvariantUnderRotation(qr, qc) {
             const turns = (4 - quadScramble[qr][qc]) & 3;
             if (turns === 0) return true;
             const shift = (2 * turns) & 7;
-            const conns = quadExternalConnections(qr, qc);
-            for (const key of conns) {
-                const lo = Math.floor(key / 8);
-                const hi = key % 8;
+            const conns = quadConnMap && quadConnMap.get(qr + ',' + qc);
+            // No solution path crosses this quad (it's pure decoy) → rotating
+            // it can never advance the solution → never worth a hint.
+            if (!conns || conns.size === 0) return true;
+            for (const code of conns) {
+                const pi  = Math.floor(code / 64);
+                const rest = code % 64;
+                const lo = Math.floor(rest / 8);
+                const hi = rest % 8;
                 const lo2 = (lo + shift) & 7;
                 const hi2 = (hi + shift) & 7;
-                const newLo = Math.min(lo2, hi2);
-                const newHi = Math.max(lo2, hi2);
-                if (!conns.has(newLo * 8 + newHi)) return false;
+                const nLo = Math.min(lo2, hi2);
+                const nHi = Math.max(lo2, hi2);
+                // Same pathIdx required: a shift that maps one color's
+                // connection onto a DIFFERENT color's is a visible swap,
+                // not an invariance — keep it hintable.
+                if (!conns.has(pi * 64 + nLo * 8 + nHi)) return false;
             }
             return true;
         }
@@ -2211,16 +2240,15 @@ const Maze = (() => {
             if (!quadHasPathTile(qr, qc)) return false;
             if (quadAnyTileCorrect(qr, qc)) return false;
             if (quadAlreadyPortEquivalent(qr, qc)) return false;
-            // QUAD-LEVEL port-equivalence: skip if the set of external
-            // port pair connections is unchanged after rotation. Player's
-            // request — if the path is going to enter/exit the same
-            // QUAD ports after rotation, rotating produces only a
-            // visual change. This is broader than the existing
-            // quadAlreadyPortEquivalent (which checks per-position
-            // tile-vs-tile port equivalence at every position) — this
-            // check looks at the EXTERNAL behavior of the quad. A quad
-            // with internal rearrangement that produces the same set of
-            // outer-port-to-outer-port connections is caught here.
+            // QUAD-LEVEL port-equivalence: skip if rotating wouldn't change
+            // how any SOLUTION PATH enters/exits this quad's outer ports.
+            // Player's request — if the path threads the same quad ports
+            // after rotation, the spin is only visual. Unlike
+            // quadAlreadyPortEquivalent (per-position tile equivalence, which
+            // also weighs decoy fillers), this uses the colored solution-path
+            // connections only, so a quad whose REAL path is already port-
+            // correct but whose decoy filler pipes aren't is caught here —
+            // the case that kept slipping through and wasting hints.
             if (quadConnectionsInvariantUnderRotation(qr, qc)) return false;
             // Twin partner quad must also pass the "no correct tile"
             // check — hinting cascades to it, and locking a partner

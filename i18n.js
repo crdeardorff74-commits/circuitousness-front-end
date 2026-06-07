@@ -110,6 +110,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 For fullscreen: tap <strong>Share</strong> ⬆️ then <strong>"Add to Home Screen"</strong>',
             'intro.fullscreenHint.android': '📱 For fullscreen: tap <strong>⋮ Menu</strong> then <strong>"Add to Home Screen"</strong>',
             'intro.fullscreenHint.generic': '📱 Add to your Home Screen for a fullscreen experience!',
+            'intro.installApp': '📲 Install App',
             'rotate.message':          'Rotate your device to landscape mode',
             'rotate.subtext':          'for the best experience',
             'marathon.namePlaceholder': 'Your name',
@@ -220,6 +221,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 Pantalla completa: toca <strong>Compartir</strong> ⬆️ y luego <strong>"Añadir a Inicio"</strong>',
             'intro.fullscreenHint.android': '📱 Pantalla completa: toca <strong>⋮ Menú</strong> y luego <strong>"Añadir a Inicio"</strong>',
             'intro.fullscreenHint.generic': '📱 ¡Añádelo a tu pantalla de inicio para pantalla completa!',
+            'intro.installApp': '📲 Instalar app',
             'rotate.message':          'Gira tu dispositivo a modo horizontal',
             'rotate.subtext':          'para la mejor experiencia',
             // Order MUST match warnings.txt exactly — intro.js picks
@@ -450,6 +452,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 Plein écran : appuyez sur <strong>Partager</strong> ⬆️ puis <strong>« Sur l\'écran d\'accueil »</strong>',
             'intro.fullscreenHint.android': '📱 Plein écran : appuyez sur <strong>⋮ Menu</strong> puis <strong>« Ajouter à l\'écran d\'accueil »</strong>',
             'intro.fullscreenHint.generic': '📱 Ajoutez à votre écran d\'accueil pour le plein écran !',
+            'intro.installApp': '📲 Installer',
             'rotate.message':          'Tournez votre appareil en mode paysage',
             'rotate.subtext':          'pour la meilleure expérience',
             // Order MUST match warnings.txt exactly. Each entry fits
@@ -680,6 +683,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 Vollbild: Tippe auf <strong>Teilen</strong> ⬆️ dann <strong>„Zum Home-Bildschirm"</strong>',
             'intro.fullscreenHint.android': '📱 Vollbild: Tippe auf <strong>⋮ Menü</strong> dann <strong>„Zum Startbildschirm hinzufügen"</strong>',
             'intro.fullscreenHint.generic': '📱 Zum Startbildschirm hinzufügen für Vollbild!',
+            'intro.installApp': '📲 App installieren',
             'rotate.message':          'Gerät ins Querformat drehen',
             'rotate.subtext':          'für das beste Erlebnis',
             // Order MUST match warnings.txt. Each entry fits the
@@ -909,6 +913,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 Tela cheia: toque em <strong>Compartilhar</strong> ⬆️ e <strong>"Adicionar à Tela Inicial"</strong>',
             'intro.fullscreenHint.android': '📱 Tela cheia: toque em <strong>⋮ Menu</strong> e <strong>"Adicionar à Tela Inicial"</strong>',
             'intro.fullscreenHint.generic': '📱 Adicione à Tela Inicial para tela cheia!',
+            'intro.installApp': '📲 Instalar app',
             'rotate.message':          'Gire o dispositivo para o modo paisagem',
             'rotate.subtext':          'para a melhor experiência',
             // Order MUST match warnings.txt. Each entry fits the
@@ -1138,6 +1143,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 フルスクリーン：<strong>共有</strong> ⬆️ → <strong>「ホーム画面に追加」</strong>',
             'intro.fullscreenHint.android': '📱 フルスクリーン：<strong>⋮ メニュー</strong> → <strong>「ホーム画面に追加」</strong>',
             'intro.fullscreenHint.generic': '📱 ホーム画面に追加してフルスクリーンで遊ぼう！',
+            'intro.installApp': '📲 アプリをインストール',
             'rotate.message':          '横向きにしてください',
             'rotate.subtext':          '最高の体験のために',
             // Order MUST match warnings.txt. Fits "{activity}中に" —
@@ -1366,6 +1372,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 전체 화면: <strong>공유</strong> ⬆️ → <strong>"홈 화면에 추가"</strong>',
             'intro.fullscreenHint.android': '📱 전체 화면: <strong>⋮ 메뉴</strong> → <strong>"홈 화면에 추가"</strong>',
             'intro.fullscreenHint.generic': '📱 홈 화면에 추가하여 전체 화면으로 즐기세요!',
+            'intro.installApp': '📲 앱 설치',
             'rotate.message':          '기기를 가로 모드로 회전하세요',
             'rotate.subtext':          '최상의 경험을 위해',
             // Order MUST match warnings.txt. Fits "{activity} 중에는" —
@@ -1594,6 +1601,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 全屏：点击<strong>分享</strong> ⬆️ 然后<strong>"添加到主屏幕"</strong>',
             'intro.fullscreenHint.android': '📱 全屏：点击<strong>⋮ 菜单</strong>然后<strong>"添加到主屏幕"</strong>',
             'intro.fullscreenHint.generic': '📱 添加到主屏幕以获得全屏体验！',
+            'intro.installApp': '📲 安装应用',
             'rotate.message':          '请将设备旋转至横屏',
             'rotate.subtext':          '以获得最佳体验',
             // Order MUST match warnings.txt. Fits "在{activity}时" —
@@ -1822,6 +1830,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 Полный экран: нажмите <strong>Поделиться</strong> ⬆️ → <strong>«На экран Домой»</strong>',
             'intro.fullscreenHint.android': '📱 Полный экран: нажмите <strong>⋮ Меню</strong> → <strong>«Добавить на главный экран»</strong>',
             'intro.fullscreenHint.generic': '📱 Добавьте на главный экран для полноэкранного режима!',
+            'intro.installApp': '📲 Установить',
             'rotate.message':          'Поверните устройство горизонтально',
             'rotate.subtext':          'для наилучшего опыта',
             // Order MUST match warnings.txt. Fits "пока {activity}" —
@@ -2051,6 +2060,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 Schermo intero: tocca <strong>Condividi</strong> ⬆️ poi <strong>"Aggiungi a Home"</strong>',
             'intro.fullscreenHint.android': '📱 Schermo intero: tocca <strong>⋮ Menu</strong> poi <strong>"Aggiungi a Home"</strong>',
             'intro.fullscreenHint.generic': '📱 Aggiungi alla Home per lo schermo intero!',
+            'intro.installApp': '📲 Installa app',
             'rotate.message':          'Ruota il dispositivo in orizzontale',
             'rotate.subtext':          'per la migliore esperienza',
             // Order MUST match warnings.txt. Fits "mentre {activity}" —
@@ -2279,6 +2289,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 Volledig scherm: tik op <strong>Delen</strong> ⬆️ dan <strong>"Zet op beginscherm"</strong>',
             'intro.fullscreenHint.android': '📱 Volledig scherm: tik op <strong>⋮ Menu</strong> dan <strong>"Toevoegen aan startscherm"</strong>',
             'intro.fullscreenHint.generic': '📱 Voeg toe aan je beginscherm voor volledig scherm!',
+            'intro.installApp': '📲 App installeren',
             'rotate.message':          'Draai je apparaat naar liggende modus',
             'rotate.subtext':          'voor de beste ervaring',
             // Order MUST match warnings.txt. Fits "terwijl u {activity}" —
@@ -2507,6 +2518,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 Pełny ekran: dotknij <strong>Udostępnij</strong> ⬆️ a potem <strong>„Dodaj do ekranu początkowego"</strong>',
             'intro.fullscreenHint.android': '📱 Pełny ekran: dotknij <strong>⋮ Menu</strong> a potem <strong>„Dodaj do ekranu głównego"</strong>',
             'intro.fullscreenHint.generic': '📱 Dodaj do ekranu głównego, aby uzyskać pełny ekran!',
+            'intro.installApp': '📲 Zainstaluj aplikację',
             'rotate.message':          'Obróć urządzenie do trybu poziomego',
             'rotate.subtext':          'dla najlepszych wrażeń',
             // Order MUST match warnings.txt. Fits "podczas {activity}" —
@@ -2735,6 +2747,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 Tam ekran: <strong>Paylaş</strong> ⬆️ ardından <strong>"Ana Ekrana Ekle"</strong>\'ye dokunun',
             'intro.fullscreenHint.android': '📱 Tam ekran: <strong>⋮ Menü</strong> ardından <strong>"Ana ekrana ekle"</strong>\'ye dokunun',
             'intro.fullscreenHint.generic': '📱 Tam ekran deneyimi için Ana Ekrana Ekleyin!',
+            'intro.installApp': '📲 Uygulamayı yükle',
             'rotate.message':          'Cihazınızı yatay moda çevirin',
             'rotate.subtext':          'en iyi deneyim için',
             // Order MUST match warnings.txt. Fits "{activity} sırasında" —
@@ -2963,6 +2976,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 ملء الشاشة: انقر على <strong>مشاركة</strong> ⬆️ ثم <strong>"إضافة إلى الشاشة الرئيسية"</strong>',
             'intro.fullscreenHint.android': '📱 ملء الشاشة: انقر على <strong>⋮ القائمة</strong> ثم <strong>"إضافة إلى الشاشة الرئيسية"</strong>',
             'intro.fullscreenHint.generic': '📱 أضف إلى شاشتك الرئيسية لتجربة ملء الشاشة!',
+            'intro.installApp': '📲 تثبيت التطبيق',
             'rotate.message':          'أدر جهازك إلى الوضع الأفقي',
             'rotate.subtext':          'للحصول على أفضل تجربة',
             // Order MUST match warnings.txt. Fits "أثناء {activity}" —
@@ -3191,6 +3205,7 @@ const I18n = (() => {
             'intro.fullscreenHint.ios':     '📱 फुलस्क्रीन के लिए: <strong>शेयर</strong> ⬆️ टैप करें फिर <strong>"होम स्क्रीन पर जोड़ें"</strong>',
             'intro.fullscreenHint.android': '📱 फुलस्क्रीन के लिए: <strong>⋮ मेनू</strong> टैप करें फिर <strong>"होम स्क्रीन पर जोड़ें"</strong>',
             'intro.fullscreenHint.generic': '📱 फुलस्क्रीन अनुभव के लिए अपनी होम स्क्रीन पर जोड़ें!',
+            'intro.installApp': '📲 ऐप इंस्टॉल करें',
             'rotate.message':          'अपने डिवाइस को लैंडस्केप मोड में घुमाएं',
             'rotate.subtext':          'बेहतर अनुभव के लिए',
             // Order MUST match warnings.txt. Fits "{activity} करते समय" —
