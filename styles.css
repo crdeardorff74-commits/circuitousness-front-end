@@ -3122,15 +3122,17 @@ body.credits-rolling #potdSolveTransition.visible {
     }
 
     /* ----- Settings popup -----
-       9 rows + title + reset link + close button is a lot to fit in
-       a 390px-tall viewport. Aggressive shrink across the board so
-       the close button stays visible without forcing scroll on the
-       typical landscape phone. Cap at 95vh as a safety net for
-       even shorter viewports. */
+       ~11 control rows + title + reset link + close button is a lot to
+       fit in a ~360px-tall landscape phone. A tight inter-row gap (pure
+       whitespace — no legibility cost) plus trimmed row padding lets the
+       whole panel fit WITHOUT scrolling at ~360px+; cap at 97vh with
+       overflow-y:auto as a safety net for even shorter viewports
+       (browser chrome present, etc.), where the bottom scrolls into view
+       and Close stays reachable. */
     #settingsPopup {
-        padding: 0.55rem 0.9rem 0.7rem;
-        gap: 0.35rem;
-        max-height: 95vh;
+        padding: 0.5rem 0.9rem 0.6rem;
+        gap: 0.18rem;
+        max-height: 97vh;
         overflow-y: auto;
     }
     /* Title still tight but with a hair more breathing room now that
@@ -3141,7 +3143,7 @@ body.credits-rolling #potdSolveTransition.visible {
         margin: 0 0 0.2rem 0;
     }
     .settingsRow {
-        padding: 0.3rem 0.2rem;
+        padding: 0.2rem 0.2rem;
         gap: 0.5rem;
     }
     .settingsRow label,
@@ -3149,7 +3151,7 @@ body.credits-rolling #potdSolveTransition.visible {
         font-size: clamp(0.7rem, 2.2vh, 0.85rem);
         min-width: 5rem;
     }
-    .settingsVolumeRow { padding: 0.15rem 0.2rem; gap: 0.4rem; }
+    .settingsVolumeRow { padding: 0.08rem 0.2rem; gap: 0.4rem; }
     .settingsSelect { font-size: 0.8rem; padding: 3px 8px; }
     .settingsVolumeLabel { font-size: 0.6rem; min-width: 2rem; }
     .settingsVolumePercent { font-size: 0.6rem; min-width: 2rem; }
