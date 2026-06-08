@@ -1,7 +1,7 @@
 {
     "name": "Circuitousness",
     "short_name": "Circuitousness",
-    "description": "Circuitousness — an Official Intelligence project.",
+    "description": "A circuit-routing puzzle game — rotate the tiles to connect every path before the clock runs out, with daily puzzles, an endless Marathon mode, and global leaderboards.",
     "start_url": "/",
     "display": "fullscreen",
     "orientation": "landscape",
