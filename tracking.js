@@ -97,6 +97,25 @@ const Tracking = (function () {
         }
     }
 
+    // Persistent per-browser id — the SAME localStorage key marathon.js /
+    // potd.js use for scores/sessions — stamped on the visit so the
+    // daily-summary email can recognize return players across days.
+    // Read-or-create (creating it here on page load means the game modules
+    // reuse the same id). Best-effort: private mode just yields null.
+    function _persistentSessionId() {
+        try {
+            var key = (typeof PROJECT_SLUG !== 'undefined' ? PROJECT_SLUG : 'circuitousness') + '_session_id';
+            var id = localStorage.getItem(key);
+            if (!id) {
+                id = (window.crypto && crypto.randomUUID)
+                    ? crypto.randomUUID()
+                    : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+                localStorage.setItem(key, id);
+            }
+            return id;
+        } catch (e) { return null; }
+    }
+
     // POST /api/visit — first call only. Subsequent calls are no-ops
     // (visit_id already set). Returns a Promise that resolves to the
     // visitId so the page-init code can chain other tracking calls
@@ -117,6 +136,7 @@ const Tracking = (function () {
             screenHeight: (typeof screen !== 'undefined') ? screen.height : null,
             deviceType:   detectDeviceType(),
             os:           detectOS(),
+            sessionId:    _persistentSessionId(),
         };
         return fetch(base + '/visit', {
             method:  'POST',
