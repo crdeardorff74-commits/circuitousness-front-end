@@ -76,7 +76,19 @@ const Share = (function () {
     function flashCopiedFeedback(el) {
         if (!el) return;
         el.classList.add('share-copied');
-        setTimeout(function () { el.classList.remove('share-copied'); }, 1500);
+        // Swap the visible label to "Copied!" for the popup copy button (its
+        // <span data-i18n="share.copyLink"> label). The minimalist icon
+        // buttons have no label span, so they just get the CSS flash.
+        var label = el.querySelector('[data-i18n="share.copyLink"]');
+        var prev = null;
+        if (label) {
+            prev = label.textContent;
+            label.textContent = (typeof I18n !== 'undefined' && I18n.t) ? I18n.t('share.copied') : 'Copied!';
+        }
+        setTimeout(function () {
+            el.classList.remove('share-copied');
+            if (label) label.textContent = prev;
+        }, 1500);
     }
 
     // Wire every element with [data-share-platform] to handleClick.
