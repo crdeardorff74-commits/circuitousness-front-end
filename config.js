@@ -40,6 +40,12 @@ const AppConfig = {
     AUTH_API: 'https://official-intelligence-api.onrender.com'
 };
 
+// Canonical public URL for share links. window.location is unreliable on
+// itch.io — the game runs in a CDN iframe, so location is an opaque CDN URL
+// rather than the listing page — so every share/copy-link action uses this
+// fixed URL instead, on every host. (Worker-safe: a plain string, no DOM.)
+const SHARE_URL = 'https://digeratist.itch.io/circuitousness';
+
 // iPad / iPhone Safari can't follow GitHub's 302 redirects in <audio>
 // elements (error code 4) and `fetch()` for SFX decoding can't read
 // GitHub's responses (no CORS headers). On iOS we route music through

@@ -26,12 +26,39 @@ const Share = (function () {
     const FINISH_COUNT_LS_KEY    = PROJECT_SLUG + '_share_finish_count';
 
     function getShareUrl() {
+        // Canonical share URL from config.js. window.location is the opaque
+        // CDN URL inside itch's iframe, so always prefer the fixed URL.
+        if (typeof SHARE_URL !== 'undefined' && SHARE_URL) return SHARE_URL;
         if (typeof window === 'undefined' || !window.location) return '';
         return window.location.origin + window.location.pathname;
     }
     function getShareText() {
         if (typeof I18n !== 'undefined' && I18n.t) return I18n.t('share.text');
         return 'Check out ' + (typeof PROJECT_NAME !== 'undefined' ? PROJECT_NAME : 'this game') + '!';
+    }
+
+    // Copy text to the clipboard, returning true on success. execCommand
+    // first because navigator.clipboard.writeText is blocked inside itch.io's
+    // cross-origin game iframe (no clipboard-write permission) and rejects
+    // silently there; execCommand works on a user gesture in iframes. Falls
+    // back to the modern API for top-level pages.
+    function copyToClipboard(text) {
+        try {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.cssText = 'position:fixed;top:-9999px;left:0;opacity:0;';
+            document.body.appendChild(ta);
+            ta.select();
+            ta.setSelectionRange(0, text.length);
+            var ok = document.execCommand && document.execCommand('copy');
+            document.body.removeChild(ta);
+            if (ok) return true;
+        } catch (e) {}
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            try { navigator.clipboard.writeText(text); return true; } catch (e) {}
+        }
+        return false;
     }
 
     // Per-platform URL builders. Each takes the destination URL + the
@@ -60,10 +87,7 @@ const Share = (function () {
         const build = BUILDERS[platform];
         if (!build) return;
         if (platform === 'copylink') {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(url).catch(function () {});
-            }
-            flashCopiedFeedback(ev && ev.currentTarget);
+            if (copyToClipboard(url)) flashCopiedFeedback(ev && ev.currentTarget);
             return;
         }
         const target = build(url, text);
