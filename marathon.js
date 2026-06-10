@@ -275,6 +275,11 @@ const Marathon = (() => {
         if (state === STATE.REPLAYING && typeof Game !== 'undefined' && Game.cancelReplay) {
             Game.cancelReplay();
         }
+        // If a finished replay is holding on its final frame, release it
+        // so startReplayWithEvents' continuation runs (it sees state !==
+        // REPLAYING below and skips the leaderboard return; the menu
+        // music this function starts makes its handoff a no-op).
+        releaseReplayHold();
         state = STATE.MENU;
         stopTimer();
         clearTransition();
@@ -1495,20 +1500,35 @@ const Marathon = (() => {
                 watch.className   = 'lbWatch';
                 watch.type        = 'button';
                 watch.textContent = '▶ ' + I18n.t('marathon.watch');
+                // Resolve the launch action for this entry's recording
+                // source: own/local events play directly; server-backed
+                // entries fetch first, via the PotD- or marathon-specific
+                // endpoint.
+                let launch;
                 if (directEvents) {
                     const evCopy = directEvents;
                     const name   = entry.name;
-                    watch.addEventListener('click', () => startReplayWithEvents(evCopy, name));
+                    launch = () => startReplayWithEvents(evCopy, name);
+                } else if (mode === 'potd') {
+                    const id = entry.id;
+                    launch = () => startPotdReplay(id);
                 } else {
                     const id = entry.id;
-                    // PotD recordings live at a different endpoint than
-                    // marathon's. Branch the fetcher so Watch works on
-                    // both boards.
-                    if (mode === 'potd') {
-                        watch.addEventListener('click', () => startPotdReplay(id));
-                    } else {
-                        watch.addEventListener('click', () => startReplay(id));
-                    }
+                    launch = () => startReplay(id);
+                }
+                // PotD only: watching a replay of a slot the player hasn't
+                // played yet reveals the solution — a cheating vector. Gate
+                // behind Potd.guardWatch, which warns + forfeits today's
+                // eligibility on that slot before allowing the watch (and is
+                // a silent pass-through once the player has played it).
+                // Marathon puzzles are per-run random, so no gate there.
+                if (mode === 'potd' && typeof Potd !== 'undefined' && Potd.guardWatch) {
+                    const slot = getActiveBoardType();
+                    watch.addEventListener('click', async () => {
+                        if (await Potd.guardWatch(slot)) launch();
+                    });
+                } else {
+                    watch.addEventListener('click', launch);
                 }
                 li.appendChild(watch);
             }
@@ -1547,6 +1567,19 @@ const Marathon = (() => {
     }
 
     // ----- Replay (watching another player's recording) -----
+
+    // Resolve fn of the post-completion hold in startReplayWithEvents —
+    // non-null only while a finished replay is lingering on its final
+    // solved frame waiting for the user to click Stop (or quit to menu).
+    let replayHoldResolve = null;
+
+    function releaseReplayHold() {
+        if (!replayHoldResolve) return false;
+        const res = replayHoldResolve;
+        replayHoldResolve = null;
+        res();
+        return true;
+    }
 
     function updateReplayHud(name, n, total) {
         if (!replayLabel) return;
@@ -1663,9 +1696,21 @@ const Marathon = (() => {
         const name = displayName || '';
         updateReplayHud(name, 0, events.length);
 
-        await Game.replayAll(events, (idx, total) => {
+        const completed = await Game.replayAll(events, (idx, total) => {
             updateReplayHud(name, idx + 1, total);
         });
+
+        // Natural finish: hold on the final solved frame instead of
+        // bouncing straight back to the leaderboard — the watcher wants
+        // to SEE the last tile twist land and the path light up. The
+        // hold resolves when the user clicks Stop replay (stopReplay)
+        // or quits to the menu (goToMenu calls releaseReplayHold).
+        // Cancelled replays skip the hold — the user already asked to
+        // leave. The last replay song keeps playing through the hold;
+        // the menu-music handoff below runs once the hold releases.
+        if (completed && state === STATE.REPLAYING) {
+            await new Promise((res) => { replayHoldResolve = res; });
+        }
 
         // Replay's scripted playback stops its scheduled timer chain when the
         // recording ends, but doesn't pause the currently-playing audio — so
@@ -1696,6 +1741,10 @@ const Marathon = (() => {
     }
 
     function stopReplay() {
+        // Post-completion hold: playback already finished and we're
+        // lingering on the solved frame — Stop now means "back to the
+        // leaderboard", which the released hold's continuation handles.
+        if (releaseReplayHold()) return;
         if (typeof Game !== 'undefined' && Game.cancelReplay) Game.cancelReplay();
     }
 

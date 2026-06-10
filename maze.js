@@ -1794,7 +1794,45 @@ const Maze = (() => {
                     isFiller(qr, qc, p.cells[0]) && isFiller(qr, qc, p.cells[1]) &&
                     patternSafe(qr, qc, p)
                 );
-                if (validPatterns.length === 0) continue;
+                if (validPatterns.length === 0) {
+                    // All-filler elbow quad where NO pattern is safe: the
+                    // inward-facing closed ring (every elbow's both ports
+                    // face siblings — a sealed loop with zero external
+                    // ports). fixDeadEnds can't see it (all inner ports
+                    // match), and every pattern above fails patternSafe
+                    // (the unchanged cells always have a port facing the
+                    // changed pair). The ring is 4-fold symmetric AND
+                    // visibly disconnected from everything — a free
+                    // "ignore this quad" marker for the player. Rewrite
+                    // ALL 4 cells — straight lane on a random pair,
+                    // outward elbows on the other two — which needs no
+                    // safety check because no original cell survives.
+                    // Quads containing path tiles can't form a sealed
+                    // ring (solution paths always cross the quad border),
+                    // so the all-filler guard only skips configs we never
+                    // expect to see.
+                    let allFiller = true;
+                    for (let dr = 0; dr < 2 && allFiller; dr++) {
+                        for (let dc = 0; dc < 2 && allFiller; dc++) {
+                            if (grid[qr*2+dr][qc*2+dc]._solution !== undefined) allFiller = false;
+                        }
+                    }
+                    if (!allFiller) continue;
+                    const pat = patterns[Math.floor(Math.random() * patterns.length)];
+                    for (let dr = 0; dr < 2; dr++) {
+                        for (let dc = 0; dc < 2; dc++) {
+                            const r = qr*2 + dr, c = qc*2 + dc;
+                            if (pat.cells.some((o) => o.dr === dr && o.dc === dc)) {
+                                grid[r][c].type = T_STRAIGHT;
+                                grid[r][c].rotation = pat.rot;
+                            } else {
+                                grid[r][c].type = T_ELBOW;
+                                grid[r][c].rotation = outwardElbowRotation(r, c);
+                            }
+                        }
+                    }
+                    continue;
+                }
                 const pat = validPatterns[Math.floor(Math.random() * validPatterns.length)];
                 for (const off of pat.cells) {
                     const r = qr*2 + off.dr, c = qc*2 + off.dc;
