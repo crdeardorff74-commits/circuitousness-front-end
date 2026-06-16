@@ -35,6 +35,10 @@ const I18n = (() => {
     // PROJECT_NAME (from config.js) is the single source of truth for the display name.
     const translations = {
         en: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "Open the full app",
+            'redirect.body': "For the best experience — and to add the game to your home screen — open the full version.",
+            'redirect.button': "Open full version",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Path connected — tap for a new puzzle',
             'hint.button':     'Hint',
@@ -163,6 +167,10 @@ const I18n = (() => {
             'share.text':        'Check out ' + PROJECT_NAME + ' — a free puzzle game!'
         },
         es: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "Abre la app completa",
+            'redirect.body': "Para una mejor experiencia, y para añadir el juego a tu pantalla de inicio, abre la versión completa.",
+            'redirect.button': "Abrir versión completa",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Camino conectado — toca para un nuevo puzzle',
             'hint.button':     'Pista',
@@ -395,6 +403,10 @@ const I18n = (() => {
             'settings.resetVisuals':        'Restablecer visuales'
         },
         fr: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "Ouvrir l'appli complète",
+            'redirect.body': "Pour une meilleure expérience, et pour ajouter le jeu à votre écran d'accueil, ouvrez la version complète.",
+            'redirect.button': "Ouvrir la version complète",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Chemin connecté — appuyez pour un nouveau puzzle',
             'hint.button':     'Indice',
@@ -627,6 +639,10 @@ const I18n = (() => {
             'settings.resetVisuals':        'Réinitialiser le visuel'
         },
         de: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "Vollständige App öffnen",
+            'redirect.body': "Für das beste Erlebnis – und um das Spiel zum Startbildschirm hinzuzufügen – öffne die vollständige Version.",
+            'redirect.button': "Vollversion öffnen",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Pfad verbunden — tippe für ein neues Rätsel',
             'hint.button':     'Tipp',
@@ -858,6 +874,10 @@ const I18n = (() => {
             'settings.resetVisuals':        'Visuelles zurücksetzen'
         },
         pt: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "Abrir o app completo",
+            'redirect.body': "Para a melhor experiência, e para adicionar o jogo à tela inicial, abra a versão completa.",
+            'redirect.button': "Abrir versão completa",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Caminho conectado — toque para um novo puzzle',
             'hint.button':     'Dica',
@@ -1089,6 +1109,10 @@ const I18n = (() => {
             'settings.resetVisuals':        'Restaurar visuais'
         },
         ja: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "フルアプリを開く",
+            'redirect.body': "最高の体験のために、そしてゲームをホーム画面に追加するには、フルバージョンを開いてください。",
+            'redirect.button': "フルバージョンを開く",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'パス接続完了 — タップで次のパズル',
             'hint.button':     'ヒント',
@@ -1319,6 +1343,10 @@ const I18n = (() => {
             'settings.resetVisuals':        '表示を初期値に戻す'
         },
         ko: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "전체 앱 열기",
+            'redirect.body': "최상의 경험을 위해, 그리고 게임을 홈 화면에 추가하려면 전체 버전을 여세요.",
+            'redirect.button': "전체 버전 열기",
             'app.title':       PROJECT_NAME,
             'game.youWon':     '경로 연결됨 — 새 퍼즐을 보려면 탭하세요',
             'hint.button':     '힌트',
@@ -1549,6 +1577,10 @@ const I18n = (() => {
             'settings.resetVisuals':        '화면 기본값 복원'
         },
         zh: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "打开完整应用",
+            'redirect.body': "为获得最佳体验，并将游戏添加到主屏幕，请打开完整版本。",
+            'redirect.button': "打开完整版本",
             'app.title':       PROJECT_NAME,
             'game.youWon':     '路径已连接 — 点击开始新谜题',
             'hint.button':     '提示',
@@ -1779,6 +1811,10 @@ const I18n = (() => {
             'settings.resetVisuals':        '恢复显示默认值'
         },
         ru: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "Открыть полное приложение",
+            'redirect.body': "Для лучшего опыта и чтобы добавить игру на главный экран, откройте полную версию.",
+            'redirect.button': "Открыть полную версию",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Путь соединён — нажмите для новой головоломки',
             'hint.button':     'Подсказка',
@@ -2010,6 +2046,10 @@ const I18n = (() => {
             'settings.resetVisuals':        'Сбросить визуал'
         },
         it: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "Apri l'app completa",
+            'redirect.body': "Per la migliore esperienza, e per aggiungere il gioco alla schermata Home, apri la versione completa.",
+            'redirect.button': "Apri versione completa",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Percorso collegato — tocca per un nuovo puzzle',
             'hint.button':     'Suggerimento',
@@ -2240,6 +2280,10 @@ const I18n = (() => {
             'settings.resetVisuals':        'Reimposta aspetto'
         },
         nl: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "Open de volledige app",
+            'redirect.body': "Voor de beste ervaring — en om het spel aan je beginscherm toe te voegen — open je de volledige versie.",
+            'redirect.button': "Volledige versie openen",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Pad verbonden — tik voor een nieuwe puzzel',
             'hint.button':     'Hint',
@@ -2470,6 +2514,10 @@ const I18n = (() => {
             'settings.resetVisuals':        'Visueel terugzetten'
         },
         pl: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "Otwórz pełną aplikację",
+            'redirect.body': "Aby uzyskać najlepsze wrażenia i dodać grę do ekranu głównego, otwórz pełną wersję.",
+            'redirect.button': "Otwórz pełną wersję",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Ścieżka połączona — dotknij, aby uzyskać nową łamigłówkę',
             'hint.button':     'Wskazówka',
@@ -2700,6 +2748,10 @@ const I18n = (() => {
             'settings.resetVisuals':        'Resetuj wygląd'
         },
         tr: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "Tam uygulamayı aç",
+            'redirect.body': "En iyi deneyim için ve oyunu ana ekranınıza eklemek için tam sürümü açın.",
+            'redirect.button': "Tam sürümü aç",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Yol bağlandı — yeni bulmaca için dokun',
             'hint.button':     'İpucu',
@@ -2930,6 +2982,10 @@ const I18n = (() => {
             'settings.resetVisuals':        'Görseli sıfırla'
         },
         ar: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "افتح التطبيق الكامل",
+            'redirect.body': "للحصول على أفضل تجربة، ولإضافة اللعبة إلى الشاشة الرئيسية، افتح النسخة الكاملة.",
+            'redirect.button': "افتح النسخة الكاملة",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'تم توصيل المسار — اضغط للحصول على لغز جديد',
             'hint.button':     'تلميح',
@@ -3160,6 +3216,10 @@ const I18n = (() => {
             'settings.resetVisuals':        'إعادة ضبط المظهر'
         },
         hi: {
+            // Home-screen redirect overlay (platform-redirect.js)
+            'redirect.title': "पूरा ऐप खोलें",
+            'redirect.body': "सर्वोत्तम अनुभव के लिए, और गेम को अपनी होम स्क्रीन पर जोड़ने के लिए, पूरा संस्करण खोलें।",
+            'redirect.button': "पूरा संस्करण खोलें",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'पथ जुड़ा — नई पहेली के लिए टैप करें',
             'hint.button':     'संकेत',

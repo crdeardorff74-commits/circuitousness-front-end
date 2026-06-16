@@ -3,6 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+    <!-- Mobile itch.io → real-origin redirect. Loaded first so the auto-redirect
+         runs before any UI paints. Inert on desktop, in standalone PWA, and on
+         our own origin. See platform-redirect.js. -->
+    <script src="platform-redirect.js"></script>
+
     <title data-i18n="app.title">Circuitousness</title>
 
     <!-- iOS Standalone Mode (Add to Home Screen) -->
@@ -829,7 +835,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.40';</script>
+    <script>var PAGE_VERSION = '0.41';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

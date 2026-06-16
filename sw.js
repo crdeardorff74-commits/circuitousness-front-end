@@ -7,13 +7,14 @@
 // Do NOT add DOM/window references to config.js — it must stay worker-safe.
 importScripts('/config.js');
 
-const APP_VERSION = '0.40';
+const APP_VERSION = '0.41';
 const CACHE_NAME = `${PROJECT_SLUG}-v${APP_VERSION}`;
 
 const CORE_ASSETS = [
     '/',
     '/index.html',
     '/styles.css',
+    '/platform-redirect.js',
     '/config.js',
     '/i18n.js',
     '/controls-config.js',

@@ -1,0 +1,169 @@
+/**
+ * platform-redirect.js — Official Intelligence universal helper
+ *
+ * Problem: when the game is played on a phone/tablet from an EXTERNAL embed
+ * (itch.io's CDN iframe), "Add to Home Screen" bookmarks the itch.io listing
+ * page (its "Run game" intro) instead of this PWA — the manifest / start_url
+ * only take effect on the game's real origin. So mobile players who install
+ * from itch.io land back on itch's intro, not the game's.
+ *
+ * Fix: on mobile, nudge the player from the itch embed over to TARGET (the
+ * game's own origin), where the PWA installs correctly. Two stages, matching
+ * the chosen "auto, then tap fallback" behavior:
+ *   1. Seamless auto-redirect. Works when we're TOP-LEVEL on itch's CDN
+ *      (itch's fullscreen launch) or anywhere top-navigation is permitted.
+ *      A harmless no-op when the embedding iframe's sandbox forbids it.
+ *   2. Tap fallback overlay. itch's in-page iframe sandbox omits
+ *      top-navigation but allows popups, so the overlay's button opens TARGET
+ *      in a new tab — landing the player on the real origin, top-level, where
+ *      Add to Home Screen installs the actual PWA.
+ *
+ * Loaded FIRST, in <head>, so the auto attempt runs before any game UI paints.
+ * NOT importScripts()'d by sw.js (it touches window/document). Overlay text is
+ * pulled from I18n (rule 5); the lookup is deferred to a task after
+ * DOMContentLoaded so I18n has detected the language by then, with an English
+ * fallback if I18n is somehow unavailable.
+ *
+ * Inert on desktop, in an installed/standalone PWA, and on the game's own
+ * origin — so it can never loop and never fires where it shouldn't.
+ */
+(function () {
+    'use strict';
+
+    // The game's real PWA origin. PROJECT-SPECIFIC — the one line that differs
+    // between projects.
+    var TARGET = 'https://circuitousness.official-intelligence.art/';
+
+    // English fallbacks, used only if I18n isn't available when the overlay builds.
+    var FALLBACK = {
+        'redirect.title':  'Open the full app',
+        'redirect.body':   'For the best experience — and to add the game to your home screen — open the full version.',
+        'redirect.button': 'Open full version'
+    };
+
+    function tr(key) {
+        try {
+            if (typeof I18n !== 'undefined' && I18n && typeof I18n.t === 'function') {
+                var s = I18n.t(key);
+                if (s && s !== key) return s;
+            }
+        } catch (e) { /* fall through to English */ }
+        return FALLBACK[key] || key;
+    }
+
+    // ─── Eligibility ───
+    function isStandalone() {
+        try {
+            return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+                   window.navigator.standalone === true;
+        } catch (e) { return false; }
+    }
+
+    function isMobile() {
+        var ua = navigator.userAgent || '';
+        var uaMobile = /Android|iPhone|iPad|iPod|IEMobile|BlackBerry|Opera Mini|Mobile/i.test(ua);
+        // iPadOS 13+ Safari reports as MacIntel with a touch screen.
+        var iPadOS = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+        return uaMobile || iPadOS;
+    }
+
+    // Running as an external embed (itch.io) rather than on our own origin?
+    // Covers both itch's in-page iframe and its top-level CDN host.
+    function isExternalEmbed() {
+        var host = location.hostname || '';
+        if (/official-intelligence\.art$/i.test(host)) return false; // our own origin → never
+        if (/itch\.(io|zone)$/i.test(host)) return true;             // top-level on itch's CDN
+        var framed;
+        try { framed = window.top !== window.self; } catch (e) { framed = true; } // cross-origin access → framed
+        if (framed) {
+            if (/itch\.io/i.test(document.referrer || '')) return true; // embedder is itch.io
+            return true; // framed on a non-official host → treat as external embed
+        }
+        return false;
+    }
+
+    if (!isMobile() || isStandalone() || !isExternalEmbed()) return;
+
+    var framed;
+    try { framed = window.top !== window.self; } catch (e) { framed = true; }
+
+    // ─── Stage 1: seamless auto-redirect (no-op if the sandbox blocks it) ───
+    try {
+        (framed ? window.top : window).location.replace(TARGET);
+    } catch (e) {
+        // itch's in-page iframe forbids top-navigation → fall through to overlay.
+    }
+
+    // ─── Stage 2: tap fallback overlay ───
+    function showOverlay() {
+        if (document.getElementById('oiRedirectOverlay') || !document.body) return;
+
+        var overlay = document.createElement('div');
+        overlay.id = 'oiRedirectOverlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.style.cssText = [
+            'position:fixed', 'inset:0', 'z-index:2147483647',
+            'display:flex', 'flex-direction:column',
+            'align-items:center', 'justify-content:center', 'gap:1.25rem',
+            'padding:2rem', 'box-sizing:border-box', 'text-align:center',
+            'background:rgba(6,8,16,0.94)',
+            'backdrop-filter:blur(6px)', '-webkit-backdrop-filter:blur(6px)',
+            'color:#fff', "font-family:'Segoe UI',system-ui,Arial,sans-serif"
+        ].join(';');
+
+        // Corner close (×) — language-neutral escape hatch so the overlay never
+        // traps a player who'd rather stay on itch.
+        var close = document.createElement('button');
+        close.type = 'button';
+        close.textContent = '×';
+        close.setAttribute('aria-label', 'Close');
+        close.style.cssText = [
+            'position:absolute', 'top:0.75rem', 'right:1rem',
+            'background:none', 'border:none', 'color:#fff',
+            'font-size:2.2rem', 'line-height:1', 'cursor:pointer',
+            'opacity:0.7', '-webkit-tap-highlight-color:transparent'
+        ].join(';');
+        close.addEventListener('click', function () { overlay.remove(); });
+
+        var title = document.createElement('div');
+        title.textContent = tr('redirect.title');
+        title.style.cssText = 'font-size:clamp(1.4rem,5vw,2rem);font-weight:700;line-height:1.2;';
+
+        var body = document.createElement('div');
+        body.textContent = tr('redirect.body');
+        body.style.cssText = 'font-size:clamp(0.95rem,3.6vw,1.15rem);line-height:1.5;max-width:32rem;opacity:0.9;';
+
+        // A real anchor with target="_blank" works under itch's sandbox
+        // (allow-popups): it opens TARGET top-level in a new tab, where the PWA
+        // and Add-to-Home-Screen function correctly.
+        var btn = document.createElement('a');
+        btn.href = TARGET;
+        btn.target = '_blank';
+        btn.rel = 'noopener';
+        btn.textContent = tr('redirect.button');
+        btn.style.cssText = [
+            'display:inline-block', 'margin-top:0.5rem', 'padding:0.85rem 1.8rem',
+            'font-size:clamp(1rem,4vw,1.2rem)', 'font-weight:700',
+            'text-decoration:none', 'color:#06121f',
+            'background:linear-gradient(135deg,#5ad1ff,#7c8bff)',
+            'border-radius:0.75rem', 'box-shadow:0 6px 24px rgba(90,150,255,0.45)',
+            'cursor:pointer', '-webkit-tap-highlight-color:transparent'
+        ].join(';');
+
+        overlay.appendChild(close);
+        overlay.appendChild(title);
+        overlay.appendChild(body);
+        overlay.appendChild(btn);
+        document.body.appendChild(overlay);
+    }
+
+    // Defer to a task AFTER DOMContentLoaded so I18n.init() (also a DCL
+    // listener) has set the language before we read translations.
+    function scheduleOverlay() { setTimeout(showOverlay, 0); }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', scheduleOverlay);
+    } else {
+        scheduleOverlay();
+    }
+})();
