@@ -441,6 +441,29 @@
                 if (el) el.disabled = !enabled;
             });
         }
+        // Play the INVERSE rotation animation for an undone move, so undo spins
+        // tiles back exactly like a live rotation rather than snapping. State is
+        // already restored to the pre-move snapshot by the caller; this is a
+        // purely visual layer (animateRotationAt/animateGateRotation read the
+        // restored grid + gates and animate the spin-in to it). The undone
+        // move's forward params invert: a CW rotate undoes as CCW, a hint's
+        // CW `turns` undo CCW by the same count, a gate's spin reverses. Twin
+        // partners are handled inside animateRotationAt. Locks have no rotation
+        // to animate. Called from both live undo() and replay's applyReplayUndo.
+        function animateUndoMove(move) {
+            if (!move || !Render) return;
+            if (move.type === 'rotate') {
+                Render.animateRotationAt(move.r, move.c, !move.ccw, 1);
+            } else if (move.type === 'hint') {
+                // Forward hint rotated CW (ccw=false) by move.turns; reverse is
+                // CCW by the same count. turns is recorded on the move (see
+                // handleHintClick) so replay undos animate too.
+                const turns = move.turns | 0;
+                if (turns > 0) Render.animateRotationAt(move.r, move.c, true, turns);
+            } else if (move.type === 'gate') {
+                if (Render.animateGateRotation) Render.animateGateRotation(!move.ccw);
+            }
+        }
         function undo() {
             if (isBuilding || isReplaying) return;
             // Same transition guards as handlePointer/handleHintClick: don't
@@ -449,7 +472,9 @@
             if (typeof Potd !== 'undefined' && Potd.isInSolveTransition && Potd.isInSolveTransition()) return;
             if (undoStack.length === 0) return;
 
-            const prev = undoStack.pop();
+            const entry = undoStack.pop();
+            const prev = entry.state;
+            const undoneMove = entry.move;
             // Clone before restore (loadSnapshot takes ownership of the grid).
             Maze.loadSnapshot(cloneMazeSnap(prev.maze));
             if (typeof Gates !== 'undefined') {
@@ -468,6 +493,11 @@
 
             if (banner) banner.classList.remove('visible');
             if (Render.clearFadingLanes) Render.clearFadingLanes();
+            // Spin the tiles back (state is already restored above; this only
+            // drives the rotation animation). Render.draw() then paints the
+            // first animated frame — animateRotationAt set needsFullDraw +
+            // started the rAF loop, exactly as a live rotation does.
+            animateUndoMove(undoneMove);
             Render.draw();
             // Re-seed SFX baselines to the restored state and kill any live
             // loop. We deliberately skip refresh() here — its SFX/win state
@@ -549,10 +579,11 @@
         function recordMove(move) {
             if (!appendMove(move)) return;
             // Undo: bank the state as it was BEFORE this move (undoBaseState),
+            // plus the move itself (so undo can play its inverse animation),
             // then advance the base to the new current state. recordMove fires
             // exactly once per committed action and never during replay (the
             // early-return above), so the stack stays in lockstep with moves.
-            undoStack.push(undoBaseState);
+            undoStack.push({ state: undoBaseState, move: move });
             if (undoStack.length > MAX_UNDO_DEPTH) undoStack.shift();
             undoBaseState = captureUndoSnap();
             updateUndoButtons();
@@ -740,7 +771,8 @@
         // SFX state machine, matching the live undo which suppresses it).
         function applyReplayUndo() {
             if (replayUndoStack.length === 0) return;
-            const prev = replayUndoStack.pop();
+            const entry = replayUndoStack.pop();
+            const prev = entry.state;
             Maze.loadSnapshot(cloneMazeSnap(prev.maze));
             if (typeof Gates !== 'undefined') {
                 if (prev.gates && Gates.restore) Gates.restore(prev.gates);
@@ -749,6 +781,9 @@
             }
             replayBase = prev;
             if (Render.clearFadingLanes) Render.clearFadingLanes();
+            // Spin tiles back, same as the live undo (entry.move is the move
+            // that was applied at this step; its inverse is animated).
+            animateUndoMove(entry.move);
             Render.draw();
             resetSfxBaselines();
         }
@@ -848,10 +883,11 @@
                         // doesn't fire on the state jump.
                         applyReplayUndo();
                     } else {
-                        // Bank pre-move state, apply, then advance the base —
-                        // the exact order recordMove uses live, so the replay
-                        // stack tracks the live one move-for-move.
-                        replayUndoStack.push(replayBase);
+                        // Bank pre-move state + the move (for undo's inverse
+                        // animation), apply, then advance the base — the exact
+                        // order recordMove uses live, so the replay stack tracks
+                        // the live one move-for-move.
+                        replayUndoStack.push({ state: replayBase, move: move });
                         applyReplayMove(move);
                         replayBase = captureUndoSnap();
                         // refresh() — not just Render.draw() — so the SFX
@@ -1655,7 +1691,9 @@
             }
             const pick = Maze.hint();
             if (pick) {
-                recordMove({ type: 'hint', r: pick.r, c: pick.c });
+                // turns is recorded so undo (live + replay) can animate the
+                // inverse rotation by the right number of 90° steps.
+                recordMove({ type: 'hint', r: pick.r, c: pick.c, turns: pick.turns });
                 if (typeof Sfx !== 'undefined') Sfx.play(['audience_shocked', 'jump_scare']);
                 // Hint always rotates CW (applyHintAt advances rotation
                 // toward the solution by `turns` 90° steps). Skip the
