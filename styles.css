@@ -12,6 +12,27 @@
     box-sizing: border-box;
 }
 
+/* Universal rule: disable text selection + the iOS selection markers/callout.
+   Without this, a tap (and especially a tap-and-hold) on touch devices pops the
+   native text-selection handles, magnifier, and callout menu over the game.
+   Applied at the root (these props are inherited); re-enabled only for real
+   text-entry fields so the leaderboard name input etc. stay selectable/editable. */
+html {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+input, textarea, [contenteditable="true"] {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+}
+
 html, body {
     width: 100%;
     height: 100%;
