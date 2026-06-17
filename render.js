@@ -1625,8 +1625,16 @@ const Render = (() => {
         } else if (tile._twin) {
             // Plain twin pair: pastel face only — bevels stay default slate
             // so twins read as colored "stickers" on normal tiles instead of
-            // entirely tinted blocks.
-            palette = Object.assign({}, TILE_PALETTE, { face: tile._twin.color });
+            // entirely tinted blocks. Face renders at 110% of the regular
+            // tile opacity (clamped to 1) so the twin color reads a little
+            // more solidly than a plain tile — tracks the live TILE_FACE_ALPHA
+            // so the Settings opacity slider still scales it. (faceAlpha is
+            // read at line ~596 in the face draw, falling back to
+            // TILE_FACE_ALPHA when unset.)
+            palette = Object.assign({}, TILE_PALETTE, {
+                face: tile._twin.color,
+                faceAlpha: Math.min(1, TILE_FACE_ALPHA * 1.1)
+            });
         } else {
             palette = TILE_PALETTE;
         }

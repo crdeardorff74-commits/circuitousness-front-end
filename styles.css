@@ -124,6 +124,48 @@ body {
     transform: translateY(1px);
 }
 
+/* Debug-mode Undo — stacked directly under #hintBtn at the top-right.
+   (The top-left corner is occupied by the debug slider panel, so the
+   two debug action buttons share the right edge instead.) Cyan accent
+   distinguishes it from the gold Hint. Hidden in game mode — the HUD
+   owns #hudUndoBtn there. */
+#undoBtn {
+    position: absolute;
+    top: 4.2rem;
+    right: 1.2rem;
+    padding: 0.6rem 1.4rem;
+    background: rgba(40, 30, 50, 0.7);
+    color: rgba(120, 220, 235, 0.85);
+    border: 1px solid rgba(120, 220, 235, 0.4);
+    border-radius: 0.4rem;
+    font-family: inherit;
+    font-size: clamp(0.9rem, 1.6vw, 1.2rem);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+#undoBtn:hover:not(:disabled) {
+    background: rgba(40, 60, 70, 0.9);
+    border-color: rgba(120, 220, 235, 0.75);
+    color: #8fe6f5;
+}
+
+#undoBtn:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+/* Nothing to undo → dim + non-interactive (applies to both Undo buttons). */
+#undoBtn:disabled,
+#hudUndoBtn:disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
+}
+
 /* Now Playing — small panel pinned bottom-right while music is active.
    Hidden by default; music.js toggles .visible via the setOnSongChange
    callback. Mirrors TANTЯO's pattern: tiny "NOW PLAYING" label, song
@@ -419,6 +461,7 @@ html.mode-debug #potdSolveTransition { display: none !important; }
 /* Game mode owns its own hint button inside the HUD (#hudHintBtn) — hide
    the standalone debug-mode hintBtn so they don't both appear. */
 html.mode-game #hintBtn { display: none; }
+html.mode-game #undoBtn { display: none; }
 
 /* ----- Opening intro / warning splash -----
    Painted on page load by intro.js. Sits above the menu (z-index 50,
@@ -1559,13 +1602,21 @@ html.mode-debug #settingsOverlay { display: none !important; }
     top: 50%;
     transform: translate(-50%, -50%);
 }
-/* Symmetric inner items: hudLevel sits 10rem to the left of center (right
-   edge anchored), hudHintBtn the same distance to the right (left edge
-   anchored). Leaves ~7rem of breathing room around the timer's ~3rem
-   half-width on each side. */
-#hudLevel {
+/* Symmetric inner cluster around the centered timer: hudUndoBtn sits 10rem
+   to the left of center (right edge anchored), hudHintBtn the same distance
+   to the right (left edge anchored). Leaves ~7rem of breathing room around
+   the timer's ~3rem half-width on each side. The Puzzle/level readout
+   (#hudLevel) moved to the far-left corner so Undo could take its mirror
+   slot opposite Hint. */
+#hudUndoBtn {
     position: absolute;
     right: calc(50% + 10rem);
+    top: 50%;
+    transform: translateY(-50%);
+}
+#hudLevel {
+    position: absolute;
+    left: max(1rem, env(safe-area-inset-left));
     top: 50%;
     transform: translateY(-50%);
 }
@@ -1657,6 +1708,7 @@ html.mode-debug #settingsOverlay { display: none !important; }
    on #hud above for the replacement mechanism. */
 #hudType { display: none; }
 #hudHintBtn,
+#hudUndoBtn,
 #hudQuitBtn {
     padding: 0.4rem 0.9rem;
     background: rgba(40, 30, 50, 0.7);
@@ -1666,6 +1718,18 @@ html.mode-debug #settingsOverlay { display: none !important; }
     letter-spacing: 0.06em;
     text-transform: uppercase;
     cursor: pointer;
+}
+#hudUndoBtn {
+    color: rgba(120, 220, 235, 0.85);
+    border: 1px solid rgba(120, 220, 235, 0.4);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+#hudUndoBtn:hover:not(:disabled) {
+    background: rgba(40, 60, 70, 0.9);
+    border-color: rgba(120, 220, 235, 0.75);
+    color: #8fe6f5;
 }
 #hudSettingsBtn {
     padding: 0.4rem 0.6rem;
@@ -3129,10 +3193,12 @@ body.credits-rolling #potdSolveTransition.visible {
         font-size: clamp(0.7rem, 2.4vh, 0.9rem);
         padding: 0.2rem 0.5rem;
     }
-    #hudLevel  { right: calc(50% + 6rem); }
+    #hudUndoBtn { right: calc(50% + 6rem); }
     #hudHintBtn { left:  calc(50% + 6rem); }
+    #hudLevel   { left:  max(0.5rem, env(safe-area-inset-left)); right: auto; }
     #hudTimer   { min-width: 3.6rem; }
     #hudHintBtn,
+    #hudUndoBtn,
     #hudQuitBtn {
         padding: 0.25rem 0.55rem;
         font-size: clamp(0.65rem, 2vh, 0.8rem);

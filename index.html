@@ -171,6 +171,7 @@
         </div>
 
         <canvas id="maze"></canvas>
+        <button id="undoBtn" type="button" data-i18n="undo.button">Undo</button>
         <button id="hintBtn" type="button" data-i18n="hint.button">Hint</button>
         <!-- Now Playing — populated by music.js setOnSongChange callback.
              Hidden until a song is actually playing; pinned to the bottom-
@@ -201,6 +202,7 @@
         <div id="hud">
             <div id="hudType"></div>
             <div id="hudLevel"></div>
+            <button id="hudUndoBtn" type="button" data-i18n="undo.button">Undo</button>
             <div id="hudTimer"><span class="hudTimerVal"></span></div>
             <button id="hudHintBtn" type="button" data-i18n="hint.button">Hint</button>
             <button id="hudSettingsBtn" type="button" data-i18n-attr="title:settings.title" title="Settings">⚙</button>
@@ -835,7 +837,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.42';</script>
+    <script>var PAGE_VERSION = '0.43';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +
@@ -884,6 +886,39 @@
                    function(v) { Render.setBevelThickness(v / 100); });
         bindSlider('faceAlphaSlider', 'faceAlphaVal', function(v) { return (v / 100).toFixed(2); },
                    function(v) { Render.setTileFaceAlpha(v / 100); });
+
+        // Sync the debug controls to the LIVE Settings values instead of the
+        // hardcoded HTML defaults. Settings owns these six visual settings
+        // (their DEF_* / persisted values); the HTML value placeholders drift
+        // whenever a default changes — e.g. the label read "Path opacity
+        // (0.14)" while the applied value was 0.11, and "Tile face opacity
+        // (0.80)" vs the actual 0.69. The getters are set at module load
+        // (before Settings.init), so reading them here is correct regardless
+        // of ordering, and reflects a player's persisted overrides too.
+        if (typeof Settings !== 'undefined') {
+            function syncDebugSlider(sliderId, valueId, getter) {
+                if (!getter) return;
+                var v = getter();
+                var s = document.getElementById(sliderId);
+                var l = document.getElementById(valueId);
+                if (s) s.value = Math.round(v * 100);
+                if (l) l.textContent = v.toFixed(2);
+            }
+            function syncDebugPicker(pickerId, valueId, getter) {
+                if (!getter) return;
+                var v = getter();
+                var p = document.getElementById(pickerId);
+                var l = document.getElementById(valueId);
+                if (p) p.value = v;
+                if (l) l.textContent = v;
+            }
+            syncDebugPicker('tileColorPicker', 'tileColorVal', Settings.getTileColor);
+            syncDebugPicker('pathColorPicker', 'pathColorVal', Settings.getPathColor);
+            syncDebugSlider('opacitySlider',   'opacityVal',   Settings.getPathOpacity);
+            syncDebugSlider('widthSlider',     'widthVal',     Settings.getPathWidth);
+            syncDebugSlider('bevelSlider',     'bevelVal',     Settings.getBevelThickness);
+            syncDebugSlider('faceAlphaSlider', 'faceAlphaVal', Settings.getTileFaceOpacity);
+        }
         bindPicker('litGreenLoPicker', 'litGreenLoVal', Render.setLitGreenLo);
         bindPicker('litGreenHiPicker', 'litGreenHiVal', Render.setLitGreenHi);
         bindPicker('litGoldLoPicker',  'litGoldLoVal',  Render.setLitGoldLo);

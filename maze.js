@@ -76,26 +76,40 @@ const Maze = (() => {
     // Cycled by `i % TWIN_COLORS.length` in assignTwins — once pair count
     // exceeds the palette length, colors start repeating. With the density
     // doubled (gridScale * 2 in twinPairCount), an 8×8 needs 11 pairs and
-    // bigger grids more, so the palette holds 16 distinct pastels — covers
-    // up to 21 pairs without repeats. Red is intentionally absent
-    // throughout (reserved for hint-locked tiles).
+    // bigger grids more, so the palette holds 16 colors — covers up to 21
+    // pairs without repeats.
+    //
+    // The 16 are chosen for PERCEPTUAL separation, not just hue variety: the
+    // previous hand-picked pastels had near-duplicates (two tans, several
+    // muted purples) only ~6 ΔE apart (CIE76 Lab) — confusable at a glance.
+    // These were selected by farthest-point dispersion in Lab within a soft
+    // pastel band, giving a minimum pairwise distance of ~24 ΔE (every pair
+    // clearly distinct). Where a hue is crowded the separation is carried by
+    // LIGHTNESS — e.g. amber #C98554 vs pale peach #D7B8A2 share a hue but
+    // sit far apart in L. Red is intentionally absent (hue kept to 25–330°),
+    // reserved for hint-locked tiles.
+    //
+    // Order matters for low-pair puzzles: colors are consumed in index order,
+    // so the list is sequenced by greedy max-min spread — the first few
+    // entries are as far apart as possible (a 2-pair puzzle gets green vs
+    // magenta, ~147 ΔE), with later entries filling in.
     const TWIN_COLORS = [
-        '#5DA3D5', // pastel blue
-        '#6CB97A', // pastel green
-        '#B289CB', // pastel purple
-        '#D8A05D', // pastel orange
-        '#5DBFB0', // pastel teal
-        '#D87CA0', // pastel pink
-        '#E5C76B', // pastel yellow
-        '#8E7BBC', // pastel indigo
-        '#9BD3C5', // pastel mint
-        '#C9A077', // pastel light brown
-        '#7FAEDB', // pastel sky
-        '#A8C97F', // pastel lime
-        '#C58FA8', // pastel rose
-        '#D9B57F', // pastel tan
-        '#7BC0A2', // pastel sage
-        '#B589A8'  // pastel mauve
+        '#54C954', // green
+        '#BF54C9', // magenta
+        '#C98554', // amber
+        '#5BA0C2', // sky blue
+        '#D4DF9A', // pale chartreuse
+        '#D7A2BD', // pale pink
+        '#54C9AC', // teal
+        '#5454C9', // indigo
+        '#C9548F', // rose
+        '#547BC9', // blue
+        '#D7B8A2', // pale peach
+        '#A2D7D7', // pale cyan
+        '#ACC954', // olive lime
+        '#C9AC54', // gold
+        '#88D388', // light green
+        '#BD9ADF'  // lavender
     ];
 
     const BASE_CONNECTIONS = {

@@ -379,6 +379,106 @@
                 quadScramble: s.quadScramble ? s.quadScramble.map((row) => row.slice()) : null
             };
         }
+        // ── Undo ──────────────────────────────────────────────────────────
+        // Snapshot-based, unlimited (capped — see MAX_UNDO_DEPTH). Every
+        // committed move funnels through recordMove(); we bank the PRE-move
+        // full state there so undo() can step straight back to it via the
+        // same Maze.loadSnapshot / Gates.restore pipeline replay uses. A
+        // single user action records at most one move, so one undo = one
+        // reverted action. undoStack holds states OLDEST→NEWEST; undoBaseState
+        // tracks "current committed state" so the next recordMove knows what
+        // to bank.
+        //
+        // Memory: a snapshot is a full grid clone (~64 small tile objects at
+        // 8×8, ~144 at 12×12 quad). The cap bounds worst-case use to a few MB
+        // even on a marathon-length puzzle, and the stack resets every puzzle
+        // (startRecording), so it never accumulates across a run. 200 is far
+        // beyond any realistic single-puzzle move count — effectively
+        // unlimited for normal play, with a hard ceiling as a safety valve.
+        const MAX_UNDO_DEPTH = 200;
+        const undoBtnIds = ['undoBtn', 'hudUndoBtn'];
+        let undoStack = [];          // pre-move full-state snapshots, oldest→newest
+        let undoBaseState = null;    // snapshot of the current committed state
+
+        function captureUndoSnap() {
+            return {
+                maze:  Maze.snapshotState(),
+                gates: (typeof Gates !== 'undefined' && Gates.snapshot) ? Gates.snapshot() : null
+            };
+        }
+        // Maze.loadSnapshot takes OWNERSHIP of the grid it's handed (grid = s.grid),
+        // so a banked snapshot must be cloned before restore or a later move would
+        // mutate it in place. Mirrors deepCloneSnapshot but also carries `locked`
+        // and `quadScramble` (both part of player-visible state).
+        function cloneMazeSnap(s) {
+            return {
+                rows: s.rows, cols: s.cols,
+                grid: s.grid.map((row) => row.map((t) => Object.assign({}, t))),
+                entry:  Object.assign({}, s.entry),
+                exit:   Object.assign({}, s.exit),
+                entry2: s.entry2 ? Object.assign({}, s.entry2) : null,
+                exit2:  s.exit2  ? Object.assign({}, s.exit2)  : null,
+                entry3: s.entry3 ? Object.assign({}, s.entry3) : null,
+                exit3:  s.exit3  ? Object.assign({}, s.exit3)  : null,
+                entry4: s.entry4 ? Object.assign({}, s.entry4) : null,
+                exit4:  s.exit4  ? Object.assign({}, s.exit4)  : null,
+                quadScramble: s.quadScramble ? s.quadScramble.map((row) => row.slice()) : null,
+                locked: Array.isArray(s.locked) ? s.locked.slice() : []
+            };
+        }
+        // Reset the undo history to the puzzle's starting state. Called from
+        // startRecording so both the Marathon (newPuzzle) and PotD paths get a
+        // clean stack anchored on the freshly-loaded board.
+        function resetUndo() {
+            undoStack = [];
+            undoBaseState = captureUndoSnap();
+            updateUndoButtons();
+        }
+        function updateUndoButtons() {
+            const enabled = undoStack.length > 0;
+            undoBtnIds.forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.disabled = !enabled;
+            });
+        }
+        function undo() {
+            if (isBuilding || isReplaying) return;
+            // Same transition guards as handlePointer/handleHintClick: don't
+            // rewind a puzzle the player has already solved and is leaving.
+            if (typeof Marathon !== 'undefined' && Marathon.isInTransition && Marathon.isInTransition()) return;
+            if (typeof Potd !== 'undefined' && Potd.isInSolveTransition && Potd.isInSolveTransition()) return;
+            if (undoStack.length === 0) return;
+
+            const prev = undoStack.pop();
+            // Clone before restore (loadSnapshot takes ownership of the grid).
+            Maze.loadSnapshot(cloneMazeSnap(prev.maze));
+            if (typeof Gates !== 'undefined') {
+                if (prev.gates && Gates.restore) Gates.restore(prev.gates);
+                else if (Gates.clear) Gates.clear();
+                if (Maze.recompute) Maze.recompute();
+            }
+            undoBaseState = prev;
+            // Record the undo as its own replayable move so playback reflects
+            // what actually happened — the move, then the player taking it back.
+            // applyReplayUndo (in playOneRecording) mirrors this pop against a
+            // replay-side state stack. We append rather than going through
+            // recordMove so the undo itself doesn't get banked onto undoStack
+            // (an undo steps back through history; it isn't itself undoable).
+            appendMove({ type: 'undo' });
+
+            if (banner) banner.classList.remove('visible');
+            if (Render.clearFadingLanes) Render.clearFadingLanes();
+            Render.draw();
+            // Re-seed SFX baselines to the restored state and kill any live
+            // loop. We deliberately skip refresh() here — its SFX/win state
+            // machine would otherwise fire spurious applause/awww on the state
+            // jump (or, in debug, re-run win handling). The next real move
+            // diffs cleanly against these baselines.
+            resetSfxBaselines();
+            if (typeof Sfx !== 'undefined' && Sfx.click) Sfx.click();
+            updateUndoButtons();
+        }
+
         // True when `id` is a menu-only-pool song. A game recording must
         // never anchor on (or capture) menu music: on replay it would show a
         // bogus menu title and fall silent when that one song ends, since
@@ -426,9 +526,16 @@
             if (cur && cur.id && !isMenuMusic(cur.id)) {
                 recording.musicEvents.push({ t: 0, songId: cur.id });
             }
+            // Fresh puzzle → fresh undo history anchored on the loaded board.
+            resetUndo();
         }
-        function recordMove(move) {
-            if (!recording || isReplaying) return;
+        // Raw append to the active recording — sets the move's timestamp and
+        // pushes it, with NO undo bookkeeping. Used both by recordMove (real
+        // moves) and undo() (which records an `undo` move so playback replays
+        // the undo itself rather than pretending it never happened). Returns
+        // false when there's no recording / we're replaying.
+        function appendMove(move) {
+            if (!recording || isReplaying) return false;
             // Anchor timestamps to the player's FIRST move, not the puzzle's
             // build time. Otherwise pre-play idle time (worker generation,
             // user reading the puzzle) inflates t-offsets and replay waits
@@ -437,6 +544,18 @@
             if (recording.moves.length === 0) recording.startTime = Date.now();
             move.t = Date.now() - recording.startTime;
             recording.moves.push(move);
+            return true;
+        }
+        function recordMove(move) {
+            if (!appendMove(move)) return;
+            // Undo: bank the state as it was BEFORE this move (undoBaseState),
+            // then advance the base to the new current state. recordMove fires
+            // exactly once per committed action and never during replay (the
+            // early-return above), so the stack stays in lockstep with moves.
+            undoStack.push(undoBaseState);
+            if (undoStack.length > MAX_UNDO_DEPTH) undoStack.shift();
+            undoBaseState = captureUndoSnap();
+            updateUndoButtons();
         }
 
         // Music-events recorder. Registers once (in start() below) and
@@ -607,6 +726,32 @@
             lastWon = Maze.won;
         }
 
+        // Replay-side mirror of the live undo stack. Because replay rebuilds
+        // state deterministically by applying moves from initialState, the
+        // board at replay-move-i equals the live board at move-i — so pushing
+        // the pre-move snapshot before each real move and popping it on an
+        // `undo` move lands the replay on exactly the state the live undo did.
+        // Reset per recording in playOneRecording (separate from the live
+        // undoStack so a post-game replay can't disturb live undo state).
+        let replayUndoStack = [];
+        let replayBase = null;
+        // Apply a recorded `undo` move during playback: step back to the
+        // banked pre-move state. Mirrors live undo()'s restore (silent — no
+        // SFX state machine, matching the live undo which suppresses it).
+        function applyReplayUndo() {
+            if (replayUndoStack.length === 0) return;
+            const prev = replayUndoStack.pop();
+            Maze.loadSnapshot(cloneMazeSnap(prev.maze));
+            if (typeof Gates !== 'undefined') {
+                if (prev.gates && Gates.restore) Gates.restore(prev.gates);
+                else if (Gates.clear) Gates.clear();
+                if (Maze.recompute) Maze.recompute();
+            }
+            replayBase = prev;
+            if (Render.clearFadingLanes) Render.clearFadingLanes();
+            Render.draw();
+            resetSfxBaselines();
+        }
         function applyReplayMove(move) {
             if (move.type === 'rotate') {
                 if (Maze.rotate(move.r, move.c, move.ccw)) {
@@ -659,6 +804,10 @@
             }
             Render.refit();
             Render.draw();
+            // Fresh replay-undo stack anchored on the loaded initial state,
+            // mirroring resetUndo() on the live side.
+            replayUndoStack = [];
+            replayBase = captureUndoSnap();
             // Re-seed the SFX diff baselines for the just-loaded snapshot.
             // Without this, the previous game's lastPathsWon/lastWon/
             // lastJoined would still be in place; the first replay-move
@@ -692,15 +841,28 @@
                         });
                     }
                     if (replayCancelled) break;
-                    applyReplayMove(move);
-                    // refresh() — not just Render.draw() — so the SFX
-                    // state machine runs after every replay move (the
-                    // gate that previously suppressed SFX during replay
-                    // was removed). refresh() also handles the win-state
-                    // banner add via its justWon branch, so the explicit
-                    // `if (Maze.won) banner...` line below is no longer
-                    // needed.
-                    refresh();
+                    if (move.type === 'undo') {
+                        // Step back through the replay-undo stack. applyReplayUndo
+                        // does its own silent draw + baseline reset (mirroring
+                        // live undo()); no refresh() so the SFX/win machine
+                        // doesn't fire on the state jump.
+                        applyReplayUndo();
+                    } else {
+                        // Bank pre-move state, apply, then advance the base —
+                        // the exact order recordMove uses live, so the replay
+                        // stack tracks the live one move-for-move.
+                        replayUndoStack.push(replayBase);
+                        applyReplayMove(move);
+                        replayBase = captureUndoSnap();
+                        // refresh() — not just Render.draw() — so the SFX
+                        // state machine runs after every replay move (the
+                        // gate that previously suppressed SFX during replay
+                        // was removed). refresh() also handles the win-state
+                        // banner add via its justWon branch, so the explicit
+                        // `if (Maze.won) banner...` line below is no longer
+                        // needed.
+                        refresh();
+                    }
                 }
             } finally {
                 if (typeof Music !== 'undefined' && Music.stopScriptedPlayback) {
@@ -965,6 +1127,10 @@
             // anchored on the loaded state instead of inheriting whatever
             // the previous marathon run left in `recording`.
             startRecording: startRecording,
+            // Undo the last committed move. Exposed for tests / future
+            // gamepad or controls-config bindings.
+            undo: undo,
+            get canUndo() { return undoStack.length > 0; },
             // Same bypass concern as startRecording — PotD doesn't route
             // through newPuzzle, so it needs to re-seed the SFX diff
             // baselines explicitly. Without this call, the first refresh()
@@ -1511,6 +1677,28 @@
             const el = document.getElementById(id);
             if (el) el.addEventListener('click', handleHintClick);
         });
+
+        // Undo: two buttons share one handler — #undoBtn (debug mode, top-left
+        // corner, mirroring #hintBtn) and #hudUndoBtn (game-mode HUD, mirroring
+        // #hudHintBtn left of the timer). CSS hides whichever doesn't match the
+        // current mode; binding both is safe since only one is visible.
+        undoBtnIds.forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('click', (ev) => { ev.stopPropagation(); undo(); });
+        });
+        // Keyboard parity: Ctrl/⌘+Z is the universal undo gesture. Skip when a
+        // text field is focused (name entry) so the browser's native input
+        // undo still works there.
+        window.addEventListener('keydown', (ev) => {
+            if (!(ev.ctrlKey || ev.metaKey) || ev.shiftKey || ev.altKey) return;
+            if (ev.key !== 'z' && ev.key !== 'Z') return;
+            const t = ev.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+            ev.preventDefault();
+            undo();
+        });
+        // Initialize button enabled/disabled state for the loaded board.
+        updateUndoButtons();
     }
 
     if (document.readyState === 'loading') {
