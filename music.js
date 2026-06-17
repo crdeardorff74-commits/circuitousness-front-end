@@ -694,6 +694,13 @@ const Music = (function () {
             || findInList(creditsPlaylist, id)
             || findInList(menuPlaylist, id);
     }
+    // True iff `id` is in the menu-only pool. Used by replay (to drop menu
+    // tracks from a scripted schedule) and exposed as isMenuSong so the
+    // recorder can keep menu music out of game recordings in the first
+    // place. Empty menuPlaylist → always false (project with no menu pool).
+    function isMenuPoolSong(id) {
+        return !!findInList(menuPlaylist, id);
+    }
 
     function playSong(song) {
         if (!song) return;
@@ -956,6 +963,21 @@ const Music = (function () {
     function startScriptedPlayback(events) {
         stopScriptedPlayback();
         if (!events || !Array.isArray(events) || events.length === 0) return;
+        // Drop menu-pool songs from the schedule. A game recording should
+        // never contain menu music, but some PotD recordings (made by
+        // clients that recorded before the menu→game music switch landed)
+        // captured the menu track as their only music event. Scheduling it
+        // would show a bogus menu title in Now Playing AND leave the replay
+        // silent once that single song ends, because scripted playback
+        // suppresses the normal auto-advance (see advanceToNext). Filtering
+        // collapses an all-menu recording to an empty schedule → the no-op
+        // return just below → the watcher's normal, still-auto-advancing
+        // music simply keeps playing.
+        const cleaned = events.filter(function (e) {
+            const sid = e && (e.songId || (e.song && e.song.id));
+            return sid && !isMenuPoolSong(sid);
+        });
+        if (cleaned.length === 0) return;
         scriptedPlayback = { timers: [] };
         // Refresh the Now Playing UI so it knows replay just started —
         // its callback hides the prev/pause/next controls during
@@ -964,7 +986,7 @@ const Music = (function () {
         // first recorded song-change event actually fires playSong.
         notifySongChange();
         // Sort by time ascending so the first event (often t=0) fires first.
-        const sorted = events.slice().sort(function (a, b) {
+        const sorted = cleaned.slice().sort(function (a, b) {
             return (a.t || 0) - (b.t || 0);
         });
         for (let i = 0; i < sorted.length; i++) {
@@ -1063,6 +1085,7 @@ const Music = (function () {
         getMode:               getMode,
         setMenuPhase:          setMenuPhase,
         isMenuSongPlaying:     isMenuSongPlaying,
+        isMenuSong:            isMenuPoolSong,
         startCreditsSequence:  startCreditsSequence,
         stopCreditsSequence:   stopCreditsSequence,
     };

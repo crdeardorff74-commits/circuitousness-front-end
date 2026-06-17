@@ -393,6 +393,12 @@
                         </div>
                         <div class="challenge-description" data-i18n="mode.marathon.desc">Solve as many puzzles as you can before time runs out.</div>
                     </div>
+                    <div class="selection-option" data-mode="practice">
+                        <div class="selection-option-header">
+                            <span class="selection-option-name" data-i18n="mode.practice.name">🧩 Practice</span>
+                        </div>
+                        <div class="challenge-description" data-i18n="mode.practice.desc">Solve as many puzzles as you like, with no time limit.</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -837,7 +843,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.45';</script>
+    <script>var PAGE_VERSION = '0.46';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

@@ -1,10 +1,12 @@
 /**
  * mode-picker.js — top-level mode selector for the main menu.
  *
- * Two modes today:
+ * Three modes today:
  *   'potd'     — Puzzle of the Day (default — first-player-generates
  *                client-side, server stores, leaderboard resets daily).
  *   'marathon' — Solve as many puzzles as time allows (the original mode).
+ *   'practice' — Marathon without the time limit or leaderboards: solve as
+ *                many puzzles as you like, untimed, nothing saved.
  *
  * The picker is a chip + popup, lifted verbatim from TANTЯO's Skill /
  * Difficulty pattern (`.menu-dropdown-*`, `.combo-modal-*`, `.selection-*`
@@ -17,14 +19,14 @@
  * iteration; until then the picker is testable in isolation.
  *
  * Public API:
- *   ModePicker.getMode()         — 'potd' | 'marathon'
+ *   ModePicker.getMode()         — 'potd' | 'marathon' | 'practice'
  *   ModePicker.setMode(m)        — switch programmatically (fires onChange)
  *   ModePicker.onChange(cb)      — cb(newMode) on every change
- *   ModePicker.MODES             — ['potd', 'marathon']
+ *   ModePicker.MODES             — ['potd', 'marathon', 'practice']
  */
 
 const ModePicker = (() => {
-    const MODES        = ['potd', 'marathon'];
+    const MODES        = ['potd', 'marathon', 'practice'];
     const DEFAULT_MODE = 'potd';
     const STORAGE_KEY  =
         (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness') + '_mode';
@@ -79,7 +81,9 @@ const ModePicker = (() => {
         }
         // Fallback for the moment i18n hasn't initialized yet — matches
         // the data-i18n defaults in index.html.
-        return mode === 'potd' ? '📅 Puzzle of the Day' : '🏃 Marathon';
+        if (mode === 'potd')     return '📅 Puzzle of the Day';
+        if (mode === 'practice') return '🧩 Practice';
+        return '🏃 Marathon';
     }
 
     function updateChipLabel() {

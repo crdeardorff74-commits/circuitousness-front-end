@@ -349,6 +349,11 @@ html.mode-game #replayHud.visible { display: flex; }
 /* In game mode, hide the win banner — Marathon advances automatically */
 html.mode-game #winBanner { display: none !important; }
 
+/* Practice is untimed — there's no countdown to show, so drop the HUD timer.
+   body.mode-practice is set by ModePicker while Practice is the selected mode
+   (the only mode a Practice game can be launched from). */
+body.mode-practice #hudTimer { display: none; }
+
 /* Solve transition — between-puzzles message. JS toggles `.visible` on solve;
    it stays up until the player clicks. Click handler is on the popup itself
    AND on the canvas (via game.js handlePointer), so a tap anywhere advances. */

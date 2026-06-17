@@ -32,6 +32,12 @@ const Marathon = (() => {
     };
 
     let state          = STATE.MENU;
+    // Practice is Marathon with the clock and the leaderboard removed: the
+    // timer never starts (so the game only ends when the player quits) and
+    // nothing is submitted. Set per-run in startGame from the active mode;
+    // every branch that touches the countdown, hint penalty, or score save
+    // gates on this. Same state machine + puzzle flow as Marathon otherwise.
+    let isPractice     = false;
     let activeType     = null;     // 's1'..'s4', 'q1'..'q4'
     let sessionToken   = null;     // server-issued cheat-proof timing token (from /api/game/start)
     let level          = 0;        // current puzzle index, 1-based
@@ -159,7 +165,9 @@ const Marathon = (() => {
                 if (pickedMode === 'potd' && typeof Potd !== 'undefined' && Potd.startPuzzle) {
                     Potd.startPuzzle(mode);
                 } else {
-                    startGame(mode);
+                    // Marathon and Practice share startGame — the second arg
+                    // flips the untimed/no-leaderboard Practice variant.
+                    startGame(mode, pickedMode === 'practice');
                 }
             });
         });
@@ -386,9 +394,13 @@ const Marathon = (() => {
         // keyboard is present (non-iOS, or never opened).
         teardownMobileKeyboard();
         if (!fromReplay) {
-            const initialMode = (typeof ModePicker !== 'undefined' && ModePicker.getMode)
+            const picked = (typeof ModePicker !== 'undefined' && ModePicker.getMode)
                 ? ModePicker.getMode()
                 : 'marathon';
+            // Practice has no leaderboard of its own, so its players land on
+            // the Marathon board (the closest equivalent) rather than an
+            // unhandled mode the render branch doesn't speak.
+            const initialMode = picked === 'potd' ? 'potd' : 'marathon';
             applyLeaderboardMode(initialMode, /*render=*/false);
         }
         renderLeaderboard();
@@ -509,7 +521,8 @@ const Marathon = (() => {
         return fresh * 1000;
     }
 
-    function startGame(type) {
+    function startGame(type, practice) {
+        isPractice       = !!practice;
         activeType       = type;
         sessionToken     = null;  // cleared until /api/game/start resolves
         level            = 0;
@@ -543,15 +556,19 @@ const Marathon = (() => {
             if (stillMenu && Music.stop) Music.stop();
             if (Music.start) Music.start();
         }
-        // Engagement tracking: one start per game (not per puzzle).
-        if (typeof Tracking !== 'undefined' && Tracking.recordStart) Tracking.recordStart('marathon', type);
+        // Engagement tracking: one start per game (not per puzzle). Practice
+        // reports its own mode so the funnel can tell the two apart.
+        if (typeof Tracking !== 'undefined' && Tracking.recordStart) {
+            Tracking.recordStart(isPractice ? 'practice' : 'marathon', type);
+        }
         // Fire-and-forget: ask the server for a cheat-proof timing token.
         // Game continues regardless — if the request fails (offline / cold
         // back-end / network blip) we stay with sessionToken=null and the
         // submit will fall through to the local-fallback path with no
         // public leaderboard entry. Better than blocking play on a flaky
         // request, and the front-end already handles local-only saves.
-        requestSessionToken(type);
+        // Skipped entirely in Practice — it never submits a score.
+        if (!isPractice) requestSessionToken(type);
         startNextPuzzle();
     }
 
@@ -619,7 +636,9 @@ const Marathon = (() => {
     function onPuzzleReady() {
         if (state !== STATE.PLAYING) return;
         puzzleStartMs = Date.now();
-        startTimer();
+        // Practice is untimed — no countdown, so the game only ever ends when
+        // the player quits. Marathon starts its per-puzzle clock here.
+        if (!isPractice) startTimer();
         if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
         // Background shuffle has already fired at the START of the build
         // (in game.js startPuzzle callback) so the new image is visible
@@ -632,10 +651,15 @@ const Marathon = (() => {
         //     is mid-solve and has plausibly noticed they want to lock a
         //     tile in place. Cancelled if the puzzle ends first.
         if (typeof Tooltip !== 'undefined') {
-            Tooltip.showOnce('marathonHint',
-                (typeof I18n !== 'undefined' && I18n.t)
-                    ? I18n.t('tooltip.marathonHint')
-                    : 'Use HINT for help strategically, as it will cost you 25% of your remaining time every time you use it');
+            // The marathonHint tip is all about the 25%-time penalty, which
+            // doesn't exist in Practice (untimed, free hints) — skip it there.
+            // The lock tip is still relevant to both modes.
+            if (!isPractice) {
+                Tooltip.showOnce('marathonHint',
+                    (typeof I18n !== 'undefined' && I18n.t)
+                        ? I18n.t('tooltip.marathonHint')
+                        : 'Use HINT for help strategically, as it will cost you 25% of your remaining time every time you use it');
+            }
             scheduleLockTip();
         }
     }
@@ -702,6 +726,10 @@ const Marathon = (() => {
     // is unmissable. No-op if a transition is in flight or we're not playing.
     function onHintUsed() {
         if (state !== STATE.PLAYING || inTransition) return;
+        // Practice has no clock and no leaderboard, so hints are free: no
+        // time penalty, no run-wide hint count to track. The hint itself is
+        // applied by game.js regardless — this hook only owns the cost.
+        if (isPractice) return;
         // Bump the run-wide hint counter BEFORE applying the time penalty.
         // Order doesn't matter functionally — they're independent — but
         // counting first means the increment happens unconditionally
@@ -768,12 +796,18 @@ const Marathon = (() => {
         // into the next puzzle.
         if (solveTransitionEl && solveHeadline && solveBanked) {
             solveHeadline.textContent = I18n.t('marathon.solveHeadline', { n: level });
-            const tStr = fmtTime(nextStart);
-            const bSec = Math.floor(bankedMs / 1000);
-            if (bSec > 0) {
-                solveBanked.textContent = I18n.t('marathon.solveBankedFull', { b: bSec, t: tStr });
+            if (isPractice) {
+                // No clock to bank — just confirm the count and prompt the
+                // player onward. #solveContinue already shows "Tap to continue".
+                solveBanked.textContent = I18n.t('marathon.solvePractice', { n: solvedCount });
             } else {
-                solveBanked.textContent = I18n.t('marathon.solveBankedZero', { t: tStr });
+                const tStr = fmtTime(nextStart);
+                const bSec = Math.floor(bankedMs / 1000);
+                if (bSec > 0) {
+                    solveBanked.textContent = I18n.t('marathon.solveBankedFull', { b: bSec, t: tStr });
+                } else {
+                    solveBanked.textContent = I18n.t('marathon.solveBankedZero', { t: tStr });
+                }
             }
             solveTransitionEl.classList.add('visible');
         }
