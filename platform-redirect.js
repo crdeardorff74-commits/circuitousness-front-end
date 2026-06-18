@@ -14,9 +14,17 @@
  *      (itch's fullscreen launch) or anywhere top-navigation is permitted.
  *      A harmless no-op when the embedding iframe's sandbox forbids it.
  *   2. Tap fallback overlay. itch's in-page iframe sandbox omits
- *      top-navigation but allows popups, so the overlay's button opens TARGET
- *      in a new tab — landing the player on the real origin, top-level, where
- *      Add to Home Screen installs the actual PWA.
+ *      top-navigation but allows popups, so the overlay's PRIMARY button opens
+ *      TARGET in a new tab — landing the player on the real origin, top-level,
+ *      where Add to Home Screen installs the actual PWA.
+ *      The overlay also offers a SECONDARY "play in this window" link: a plain
+ *      same-frame anchor to TARGET. Navigating the iframe's OWN browsing
+ *      context is never sandbox-blocked, so this is the guaranteed-playable
+ *      fallback for the rare browser/sandbox that swallows the new-tab open —
+ *      the game loads on the real origin inside the frame (fully playable,
+ *      just not installable from there). Two distinct anchors, never a
+ *      scripted window.open, so there's no double-open and no popup-blocker
+ *      fragility — both are trusted user-gesture navigations.
  *
  * Loaded FIRST, in <head>, so the auto attempt runs before any game UI paints.
  * NOT importScripts()'d by sw.js (it touches window/document). Overlay text is
@@ -36,9 +44,10 @@
 
     // English fallbacks, used only if I18n isn't available when the overlay builds.
     var FALLBACK = {
-        'redirect.title':  'Open the full app',
-        'redirect.body':   'For the best experience — and to add the game to your home screen — open the full version.',
-        'redirect.button': 'Open full version'
+        'redirect.title':    'Play the full version',
+        'redirect.body':     'On phones, the game runs best on its own site. Tap below to open it — and you can add it to your home screen from there.',
+        'redirect.button':   'Open the full version',
+        'redirect.fallback': 'Not opening? Tap here to play in this window.'
     };
 
     function tr(key) {
@@ -134,9 +143,9 @@
         body.textContent = tr('redirect.body');
         body.style.cssText = 'font-size:clamp(0.95rem,3.6vw,1.15rem);line-height:1.5;max-width:32rem;opacity:0.9;';
 
-        // A real anchor with target="_blank" works under itch's sandbox
-        // (allow-popups): it opens TARGET top-level in a new tab, where the PWA
-        // and Add-to-Home-Screen function correctly.
+        // PRIMARY: a real anchor with target="_blank" works under itch's
+        // sandbox (allow-popups): it opens TARGET top-level in a new tab, where
+        // the PWA and Add-to-Home-Screen function correctly.
         var btn = document.createElement('a');
         btn.href = TARGET;
         btn.target = '_blank';
@@ -151,10 +160,27 @@
             'cursor:pointer', '-webkit-tap-highlight-color:transparent'
         ].join(';');
 
+        // SECONDARY (guaranteed fallback): a plain SAME-FRAME anchor to TARGET.
+        // No target="_blank", so the default action navigates the iframe's own
+        // browsing context — never sandbox-blocked. The real game loads on its
+        // own origin inside the frame: fully playable (just not installable
+        // from here). Covers the rare browser that swallows the new-tab open.
+        var fallback = document.createElement('a');
+        fallback.href = TARGET;
+        fallback.rel = 'noopener';
+        fallback.textContent = tr('redirect.fallback');
+        fallback.style.cssText = [
+            'display:inline-block', 'margin-top:0.25rem',
+            'font-size:clamp(0.85rem,3.2vw,1rem)', 'line-height:1.4',
+            'text-decoration:underline', 'color:#a9c4ff', 'opacity:0.95',
+            'cursor:pointer', '-webkit-tap-highlight-color:transparent'
+        ].join(';');
+
         overlay.appendChild(close);
         overlay.appendChild(title);
         overlay.appendChild(body);
         overlay.appendChild(btn);
+        overlay.appendChild(fallback);
         document.body.appendChild(overlay);
     }
 

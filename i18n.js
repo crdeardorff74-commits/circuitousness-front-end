@@ -36,9 +36,10 @@ const I18n = (() => {
     const translations = {
         en: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "Open the full app",
-            'redirect.body': "For the best experience — and to add the game to your home screen — open the full version.",
-            'redirect.button': "Open full version",
+            'redirect.title': "Play the full version",
+            'redirect.body': "On phones, the game runs best on its own site. Tap below to open it — and you can add it to your home screen from there.",
+            'redirect.button': "Open the full version",
+            'redirect.fallback': "Not opening? Tap here to play in this window.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Path connected — tap for a new puzzle',
             'hint.button':     'Hint',
@@ -172,9 +173,10 @@ const I18n = (() => {
         },
         es: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "Abre la app completa",
-            'redirect.body': "Para una mejor experiencia, y para añadir el juego a tu pantalla de inicio, abre la versión completa.",
-            'redirect.button': "Abrir versión completa",
+            'redirect.title': "Juega la versión completa",
+            'redirect.body': "En teléfonos, el juego funciona mejor en su propio sitio. Toca abajo para abrirlo; desde ahí también puedes añadirlo a tu pantalla de inicio.",
+            'redirect.button': "Abrir la versión completa",
+            'redirect.fallback': "¿No se abre? Toca aquí para jugar en esta ventana.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Camino conectado — toca para un nuevo puzzle',
             'hint.button':     'Pista',
@@ -412,9 +414,10 @@ const I18n = (() => {
         },
         fr: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "Ouvrir l'appli complète",
-            'redirect.body': "Pour une meilleure expérience, et pour ajouter le jeu à votre écran d'accueil, ouvrez la version complète.",
+            'redirect.title': "Jouer à la version complète",
+            'redirect.body': "Sur téléphone, le jeu fonctionne mieux sur son propre site. Touchez ci-dessous pour l'ouvrir — vous pourrez aussi l'ajouter à votre écran d'accueil.",
             'redirect.button': "Ouvrir la version complète",
+            'redirect.fallback': "Rien ne s'ouvre ? Touchez ici pour jouer dans cette fenêtre.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Chemin connecté — appuyez pour un nouveau puzzle',
             'hint.button':     'Indice',
@@ -652,9 +655,10 @@ const I18n = (() => {
         },
         de: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "Vollständige App öffnen",
-            'redirect.body': "Für das beste Erlebnis – und um das Spiel zum Startbildschirm hinzuzufügen – öffne die vollständige Version.",
+            'redirect.title': "Vollversion spielen",
+            'redirect.body': "Auf Handys läuft das Spiel am besten auf seiner eigenen Seite. Tippe unten, um es zu öffnen – von dort kannst du es auch zum Startbildschirm hinzufügen.",
             'redirect.button': "Vollversion öffnen",
+            'redirect.fallback': "Öffnet sich nicht? Tippe hier, um in diesem Fenster zu spielen.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Pfad verbunden — tippe für ein neues Rätsel',
             'hint.button':     'Tipp',
@@ -891,9 +895,10 @@ const I18n = (() => {
         },
         pt: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "Abrir o app completo",
-            'redirect.body': "Para a melhor experiência, e para adicionar o jogo à tela inicial, abra a versão completa.",
-            'redirect.button': "Abrir versão completa",
+            'redirect.title': "Jogue a versão completa",
+            'redirect.body': "Em celulares, o jogo funciona melhor no próprio site. Toque abaixo para abri-lo — de lá você também pode adicioná-lo à tela inicial.",
+            'redirect.button': "Abrir a versão completa",
+            'redirect.fallback': "Não abriu? Toque aqui para jogar nesta janela.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Caminho conectado — toque para um novo puzzle',
             'hint.button':     'Dica',
@@ -1130,9 +1135,10 @@ const I18n = (() => {
         },
         ja: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "フルアプリを開く",
-            'redirect.body': "最高の体験のために、そしてゲームをホーム画面に追加するには、フルバージョンを開いてください。",
+            'redirect.title': "フルバージョンをプレイ",
+            'redirect.body': "スマホでは、ゲームは専用サイトで最も快適に動作します。下をタップして開いてください。そこからホーム画面に追加することもできます。",
             'redirect.button': "フルバージョンを開く",
+            'redirect.fallback': "開かない場合は、ここをタップしてこのウィンドウでプレイ。",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'パス接続完了 — タップで次のパズル',
             'hint.button':     'ヒント',
@@ -1368,9 +1374,10 @@ const I18n = (() => {
         },
         ko: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "전체 앱 열기",
-            'redirect.body': "최상의 경험을 위해, 그리고 게임을 홈 화면에 추가하려면 전체 버전을 여세요.",
+            'redirect.title': "전체 버전 플레이",
+            'redirect.body': "휴대폰에서는 게임이 전용 사이트에서 가장 잘 작동합니다. 아래를 눌러 열어 보세요. 거기서 홈 화면에 추가할 수도 있습니다.",
             'redirect.button': "전체 버전 열기",
+            'redirect.fallback': "열리지 않나요? 여기를 눌러 이 창에서 플레이하세요.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     '경로 연결됨 — 새 퍼즐을 보려면 탭하세요',
             'hint.button':     '힌트',
@@ -1606,9 +1613,10 @@ const I18n = (() => {
         },
         zh: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "打开完整应用",
-            'redirect.body': "为获得最佳体验，并将游戏添加到主屏幕，请打开完整版本。",
+            'redirect.title': "畅玩完整版",
+            'redirect.body': "在手机上，游戏在自己的网站上运行最佳。点击下方打开，你还可以从那里将它添加到主屏幕。",
             'redirect.button': "打开完整版本",
+            'redirect.fallback': "打不开？点此在当前窗口中游玩。",
             'app.title':       PROJECT_NAME,
             'game.youWon':     '路径已连接 — 点击开始新谜题',
             'hint.button':     '提示',
@@ -1844,9 +1852,10 @@ const I18n = (() => {
         },
         ru: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "Открыть полное приложение",
-            'redirect.body': "Для лучшего опыта и чтобы добавить игру на главный экран, откройте полную версию.",
+            'redirect.title': "Играть в полную версию",
+            'redirect.body': "На телефонах игра лучше всего работает на собственном сайте. Нажмите ниже, чтобы открыть её — оттуда можно добавить игру на главный экран.",
             'redirect.button': "Открыть полную версию",
+            'redirect.fallback': "Не открывается? Нажмите здесь, чтобы играть в этом окне.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Путь соединён — нажмите для новой головоломки',
             'hint.button':     'Подсказка',
@@ -2083,9 +2092,10 @@ const I18n = (() => {
         },
         it: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "Apri l'app completa",
-            'redirect.body': "Per la migliore esperienza, e per aggiungere il gioco alla schermata Home, apri la versione completa.",
-            'redirect.button': "Apri versione completa",
+            'redirect.title': "Gioca alla versione completa",
+            'redirect.body': "Su telefono, il gioco funziona meglio sul proprio sito. Tocca qui sotto per aprirlo — da lì puoi anche aggiungerlo alla schermata Home.",
+            'redirect.button': "Apri la versione completa",
+            'redirect.fallback': "Non si apre? Tocca qui per giocare in questa finestra.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Percorso collegato — tocca per un nuovo puzzle',
             'hint.button':     'Suggerimento',
@@ -2321,9 +2331,10 @@ const I18n = (() => {
         },
         nl: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "Open de volledige app",
-            'redirect.body': "Voor de beste ervaring — en om het spel aan je beginscherm toe te voegen — open je de volledige versie.",
+            'redirect.title': "Speel de volledige versie",
+            'redirect.body': "Op telefoons werkt het spel het best op zijn eigen site. Tik hieronder om het te openen — daar kun je het ook aan je beginscherm toevoegen.",
             'redirect.button': "Volledige versie openen",
+            'redirect.fallback': "Opent niet? Tik hier om in dit venster te spelen.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Pad verbonden — tik voor een nieuwe puzzel',
             'hint.button':     'Hint',
@@ -2559,9 +2570,10 @@ const I18n = (() => {
         },
         pl: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "Otwórz pełną aplikację",
-            'redirect.body': "Aby uzyskać najlepsze wrażenia i dodać grę do ekranu głównego, otwórz pełną wersję.",
+            'redirect.title': "Zagraj w pełną wersję",
+            'redirect.body': "Na telefonach gra działa najlepiej na własnej stronie. Dotknij poniżej, aby ją otworzyć — stamtąd możesz też dodać ją do ekranu głównego.",
             'redirect.button': "Otwórz pełną wersję",
+            'redirect.fallback': "Nie otwiera się? Dotknij tutaj, aby zagrać w tym oknie.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Ścieżka połączona — dotknij, aby uzyskać nową łamigłówkę',
             'hint.button':     'Wskazówka',
@@ -2797,9 +2809,10 @@ const I18n = (() => {
         },
         tr: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "Tam uygulamayı aç",
-            'redirect.body': "En iyi deneyim için ve oyunu ana ekranınıza eklemek için tam sürümü açın.",
+            'redirect.title': "Tam sürümü oyna",
+            'redirect.body': "Telefonlarda oyun en iyi kendi sitesinde çalışır. Açmak için aşağıya dokun — oradan ana ekranına da ekleyebilirsin.",
             'redirect.button': "Tam sürümü aç",
+            'redirect.fallback': "Açılmıyor mu? Bu pencerede oynamak için buraya dokun.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Yol bağlandı — yeni bulmaca için dokun',
             'hint.button':     'İpucu',
@@ -3035,9 +3048,10 @@ const I18n = (() => {
         },
         ar: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "افتح التطبيق الكامل",
-            'redirect.body': "للحصول على أفضل تجربة، ولإضافة اللعبة إلى الشاشة الرئيسية، افتح النسخة الكاملة.",
+            'redirect.title': "العب النسخة الكاملة",
+            'redirect.body': "على الهواتف، تعمل اللعبة بأفضل شكل على موقعها الخاص. انقر بالأسفل لفتحها — ومن هناك يمكنك أيضًا إضافتها إلى شاشتك الرئيسية.",
             'redirect.button': "افتح النسخة الكاملة",
+            'redirect.fallback': "لا تُفتح؟ انقر هنا للعب في هذه النافذة.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'تم توصيل المسار — اضغط للحصول على لغز جديد',
             'hint.button':     'تلميح',
@@ -3273,9 +3287,10 @@ const I18n = (() => {
         },
         hi: {
             // Home-screen redirect overlay (platform-redirect.js)
-            'redirect.title': "पूरा ऐप खोलें",
-            'redirect.body': "सर्वोत्तम अनुभव के लिए, और गेम को अपनी होम स्क्रीन पर जोड़ने के लिए, पूरा संस्करण खोलें।",
+            'redirect.title': "पूरा संस्करण खेलें",
+            'redirect.body': "फ़ोन पर, गेम अपनी साइट पर सबसे अच्छा चलता है। इसे खोलने के लिए नीचे टैप करें — वहाँ से आप इसे अपनी होम स्क्रीन पर भी जोड़ सकते हैं।",
             'redirect.button': "पूरा संस्करण खोलें",
+            'redirect.fallback': "नहीं खुल रहा? इस विंडो में खेलने के लिए यहाँ टैप करें।",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'पथ जुड़ा — नई पहेली के लिए टैप करें',
             'hint.button':     'संकेत',
