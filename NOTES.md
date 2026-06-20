@@ -2,6 +2,45 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-06-20 — Release v0.49
+- Version bump only — no front-end code changes this session (the session's work was on TANTЯO + the admin tool; this is a paired release alongside TANTЯO v4.22).
+
+## 2026-06-18 — Release v0.48
+- Small credits addition (content only).
+
+## 2026-06-18 — Release v0.47
+- **Hardened the itch.io mobile redirect** (`platform-redirect.js`) after an itch comment ("Doesn't work on phone?" / direct link worked on Galaxy A53). Root cause: PWA features + the seamless top-nav redirect can't work inside itch's sandboxed iframe, so mobile itch players were left with only a fragile new-tab button. Overlay now has TWO tiered, guaranteed actions: PRIMARY anchor `target="_blank"` → new top-level tab (installable PWA, works under itch's allow-popups); SECONDARY plain same-frame anchor → navigates the iframe's own context (never sandbox-blocked) so the real game always loads in-frame (playable, not installable). Two distinct anchors, no scripted window.open → no popup-blocker fragility, no double-open.
+- Copy rewritten action-first ("Play the full version" / "On phones, the game runs best on its own site…") since "it works at all" beats "it installs." New `redirect.fallback` i18n key + updated title/body/button across all 15 languages.
+- Still inert on desktop, in standalone PWA, and on our own origin. Couldn't reproduce itch's sandbox locally (overlay correctly inert on localhost) — real test is uploading the zip and opening the itch listing on a phone.
+
+## 2026-06-17 — Release v0.46
+- **New "Practice" mode** (🧩) — third option in the MODE picker, alongside PotD + Marathon. Plays exactly like Marathon but **untimed** and **never saved**. Implemented as an `isPractice` flag inside `marathon.js` (reuses the whole state machine): `onPuzzleReady` skips `startTimer()` so there's no countdown and the time-expiry `gameOver()` path is never reached (→ no leaderboard save screen); the game only ends on Quit. `onHintUsed` returns early (free hints, no penalty, marathonHint tip suppressed). Solve-transition subline shows `marathon.solvePractice` instead of banked time. No session token requested; tracking reports mode `'practice'`. Menu Leaderboards button routes Practice players to the Marathon board (Practice has no board). Timer hidden via `body.mode-practice #hudTimer { display:none }`. `mode.practice.name`/`mode.practice.desc`/`marathon.solvePractice` added to all 15 langs.
+- Verified in-browser: Practice HUD has no timer + never counts; HINT applies no penalty; Marathon timer still counts (no regression); no console errors.
+
+## 2026-06-17 — Release v0.45
+- **Default tile face opacity raised 0.69 → 0.80** (settings.js `DEF_TILE_FACE`). Fresh installs only — `loadFloat` keeps existing players' persisted values. Twins now default to 0.88 (0.80×1.1). render.js `TILE_FACE_ALPHA` init was already 0.80 so they match.
+
+## 2026-06-17 — Release v0.44
+- **UNDO now animates** the inverse tile rotation instead of snapping (game.js). State still restores via snapshot; new `animateUndoMove(move)` plays the reverse spin as a visual layer — CW rotate undoes CCW, hint's CW `turns` reverse CCW, gate spin reverses (twins handled inside `animateRotationAt`, locks have no spin). Undo stacks (live + replay) now store `{state, move}`; hint moves record `turns` so replay undos animate too. Verified via spying on `animateRotationAt`: rotate/hint/replay all fire the correct inverse call, state restored, no errors.
+
+## 2026-06-17 — Release v0.43
+- **UNDO feature** (game.js + index.html + styles.css + i18n): new HUD button left of the timer, mirroring HINT's offset (`#hudUndoBtn` at `right: calc(50% + 10rem)`; `#hudLevel` moved to far-left to free the slot); debug-mode `#undoBtn` stacked under HINT (top-right, clear of the slider panel). Cyan accent, disabled when nothing to undo, Ctrl/⌘+Z shortcut. Snapshot-based, unlimited (capped `MAX_UNDO_DEPTH=200`, resets per puzzle via startRecording). Undo is RECORDED as an `{type:'undo'}` replayable move (via new `appendMove`) — playback reflects the undos themselves; `playOneRecording` mirrors a replay-side undo stack (`applyReplayUndo`). `undo.button` i18n added to all 15 langs.
+- **Twin palette redesigned for perceptual separation** (maze.js TWIN_COLORS): old hand-picked pastels had near-duplicates ~6 ΔE apart (CIE76 Lab); new 16 chosen by farthest-point dispersion in a soft pastel band, min ~24 ΔE, red-free (hue 25–330°, red reserved for hint-locks). Crowded hues separated by LIGHTNESS. Sequenced greedy max-min so low-pair puzzles get the most-different colors first.
+- **Twin tile opacity boosted to 110%** of regular tile opacity (render.js effectivePalette: `faceAlpha: min(1, TILE_FACE_ALPHA*1.1)`) — tracks the live opacity setting, clamped to 1. Verified: plain faces 0.69 vs twin 0.76 (ratio 1.10).
+- **Debug panel sliders synced to live Settings values** (index.html): `syncDebugSlider`/`syncDebugPicker` read the six Settings getters at init so labels reflect reality instead of stale HTML defaults — fixed face opacity (showed 0.80, actual 0.69) and path opacity (0.14 vs 0.11); also reflects persisted overrides now.
+
+## 2026-06-16 — Release v0.42
+- Global text-selection / iOS-callout disable in `styles.css` (new universal rule 10): root `html { user-select:none; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; ... }`, re-enabled for `input, textarea, [contenteditable]`. Fixes the iOS bug where a tap (and more often tap-and-hold) popped the native text-selection handles + magnifier over the game.
+
+## 2026-06-16 — Release v0.41
+- New `platform-redirect.js` (loaded first in `<head>`): on mobile/tablet viewed from an itch.io embed, redirects to `circuitousness.official-intelligence.art` so "Add to Home Screen" installs the real PWA instead of bookmarking itch's listing page. Auto top-nav attempt + tap-fallback overlay (× to dismiss). Inert on desktop, in standalone PWA, and on our own origin. Added 15-language `redirect.*` i18n keys and the file to sw.js CORE_ASSETS.
+- **Caveat to test on a real phone:** itch's in-page iframe sandbox likely blocks the silent auto-redirect (omits top-navigation, allows popups), so the tap overlay opening a new tab is the expected path on the listing page; seamless auto only fires when itch launches top-level (fullscreen). Also assumes `circuitousness.official-intelligence.art` is live.
+
+## 2026-06-10 — Release v0.40
+
+- **Sealed-ring quad fix** (maze.js `breakSymmetricFillerQuads`): all-filler quads of 4 inward-facing elbows formed a closed loop with no external ports — invisible to fixDeadEnds (all inner ports match) and skipped by every straight-lane pattern (patternSafe always fails on the ring). Now detected via "all-elbow + all-filler + zero valid patterns" and fully rewritten (straight lane on a random pair + outward elbows on the rest). Verified via in-browser harness: unit tests + 64 clean quad generations. Already-seeded PotD snapshots are immutable, so old puzzles can still contain a ring.
+- **Replay end-hold** (marathon.js): finished replays no longer bounce straight to the leaderboard — they hold on the final solved frame until Stop replay (or quit-to-menu) releases the new `replayHoldResolve` promise in `startReplayWithEvents`. Cancelled replays skip the hold (user already asked to leave). Last replay song keeps playing through the hold; the menu-music handoff runs at hold release. Covers Marathon + PotD (shared path).
+
 ## 2026-05-26 — Release v0.26
 
 - **HUGE batch of fixes accumulated since v0.25 — coming out together because user was testing iteratively without a /rel.** Don't expect future releases to be this dense.
