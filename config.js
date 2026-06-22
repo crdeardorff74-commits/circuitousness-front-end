@@ -39,6 +39,16 @@ const THUMBNAIL_URL_BASE =
 // early; in PotD it's a fixed pause.
 const SOLVE_REVEAL_DELAY_MS = 2000;
 
+// Share-intent threshold (ms). A share click on a SCORE popup (the minimalist
+// icon rows on the game-over / "Solved!" cards) is deliberately NOT recorded
+// at click time — accidental taps there were inflating the share stats. It's
+// recorded only once the player's NEXT interaction happens, and binned by how
+// long that took: >= this threshold → "probably intentional" (they went off
+// to actually share), < this → "probably accidental". No follow-up
+// interaction at all → never recorded. Shares from the "Enjoying it?" popup
+// bypass all this (recorded immediately as deliberate).
+const SHARE_INTENT_THRESHOLD_MS = 15000;
+
 const AppConfig = {
     // TODO: set when back-end is deployed
     GAME_API: 'https://circuitousness-api.onrender.com/api',
