@@ -104,6 +104,10 @@ const Marathon = (() => {
     // so a click-cascade from solving by mashing can't skip the transition.
     const TRANSITION_QUIET_MS = 333;
     let transitionQuietUntil = 0;
+    // Pending timer that reveals the solve popup after SOLVE_REVEAL_DELAY_MS,
+    // during which the completed (gold) puzzle is left uncovered. Non-null
+    // only while that delay is running.
+    let solvePopupTimer = null;
 
     function $(id) { return document.getElementById(id); }
 
@@ -253,7 +257,17 @@ const Marathon = (() => {
     function clearTransition() {
         inTransition = false;
         transitionQuietUntil = 0;
+        if (solvePopupTimer !== null) { clearTimeout(solvePopupTimer); solvePopupTimer = null; }
         if (solveTransitionEl) solveTransitionEl.classList.remove('visible');
+    }
+
+    // Actually show the solve popup (fires on the reveal-delay timeout, or
+    // early when the player taps during the delay). Arms the quiet window so
+    // the revealing tap doesn't immediately advance past the popup.
+    function showSolveTransition() {
+        if (solvePopupTimer !== null) { clearTimeout(solvePopupTimer); solvePopupTimer = null; }
+        if (solveTransitionEl) solveTransitionEl.classList.add('visible');
+        transitionQuietUntil = Date.now() + TRANSITION_QUIET_MS;
     }
 
     // Player tapped during the inter-puzzle transition — proceed to the next
@@ -267,6 +281,18 @@ const Marathon = (() => {
         if (!inTransition) return;
         if (state !== STATE.PLAYING) return;
         const now = Date.now();
+        // Reveal-delay phase: the popup hasn't appeared yet. Absorb the
+        // winning tap (quiet window), then let a deliberate tap reveal the
+        // popup early — never skip straight to the next puzzle here, so a
+        // stray tap can't blow past the just-solved board AND its popup.
+        if (solvePopupTimer !== null) {
+            if (now < transitionQuietUntil) {
+                transitionQuietUntil = now + TRANSITION_QUIET_MS;
+                return;
+            }
+            showSolveTransition();
+            return;
+        }
         if (now < transitionQuietUntil) {
             transitionQuietUntil = now + TRANSITION_QUIET_MS;
             return;
@@ -809,7 +835,16 @@ const Marathon = (() => {
                     solveBanked.textContent = I18n.t('marathon.solveBankedZero', { t: tStr });
                 }
             }
-            solveTransitionEl.classList.add('visible');
+            // Delay the popup so the completed (gold) puzzle stays visible
+            // for a moment first — the win SFX still fires immediately above.
+            // A tap during the delay reveals it early (see advance()).
+            const delay = (typeof SOLVE_REVEAL_DELAY_MS === 'number') ? SOLVE_REVEAL_DELAY_MS : 0;
+            if (solvePopupTimer !== null) clearTimeout(solvePopupTimer);
+            if (delay > 0) {
+                solvePopupTimer = setTimeout(showSolveTransition, delay);
+            } else {
+                showSolveTransition();
+            }
         }
 
         // No auto-timeout — player taps (popup or canvas) to call advance().

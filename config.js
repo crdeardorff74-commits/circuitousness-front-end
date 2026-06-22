@@ -32,6 +32,13 @@ const BACKGROUND_IMAGE_COUNT = 50;
 const THUMBNAIL_URL_BASE =
     'https://github.com/crdeardorff74-commits/circuitousness-front-end/releases/download/Images/';
 
+// Delay (ms) after a puzzle is solved before the success popup / credits
+// cover the board — gives the player a moment to actually see the completed
+// (gold) circuit, which matters most on phones where the popup fills the
+// screen. In Marathon/Practice a tap during this window reveals the popup
+// early; in PotD it's a fixed pause.
+const SOLVE_REVEAL_DELAY_MS = 2000;
+
 const AppConfig = {
     // TODO: set when back-end is deployed
     GAME_API: 'https://circuitousness-api.onrender.com/api',

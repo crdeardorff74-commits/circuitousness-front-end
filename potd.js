@@ -1316,9 +1316,12 @@ const Potd = (() => {
             catch (e) { return ''; }
         })();
 
-        // Brief pause so the player sees the win-state visuals (gold lit
-        // channels, etc.) before the modal covers the canvas.
-        await new Promise((res) => setTimeout(res, 250));
+        // Pause so the player sees the win-state visuals (gold lit channels,
+        // etc.) before the credits + modal cover the canvas — matters most on
+        // phones where the modal fills the screen. Shared with Marathon via
+        // SOLVE_REVEAL_DELAY_MS (config.js).
+        const revealDelay = (typeof SOLVE_REVEAL_DELAY_MS === 'number') ? SOLVE_REVEAL_DELAY_MS : 250;
+        await new Promise((res) => setTimeout(res, revealDelay));
 
         // Music swap, credits, tracking, share — same as before; these
         // are time-independent of submission so they fire as soon as the
