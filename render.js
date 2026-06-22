@@ -391,6 +391,11 @@ const Render = (() => {
     }
 
     function resize() {
+        // While the How-to-Solve tutorial owns the renderer, a window resize
+        // must re-layout the small tutorial canvas, NOT the (hidden) main
+        // game canvas. layoutTutorial mirrors this function's device-pixel
+        // conventions for the tutorial's own target canvas + grid dims.
+        if (tutorialMode) { layoutTutorial(); return; }
         // Make canvas fill the viewport, but leave a small margin
         const margin = Math.min(window.innerWidth, window.innerHeight) * 0.03;
         const availW = window.innerWidth  - margin * 2;
@@ -2041,6 +2046,83 @@ const Render = (() => {
         dpr       = sDpr;
     }
 
+    // ---- How-to-Solve tutorial render mode --------------------------------
+    // A PERSISTENT variant of renderSnippet: retarget the module's canvas +
+    // sizing to a small tutorial canvas and render NORMALLY (lit green path,
+    // gold completion, twin colors, gates, player locks). Unlike renderSnippet
+    // (one-shot, snippetMode visual overrides for the title-O), this stays in
+    // effect until endTutorial() restores the real game canvas — so the live
+    // animation loop, animateRotationAt() and animateGateRotation() all paint
+    // into the tutorial canvas with the exact same visuals as real play.
+    let tutorialMode = false;
+    let tutPadFrac   = 0.55;
+    const tutSaved   = {};
+    function beginTutorial(targetCanvas, padFrac) {
+        if (tutorialMode || !targetCanvas) return;
+        tutSaved.canvas    = canvas;
+        tutSaved.ctx       = ctx;
+        tutSaved.cellSize  = cellSize;
+        tutSaved.originX   = originX;
+        tutSaved.originY   = originY;
+        tutSaved.offCanvas = offCanvas;
+        tutSaved.offCtx    = offCtx;
+        tutSaved.dpr       = dpr;
+
+        canvas    = targetCanvas;
+        ctx       = canvas.getContext('2d');
+        // Force a fresh offscreen sized to the tutorial canvas.
+        offCanvas = null;
+        offCtx    = null;
+        tutPadFrac   = (padFrac != null) ? padFrac : 0.55;
+        tutorialMode = true;
+        layoutTutorial();
+    }
+    function layoutTutorial() {
+        // Fit Maze.ROWS×COLS into the tutorial canvas's CSS display box, all
+        // in device pixels with an identity transform — mirrors resize() so
+        // cellAt()/animateRotationAt()/drawCore() math is identical.
+        dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        const cssW = rect.width  || canvas.clientWidth  || 320;
+        const cssH = rect.height || canvas.clientHeight || 320;
+        const availW = cssW * dpr;
+        const availH = cssH * dpr;
+        const PAD = tutPadFrac;
+        const cellByW = availW / (Maze.COLS + 2 * PAD);
+        const cellByH = availH / (Maze.ROWS + 2 * PAD);
+        cellSize = Math.floor(Math.min(cellByW, cellByH));
+        if (cellSize % 2 !== 0) cellSize -= 1;
+        if (cellSize < 2) cellSize = 2;
+        canvas.width  = Math.round(availW);
+        canvas.height = Math.round(availH);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const gridW = cellSize * Maze.COLS;
+        const gridH = cellSize * Maze.ROWS;
+        originX = Math.round((canvas.width  - gridW) / 2);
+        originY = Math.round((canvas.height - gridH) / 2);
+        draw();
+    }
+    function endTutorial() {
+        if (!tutorialMode) return;
+        tutorialMode = false;
+        canvas    = tutSaved.canvas;
+        ctx       = tutSaved.ctx;
+        cellSize  = tutSaved.cellSize;
+        originX   = tutSaved.originX;
+        originY   = tutSaved.originY;
+        offCanvas = tutSaved.offCanvas;
+        offCtx    = tutSaved.offCtx;
+        dpr       = tutSaved.dpr;
+        resize();   // repaint the real game canvas at viewport size
+    }
+    // Grid metrics for the tutorial overlay's DOM cursor — lets tutorial.js
+    // map a cell (r,c) or vertex (vr,vc) to a CSS-pixel point inside the
+    // canvas's display box. All values are device pixels except the implied
+    // /dpr the caller applies. Only meaningful while tutorialMode.
+    function tutorialMetrics() {
+        return { originX, originY, cellSize, dpr };
+    }
+
     // After renderSnippet, paint a SINGLE continuous lit-stripe circle on
     // top of the target canvas. The per-tile snippet render produces
     // visible boundary seams between adjacent elbow tiles' arc-strokes at
@@ -2302,6 +2384,7 @@ const Render = (() => {
              setLitGreenLo, setLitGreenHi, setLitGoldLo, setLitGoldHi,
              setLockFaceColor, setCompleteCircuits, setGridSize,
              flashTwinPair, renderSnippet, paintSnippetRingMask,
+             beginTutorial, endTutorial, tutorialMetrics,
              setAnimateRotations, animateRotationAt,
              hasJoinedLanes,    // game.js polls this for the overlap-SFX state machine
              fadeLanes, clearFadingLanes,  // broken-chain fade triggered alongside the twin-break SFX

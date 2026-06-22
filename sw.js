@@ -7,7 +7,7 @@
 // Do NOT add DOM/window references to config.js — it must stay worker-safe.
 importScripts('/config.js');
 
-const APP_VERSION = '0.49';
+const APP_VERSION = '0.50';
 const CACHE_NAME = `${PROJECT_SLUG}-v${APP_VERSION}`;
 
 const CORE_ASSETS = [
@@ -26,6 +26,7 @@ const CORE_ASSETS = [
     '/game.js',
     '/intro.js',
     '/tooltip.js',
+    '/tutorial.js',
     '/warnings.txt',
     '/manifest.json',
     '/favicon.svg'

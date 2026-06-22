@@ -251,7 +251,34 @@
                     <button class="menuModeBtn" data-mode="q4"><img class="modeThumb" alt=""><span data-i18n="marathon.path4">4 paths</span></button>
                 </div>
             </div>
-            <button id="menuLeaderboardBtn" type="button" data-i18n="marathon.leaderboards">Leaderboards</button>
+            <div class="menuBottomBtns">
+                <button id="menuHowToBtn" type="button" data-i18n="tutorial.menuButton">❓ How to Solve</button>
+                <button id="menuLeaderboardBtn" type="button" data-i18n="marathon.leaderboards">Leaderboards</button>
+            </div>
+        </div>
+
+        <!-- How-to-Solve tutorial overlay. A fixed demo puzzle (left) plays the
+             8 teaching beats one Next-click at a time, with the bullet steps
+             revealing on the right. tutorial.js drives the real Maze/Render/
+             Gates through Render's tutorial render mode. -->
+        <div id="tutorialOverlay" class="tutorial-overlay" hidden>
+            <div id="tutorialModal" class="tutorial-modal" role="dialog" aria-modal="true" aria-labelledby="tutorialTitle">
+                <button id="tutorialCloseX" class="tutorial-close-x" type="button" data-i18n-attr="aria-label:tutorial.close" aria-label="Close">×</button>
+                <div id="tutorialTitle" class="tutorial-title" data-i18n="tutorial.title">How to Solve</div>
+                <div class="tutorial-body">
+                    <div id="tutorialCanvasWrap" class="tutorial-canvas-wrap">
+                        <canvas id="tutorialCanvas"></canvas>
+                        <div id="tutorialCursor" class="tutorial-cursor" aria-hidden="true"><span id="tutorialCursorRing" class="tutorial-cursor-ring"></span></div>
+                    </div>
+                    <div class="tutorial-steps">
+                        <p class="tutorial-intro" data-i18n="tutorial.intro">Twist the tiles to join the path and close the loop:</p>
+                        <ol id="tutorialStepList" class="tutorial-step-list"></ol>
+                    </div>
+                </div>
+                <div class="tutorial-footer">
+                    <button id="tutorialNextBtn" class="tutorial-next-btn" type="button" data-i18n="tutorial.next">Next</button>
+                </div>
+            </div>
         </div>
 
         <!-- Settings popup (menu-only — intentionally NOT available during
@@ -854,7 +881,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.49';</script>
+    <script>var PAGE_VERSION = '0.50';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +
@@ -865,7 +892,7 @@
     (function() {
         var dev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
         var bust = dev ? ('?t=' + Date.now()) : '';
-        var srcs = ['config.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','marathon.js','mode-picker.js','potd.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
+        var srcs = ['config.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
         for (var i = 0; i < srcs.length; i++) {
             document.write('<script src="' + srcs[i] + bust + '"><\/script>');
         }

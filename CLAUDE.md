@@ -20,5 +20,6 @@ versions and regenerates the deploy zip in one step.
 
 ## Deployment Zip
 The zip is named `<PROJECT_NAME>.zip` (so currently `Circuitousness.zip`) and excludes
-`CLAUDE.md`, the zip itself, and `nul`. Generated only on `/release` / `/rel`,
+`CLAUDE.md`, `NOTES.md`, the zip itself, `nul`, and the one-off song-art files
+`heart-art.html` / `heart-art-bg.jpg`. Generated only on `/release` / `/rel`,
 not automatically on every change.

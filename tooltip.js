@@ -23,6 +23,13 @@
 const Tooltip = (function () {
     const SEEN_PREFIX = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'app')
                         + '_tooltipSeen_';
+    const TUTORIAL_WATCHED_KEY = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'app')
+                        + '_tutorialWatched';
+    // Tips whose lesson the How-to-Solve tutorial already teaches in richer
+    // form. Once the player has watched the tutorial, these never fire during
+    // gameplay. (Hint tips like potdHint/marathonHint are about SCORING, not
+    // how to solve, so they stay.)
+    const SUPPRESSED_AFTER_TUTORIAL = { lockTile: 1, twinStraightLock: 1 };
 
     let card     = null;
     let textEl   = null;
@@ -38,7 +45,13 @@ const Tooltip = (function () {
     let currentGotItHandler = null;
 
     function isSeen(key) {
-        try { return localStorage.getItem(SEEN_PREFIX + key) === '1'; }
+        try {
+            if (SUPPRESSED_AFTER_TUTORIAL[key]
+                && localStorage.getItem(TUTORIAL_WATCHED_KEY) === '1') {
+                return true;   // the tutorial already taught this
+            }
+            return localStorage.getItem(SEEN_PREFIX + key) === '1';
+        }
         // Private mode / quota errors → pretend seen so we don't repeatedly
         // throw on every visit + give up gracefully on showing the tip.
         catch (e) { return true; }

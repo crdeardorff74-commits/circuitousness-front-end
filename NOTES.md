@@ -2,6 +2,12 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-06-22 — Release v0.50
+- **New "How to Solve" interactive tutorial** (new `tutorial.js` + render/menu/i18n/tooltip changes). Button on the main menu (left of Leaderboards, matched height via `.menuBottomBtns` flex row). Modal plays a hand-authored 5×6 fixed puzzle through 8 teaching beats, one per Next-click, with animated tile rotations + a DOM cursor. Drives the REAL Maze/Render/Gates via a new persistent "tutorial render mode" in render.js (`beginTutorial`/`endTutorial`/`tutorialMetrics` — a sticky variant of `renderSnippet` that retargets the live renderer to the modal canvas and renders normally). Puzzle design hits all beats along one path: elbow start → lock → twin unison → twin lock → the straight/elbow-twin trap (exploits the straight's 180° symmetry; locking at the look-right delta leaves the elbow twin 180° wrong) → unlock+fix → two-gate "clear one, block an earlier, then clear both" sequence (shared `Gates.delta`, vertices 4,3 & 4,5) → gold completion. ~half the straights start horizontal incl. pre-aligned path tiles that light "for free". Reaching step 8 sets `<slug>_tutorialWatched`, which tooltip.js reads to suppress the `lockTile` + `twinStraightLock` gameplay tips.
+- **Tutorial modal sizing**: all 8 bullets pre-built (hidden) so the modal is full-height from the start and never resizes/scrolls as steps reveal (fade-only, no slide). vh-based clamps + canvas `max-height` so it fits short landscape phones without clipping or scrollbars.
+- **Menu fix for short landscape phones**: the existing `@media (max-height:500px)` block shrank only the old single Leaderboards button; with the new 2-button stretch row that left How-to at full size, inflating the row off-screen. Now both bottom buttons shrink together + thumbnails reduced to fixed 3.2rem.
+- i18n: 16 new `tutorial.*` keys across all 15 languages. No back-end changes.
+
 ## 2026-06-20 — Release v0.49
 - Version bump only — no front-end code changes this session (the session's work was on TANTЯO + the admin tool; this is a paired release alongside TANTЯO v4.22).
 
