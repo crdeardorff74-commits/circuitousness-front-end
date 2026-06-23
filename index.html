@@ -137,10 +137,12 @@
                 <p class="introBody" id="introBody">&nbsp;</p>
             </div>
 
-            <!-- Toggles row — music + SFX + full-screen. Hidden on phones
-                 via intro.js (the OS / "Add to Home Screen" install
-                 path takes over the fullscreen story there; the
-                 fullscreenHint below replaces this row on phones). -->
+            <!-- Toggles row — music + SFX + full-screen. On phones intro.js
+                 hides ONLY the Full Screen toggle (the OS / "Add to Home
+                 Screen" install path owns the fullscreen story there, and
+                 iOS can't reliably enter fullscreen via the API); Music and
+                 SFX stay visible so phone players can set audio prefs before
+                 the "agree" tap starts the music. -->
             <div class="introToggles" id="introToggles">
                 <label class="introToggle">
                     <input type="checkbox" id="introMusicCheckbox" checked>
@@ -150,7 +152,7 @@
                     <input type="checkbox" id="introSfxCheckbox" checked>
                     <span data-i18n="intro.sfx">SFX</span>
                 </label>
-                <label class="introToggle">
+                <label class="introToggle" id="introFullscreenToggle">
                     <input type="checkbox" id="introFullscreenCheckbox">
                     <span data-i18n="intro.fullscreen">Full Screen</span>
                 </label>

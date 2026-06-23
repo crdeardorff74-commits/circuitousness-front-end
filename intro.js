@@ -291,18 +291,20 @@ const Intro = (() => {
         // path — Safari/iOS require the request to be synchronous with
         // a user input event.
         //
-        // Phones get the box pre-checked (TANTЯO parity): mobile players
-        // benefit most from fullscreen and almost always want it on. The
-        // toggles row itself is hidden for them below in favor of the
-        // OS-specific "Add to Home Screen" hint — but we still flip the
-        // checkbox on first so the "agree" click's gesture-bound
-        // requestFullscreen runs (the change handler doesn't fire when
-        // we set .checked programmatically, so it's just a state default,
-        // not an autoplay attempt).
+        // Phones HIDE the Full Screen toggle entirely: the OS install /
+        // "Add to Home Screen" path owns the fullscreen story there (and iOS
+        // can't reliably enter fullscreen via the API), so an in-page toggle
+        // is misleading. The Music + SFX toggles stay visible so phone
+        // players can set audio prefs before the "agree" tap starts music.
+        // Desktop/tablet keep all three.
         const fsBox = document.getElementById('introFullscreenCheckbox');
         if (fsBox) {
             const isMobile = typeof DeviceDetection !== 'undefined' && DeviceDetection.isMobile;
-            fsBox.checked = !!getFullscreenElement() || isMobile;
+            if (isMobile) {
+                const fsToggle = document.getElementById('introFullscreenToggle');
+                if (fsToggle) fsToggle.style.display = 'none';
+            }
+            fsBox.checked = !!getFullscreenElement();
             fsBox.addEventListener('change', () => {
                 if (fsBox.checked) {
                     requestFullscreen(document.documentElement).catch(() => {
@@ -399,14 +401,9 @@ const Intro = (() => {
             // Upgrade text → Install button if the prompt arrives after paint.
             window.addEventListener('oi-installable', paintHint);
             window.addEventListener('oi-installed', () => { hint.style.display = 'none'; });
-            // Phones replace the in-page Music+Fullscreen toggles with
-            // the install hint above (and the Settings popup for music).
-            // Tablets keep the toggles — they can usually take fullscreen
-            // via the browser API without needing home-screen install.
-            if (typeof DeviceDetection !== 'undefined' && DeviceDetection.isMobile) {
-                const togglesRow = document.getElementById('introToggles');
-                if (togglesRow) togglesRow.style.display = 'none';
-            }
+            // Note: the Full Screen toggle is hidden on phones up in the
+            // fsBox setup block (the install hint owns the fullscreen story
+            // there). Music + SFX toggles stay visible on phones.
         })();
 
         // ---- Dismiss button ----
