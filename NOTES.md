@@ -2,6 +2,9 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-06-23 — Release v0.56
+- **Phone intro: restore Music + SFX toggles** (was hiding the whole row). intro.js now hides ONLY the Full Screen toggle on phones (`#introFullscreenToggle`, new id on the label) — the install/Add-to-Home-Screen hint owns fullscreen there and iOS can't reliably fullscreen via the API. Music + SFX stay visible so phone players can set audio prefs BEFORE the "I agree" tap starts music (the real gap). Removed the old whole-row `display:none` in `showFullscreenHint`. Verified via preview: desktop = all 3 toggles; mobile path = Music/SFX `flex`, Full Screen `none`.
+
 ## 2026-06-23 — Release v0.55
 - **`agreed` funnel milestone (live experiment)**: tracking.js gains `recordAgreed()`, fired from intro.js `dismiss()` when the player clears the warning/"I agree" intro and reaches the mode menu. New `Tracking.recordAgreed` PATCHes `/api/visit/<id>/agreed`. Purpose: split no-start visits into "bailed at the warning" vs "reached the menu, never picked a card" — diagnosing whether the intro gate (vs Tantro's instant-start button) is a real barrier to entry.
 - **Back-end (deploy FIRST, separate push)**: `page_visits.agreed` boolean (+ idempotent `ADD COLUMN IF NOT EXISTS` migration); `/api/visit/<id>/agreed` endpoint; `record_game_start` also sets `agreed` (monotonic funnel); `/stats` returns `total_agreed`/windows + diagnostic rates `agree_rate` (visit→menu) & `menu_start_rate` (menu→start). Admin dashboard shows a "Reached menu" card + "Warning→Menu / Menu→Start" rates.
