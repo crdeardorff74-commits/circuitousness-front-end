@@ -27,8 +27,13 @@
  * player to fill in. The server's set converges toward 8 as players
  * cycle through; no single player has to complete the full set.
  *
- * Puzzle sizing (per the user spec): width and height each randomly
- * chosen in [10, 20], with (w + h) / 2 ≥ 15. Quad slots round to even.
+ * Puzzle sizing: each axis is rolled independently in [MIN, MAX], then
+ * the pair is rejection-sampled so the average (W+H)/2 lands within a
+ * [AVG_MIN, AVG_MAX] window — a FLOOR (no tiny/easy puzzles) AND a
+ * ceiling (stays approachable as a daily exercise). Singular: axes
+ * [8,12], avg [9,12]. Quad: even sub-tile axes [12,18] (= 6–9
+ * quad-tiles), avg [14,18] sub-tiles (= 7–9 quad-tiles). Quad rounds to
+ * even because each player-facing quad-tile is a 2×2 group of sub-tiles.
  *
  * No time cap by design — PotD is the "take your time, solve it cleanly"
  * mode. The server's MAX_SESSION_MS (6h) bounds the token; longer than
@@ -46,29 +51,28 @@ const Potd = (() => {
 
     const SLOTS = ['s1', 's2', 's3', 's4', 'q1', 'q2', 'q3', 'q4'];
 
-    // Per the user: random size in [8, 14] for each axis, average ≥ 10.
-    // Rejection sampling — keep-rate is high in this range.
     // Per-mode physical sub-tile dim ranges (the dims the generator
-    // actually consumes). Quad needs different — and even — values
-    // because each player-facing quad-tile is a 2×2 group of sub-tiles.
-    // The two modes were originally on the same range, but at parity
-    // singular felt right while quad felt cramped (3 quad-tiles per
-    // axis is very tight). Doubled quad to 12–24 felt too sprawling,
-    // so quad now sits at the midpoint — physically larger than
-    // singular's range, but quad-tile counts that still feel manageable
-    // as a daily exercise. 10/18/14 → 5–9 quad-tiles per axis with an
-    // average cap of 7.
-    const SIZE_MIN          = 6;
+    // actually consumes). Each axis is rolled in [MIN, MAX], then the
+    // pair is rejection-sampled so the average (W+H)/2 lands within
+    // [AVG_MIN, AVG_MAX]. The AVG_MIN floor is what keeps tiny/easy
+    // puzzles (the old 6×6) from ever being emitted; the AVG_MAX ceiling
+    // keeps them approachable as a daily exercise. Quad needs different
+    // — and even — values because each player-facing quad-tile is a 2×2
+    // group of sub-tiles.
+    //
+    // Singular: axes [8,12], average [9,12] → grids 8×10 / 9×9 at the
+    // small end up to 12×12.
+    const SIZE_MIN          = 8;
     const SIZE_MAX          = 12;
-    // Rejection-sample CEILING on the (W+H)/2 average — pairs whose
-    // average exceeds this get re-rolled. Without it, lopsided rolls
-    // (one axis at min, the other at max) would land bigger than the
-    // distribution targets. Per-mode so quad can have a larger absolute
-    // cap that's still a sensible fraction of its own range.
-    const SIZE_AVG_MAX      = 9;
-    const SIZE_MIN_QUAD     = 10;
+    const SIZE_AVG_MIN      = 9;
+    const SIZE_AVG_MAX      = 12;
+    // Quad: even sub-tile axes [12,18] (= 6–9 quad-tiles per axis),
+    // average [14,18] sub-tiles (= 7–9 quad-tiles). Scaled up alongside
+    // singular so quad stays the meatier of the two modes.
+    const SIZE_MIN_QUAD     = 12;
     const SIZE_MAX_QUAD     = 18;
-    const SIZE_AVG_MAX_QUAD = 14;
+    const SIZE_AVG_MIN_QUAD = 14;
+    const SIZE_AVG_MAX_QUAD = 18;
 
     // ── DOM refs (populated in init) ──
     let menuEl, hudEl, buildBannerEl, hudType, hudTimerVal, hudHintBtn;
@@ -125,19 +129,18 @@ const Potd = (() => {
     }
 
     function generateDims(quadMode) {
-        // Per-mode physical dim range. Singular's range was the
-        // original target; quad sits between "use singular's range
-        // directly" (felt cramped, 3×3 quad-tile floor) and "double
-        // singular's range" (felt sprawling, 6×6 quad-tile floor).
-        // Current values target a 5×5 quad-tile floor / 9×9 ceiling
-        // with avg ≤ 7 quad-tiles per axis.
+        // Per-mode physical dim range + average window. Quad sits above
+        // singular so it stays the meatier mode (its sub-tile dims map to
+        // half as many player-facing quad-tiles).
         const min    = quadMode ? SIZE_MIN_QUAD     : SIZE_MIN;
         const max    = quadMode ? SIZE_MAX_QUAD     : SIZE_MAX;
-        const avgCap = quadMode ? SIZE_AVG_MAX_QUAD : SIZE_AVG_MAX;
-        // Rejection sample: pick W and H in [min, max], re-roll until
-        // (W+H)/2 ≤ avgCap. Caps overall size so neither axis can land
-        // far on the large end while the other is also moderately
-        // large — keeps puzzles approachable as a daily exercise.
+        const avgMin = quadMode ? SIZE_AVG_MIN_QUAD : SIZE_AVG_MIN;
+        const avgMax = quadMode ? SIZE_AVG_MAX_QUAD : SIZE_AVG_MAX;
+        // Rejection sample: pick W and H in [min, max], re-roll until the
+        // average (W+H)/2 falls within [avgMin, avgMax]. The floor stops
+        // a puzzle from landing small on both axes (no more easy 6×6s);
+        // the ceiling stops lopsided rolls from sprawling. Keep-rate is
+        // high in both windows, so the loop terminates quickly.
         while (true) {
             let w, h;
             if (quadMode) {
@@ -153,7 +156,8 @@ const Potd = (() => {
                 w = min + Math.floor(Math.random() * span);
                 h = min + Math.floor(Math.random() * span);
             }
-            if ((w + h) / 2 <= avgCap) return { w, h };
+            const avg = (w + h) / 2;
+            if (avg >= avgMin && avg <= avgMax) return { w, h };
         }
     }
 
