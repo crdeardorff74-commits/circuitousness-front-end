@@ -165,6 +165,15 @@ const Tracking = (function () {
         fn(visitId);
     }
 
+    // The player dismissed the opening warning / "I agree" intro and reached
+    // the mode menu. The funnel milestone between visit and start — lets the
+    // admin separate "bailed at the warning" from "reached the menu but never
+    // picked a card". No payload; the server flips a sticky boolean.
+    function recordAgreed() {
+        withVisit(function (id) {
+            silentFetch(apiBase() + '/visit/' + id + '/agreed', { method: 'PATCH' });
+        });
+    }
     function recordStart(mode, gameType) {
         withVisit(function (id) {
             silentFetch(apiBase() + '/visit/' + id + '/started', {
@@ -212,6 +221,7 @@ const Tracking = (function () {
 
     return {
         recordVisit:        recordVisit,
+        recordAgreed:       recordAgreed,
         recordStart:        recordStart,
         recordFinish:       recordFinish,
         recordShare:        recordShare,

@@ -430,6 +430,13 @@ const Intro = (() => {
     function dismiss() {
         if (dismissed) return;
         dismissed = true;
+        // Funnel milestone: the player got past the warning and is now at the
+        // mode menu. Fired however they dismissed (button / Enter / Escape).
+        // Tracking owns its own suppression (dev / localhost) and defers to
+        // the visit POST if it hasn't landed yet, so this is safe to call
+        // unconditionally. NOT reached on the debug / ?nointro bail-outs in
+        // init(), which set `dismissed` directly without calling dismiss().
+        if (typeof Tracking !== 'undefined' && Tracking.recordAgreed) Tracking.recordAgreed();
         const overlay = document.getElementById('introOverlay');
         if (!overlay) return;
         // CSS transition handles the visual fade; we strip the element

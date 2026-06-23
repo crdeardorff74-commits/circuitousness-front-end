@@ -2,6 +2,12 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-06-23 — Release v0.55
+- **`agreed` funnel milestone (live experiment)**: tracking.js gains `recordAgreed()`, fired from intro.js `dismiss()` when the player clears the warning/"I agree" intro and reaches the mode menu. New `Tracking.recordAgreed` PATCHes `/api/visit/<id>/agreed`. Purpose: split no-start visits into "bailed at the warning" vs "reached the menu, never picked a card" — diagnosing whether the intro gate (vs Tantro's instant-start button) is a real barrier to entry.
+- **Back-end (deploy FIRST, separate push)**: `page_visits.agreed` boolean (+ idempotent `ADD COLUMN IF NOT EXISTS` migration); `/api/visit/<id>/agreed` endpoint; `record_game_start` also sets `agreed` (monotonic funnel); `/stats` returns `total_agreed`/windows + diagnostic rates `agree_rate` (visit→menu) & `menu_start_rate` (menu→start). Admin dashboard shows a "Reached menu" card + "Warning→Menu / Menu→Start" rates.
+- **Also added** (back-end): `(direct / no referrer)` row prepended to `top_referrers` so PWA-relaunch / bookmark / typed-URL traffic (the likely bulk of no-start visits) is finally visible.
+- **Read on the hypothesis**: itch funnels already show 72–87% start rates, so the warning gate is probably NOT the barrier; bet is on the card/mode-selection step. If `menu_start_rate` confirms it, planned fix is a one-tap "Play" default alongside the cards (keep the joke).
+
 ## 2026-06-22 — Release v0.54
 - **Swipe-to-rotate on touch** (game.js): touchend now reads the swipe vector — left/up = CCW, right/down = CW (≥28px = swipe; below = tap = CW). handlePointer was refactored to take canvas-relative `(x, y, ccw)`. Rotates the tile the swipe STARTED on. Tutorial step 1 gains a touch-only `tutorial.step1Touch` note (coarse pointers) vs the existing desktop click note; all 15 langs.
 - **Tutorial puzzle finale** (tutorial.js): path rerouted to end at the lower-right `(6,5)` instead of the left edge — turns down col 0 at `(3,0)` and runs the bottom row, so step 8 twists ~8 tiles. Beats 1–7 + gates/trap unchanged; twin partners moved to off-path `(4,1)`/`(5,1)`.
