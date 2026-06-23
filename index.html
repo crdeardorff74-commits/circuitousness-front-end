@@ -303,6 +303,11 @@
                 <input id="potdSolveName" type="text" maxlength="16" data-i18n-attr="placeholder:marathon.namePlaceholder" placeholder="Your name">
                 <button id="potdSolveSaveBtn" type="button" data-i18n="marathon.save">Save</button>
             </div>
+            <!-- Explicit dismiss for ineligible/offline runs (shown when the
+                 name row isn't) — replaces the old vague "tap anywhere to
+                 continue", which invited stray taps onto the share icons.
+                 Same button as marathon's #gameOverMenuBtn. -->
+            <button id="potdSolveMenuBtn" type="button" data-i18n="marathon.backToMenu" hidden>Back to menu</button>
             <!-- Minimalist share row — wired by Share.init via [data-share-platform].
                  Click bubbling is stopped per-button so a tap doesn't also
                  dismiss the modal (which has its own tap-anywhere handler). -->
@@ -326,7 +331,6 @@
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 0-10z"/></svg>
                 </a>
             </div>
-            <div id="potdSolveContinue" data-i18n="marathon.clickToContinue">Tap to continue</div>
         </div>
 
         <!-- PotD hint-use confirmation — using a hint mid-PotD play
@@ -881,7 +885,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.52';</script>
+    <script>var PAGE_VERSION = '0.54';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

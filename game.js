@@ -1288,11 +1288,11 @@
             });
         }
 
-        // Click / tap → rotate the tile under the pointer. Tap rotates CW
-        // (the natural single-input default). Mouse buttons swap that pairing
-        // so the secondary button matches the touch default: LEFT-click is
-        // CCW, RIGHT-click is CW.
-        function handlePointer(ev, ccw) {
+        // Rotate the tile (or gate) at canvas-relative (x, y) in direction
+        // `ccw`. Callers convert from client coords. Direction sources: tap =
+        // CW; mouse LEFT-click = CCW, RIGHT-click = CW; touch swipe left/up =
+        // CCW, right/down = CW.
+        function handlePointer(x, y, ccw) {
             if (isBuilding || isReplaying) return;
             // Marathon between-puzzles state: swallow canvas taps entirely.
             // Rotating now would break the gold path the player's looking at,
@@ -1307,9 +1307,6 @@
             if (typeof Potd !== 'undefined' && Potd.isInSolveTransition && Potd.isInSolveTransition()) {
                 return;
             }
-            const rect = canvas.getBoundingClientRect();
-            const x = (ev.clientX !== undefined ? ev.clientX : ev.touches[0].clientX) - rect.left;
-            const y = (ev.clientY !== undefined ? ev.clientY : ev.touches[0].clientY) - rect.top;
             // Gate hit overrides the tile under the pointer — tapping a gate
             // (or its buffer zone) rotates all gates in unison, never the
             // underlying tile.
@@ -1509,6 +1506,12 @@
         let pressTimer = null;
         let longPressFired = false;
         let pressStartX = 0, pressStartY = 0;
+        // Touch swipe-to-rotate (phones/tablets). A touchend whose net travel
+        // from touchstart is >= SWIPE_MIN_PX is a DIRECTIONAL swipe: left/up =
+        // CCW, right/down = CW. Below that it's a tap (CW, the default).
+        // touchStartX/Y are the touchstart point in canvas pixels.
+        const SWIPE_MIN_PX = 28;
+        let touchStartX = 0, touchStartY = 0;
 
         // First-lock-per-page-load toast: explain the unlock gesture once
         // per page load, then stay quiet for the rest of the session. Plain
@@ -1608,12 +1611,14 @@
 
         canvas.addEventListener('click', (ev) => {
             if (longPressFired) { longPressFired = false; return; }
-            handlePointer(ev, true);                                          // left-click = CCW
+            const rect = canvas.getBoundingClientRect();
+            handlePointer(ev.clientX - rect.left, ev.clientY - rect.top, true);  // left-click = CCW
         });
         canvas.addEventListener('contextmenu', (ev) => {
             ev.preventDefault();
             clearPress();
-            handlePointer(ev, false);                                          // right-click = CW
+            const rect = canvas.getBoundingClientRect();
+            handlePointer(ev.clientX - rect.left, ev.clientY - rect.top, false); // right-click = CW
         });
 
         // Touch: long-press → lock; quick tap → rotate CW (single-input default).
@@ -1623,7 +1628,9 @@
             if (ev.touches.length !== 1) { clearPress(); return; }
             const rect = canvas.getBoundingClientRect();
             const t = ev.touches[0];
-            startPress(t.clientX - rect.left, t.clientY - rect.top);
+            touchStartX = t.clientX - rect.left;
+            touchStartY = t.clientY - rect.top;
+            startPress(touchStartX, touchStartY);
         }, { passive: true });
         canvas.addEventListener('touchmove', (ev) => {
             if (pressTimer === null || ev.touches.length !== 1) return;
@@ -1635,7 +1642,21 @@
             ev.preventDefault();
             clearPress();
             if (longPressFired) { longPressFired = false; return; }
-            handlePointer(ev.changedTouches ? { clientX: ev.changedTouches[0].clientX, clientY: ev.changedTouches[0].clientY } : ev, false);
+            const ct = ev.changedTouches && ev.changedTouches[0];
+            if (!ct) return;
+            const rect = canvas.getBoundingClientRect();
+            const endX = ct.clientX - rect.left, endY = ct.clientY - rect.top;
+            const dx = endX - touchStartX, dy = endY - touchStartY;
+            if (Math.hypot(dx, dy) >= SWIPE_MIN_PX) {
+                // Directional swipe: horizontal dominant → right=CW / left=CCW;
+                // vertical dominant → down=CW / up=CCW. Rotate the tile the
+                // swipe STARTED on (where the finger first landed).
+                const ccw = (Math.abs(dx) >= Math.abs(dy)) ? (dx < 0) : (dy < 0);
+                handlePointer(touchStartX, touchStartY, ccw);
+            } else {
+                // Quick tap → rotate CW (the single-input default).
+                handlePointer(touchStartX, touchStartY, false);
+            }
         }, { passive: false });
         canvas.addEventListener('touchcancel', clearPress);
 

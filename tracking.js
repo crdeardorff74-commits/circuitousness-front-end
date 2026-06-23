@@ -179,12 +179,16 @@ const Tracking = (function () {
             silentFetch(apiBase() + '/visit/' + id + '/finished', { method: 'PATCH' });
         });
     }
-    function recordShare(platform) {
+    // `kind` tags the share source for the stats breakdown:
+    //   'popup' — from the "Enjoying it?" popup
+    //   'score' — from a game-over / "Solved!" card share row
+    // Omitted/empty → recorded without a source (legacy behavior).
+    function recordShare(platform, kind) {
         withVisit(function (id) {
             silentFetch(apiBase() + '/visit/' + id + '/shared', {
                 method:  'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ platform: platform || 'unknown' }),
+                body:    JSON.stringify({ platform: platform || 'unknown', kind: kind || '' }),
             });
         });
     }

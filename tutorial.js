@@ -25,7 +25,11 @@ const Tutorial = (function () {
     // Tile types (match maze.js T_*): straight, elbow.
     const STRAIGHT = 0, ELBOW = 1;
 
-    const ROWS = 5, COLS = 6;
+    // 6 wide × 7 tall = 42 tiles (a little easter egg). The path snakes the
+    // top four rows for beats 1–7, then drops down column 0 and runs along the
+    // bottom row to a lower-right exit — a long finale for step 8. Off-path
+    // filler (incl. the two twin partners) fills rows 4–5, cols 1–5.
+    const ROWS = 7, COLS = 6;
 
     // Twin pair colors — pulled from maze.js's TWIN_COLORS, deliberately
     // avoiding green (clashes with the lit path) and red (gates / hint locks).
@@ -108,25 +112,40 @@ const Tutorial = (function () {
         // when the straight hits the trap (rot 1) this is rot 0 (wrong); when
         // the straight reaches rot 3 this is rot 2 = W–S (correct).
         grid[2][5] = pathTile(ELBOW, W, S, 3);
-        // Row 3
+        // Row 3 (R→L), then the path turns DOWN at (3,0) and snakes to the
+        // lower-right so the finale (step 8) has a long run of tiles to twist.
         grid[3][5] = pathTile(ELBOW, N, W);
         grid[3][4] = pathTile(STRAIGHT, E, W, 1);   // pre-aligned
         grid[3][3] = pathTile(STRAIGHT, E, W);
         grid[3][2] = pathTile(STRAIGHT, E, W);
         grid[3][1] = pathTile(STRAIGHT, E, W, 1);   // pre-aligned
-        grid[3][0] = pathTile(STRAIGHT, E, W); // exit straight (exits W)
+        grid[3][0] = pathTile(ELBOW, E, S);         // turns the path downward
+        // Down column 0, then across row 6 to the bottom-right exit.
+        grid[4][0] = pathTile(STRAIGHT, N, S);
+        grid[5][0] = pathTile(STRAIGHT, N, S, 0);   // pre-aligned (vertical)
+        grid[6][0] = pathTile(ELBOW, N, E);
+        grid[6][1] = pathTile(STRAIGHT, W, E);
+        grid[6][2] = pathTile(STRAIGHT, W, E, 1);   // pre-aligned
+        grid[6][3] = pathTile(STRAIGHT, W, E);
+        grid[6][4] = pathTile(STRAIGHT, W, E);
+        grid[6][5] = pathTile(ELBOW, W, S);         // exit (bottom-right, exits S)
 
-        // Row 4 fillers — give them varied shapes for texture; two are twins.
-        grid[4][0] = twin(filler(ELBOW, 1), '1,5', COLOR_P2);   // pair 2 partner
+        // Off-path filler in rows 4–5 (cols 1–5). Two carry the twin partners;
+        // varied shapes so the board reads as a real 6×7 = 42 puzzle.
         grid[4][1] = twin(filler(ELBOW, 0), '0,4', COLOR_P1);   // pair 1 partner
-        grid[4][2] = filler(STRAIGHT, 1);   // horizontal filler, for variety
+        grid[4][2] = filler(STRAIGHT, 1);
         grid[4][3] = filler(ELBOW, 2);
-        grid[4][4] = filler(STRAIGHT, 1);
+        grid[4][4] = filler(STRAIGHT, 0);
         grid[4][5] = filler(ELBOW, 0);
+        grid[5][1] = twin(filler(ELBOW, 1), '1,5', COLOR_P2);   // pair 2 partner
+        grid[5][2] = filler(STRAIGHT, 1);
+        grid[5][3] = filler(ELBOW, 3);
+        grid[5][4] = filler(STRAIGHT, 0);
+        grid[5][5] = filler(ELBOW, 2);
 
         // Wire the on-grid twin back-references.
         twin(grid[0][4], '4,1', COLOR_P1);
-        twin(grid[1][5], '4,0', COLOR_P2);
+        twin(grid[1][5], '5,1', COLOR_P2);
         twin(grid[2][2], '2,5', COLOR_P3);
         twin(grid[2][5], '2,2', COLOR_P3);
 
@@ -134,7 +153,7 @@ const Tutorial = (function () {
             rows: ROWS, cols: COLS,
             grid: grid,
             entry: { row: 0, col: 0, port: N },
-            exit:  { row: 3, col: 0, port: W },
+            exit:  { row: 6, col: 5, port: S },   // lower-right corner, exits downward
             entry2: null, exit2: null,
             entry3: null, exit3: null,
             entry4: null, exit4: null,
@@ -211,8 +230,17 @@ const Tutorial = (function () {
             { a: 'gate' }                 // both clear
         ] },
         { key: 'tutorial.step8', actions: [
-            { a: 'rotate', r: 3, c: 2 },  // (3,1) is pre-aligned — lights for free
-            { a: 'rotate', r: 3, c: 0 }   // circuit completes → gold
+            // Long finale: twist down column 0 and across the bottom to the
+            // lower-right exit. (3,1), (5,0) and (6,2) are pre-aligned and
+            // light up for free as the path reaches them.
+            { a: 'rotate', r: 3, c: 2 },
+            { a: 'rotate', r: 3, c: 0 },   // elbow turns the path downward
+            { a: 'rotate', r: 4, c: 0 },
+            { a: 'rotate', r: 6, c: 0 },
+            { a: 'rotate', r: 6, c: 1 },
+            { a: 'rotate', r: 6, c: 3 },
+            { a: 'rotate', r: 6, c: 4 },
+            { a: 'rotate', r: 6, c: 5 }    // circuit completes → gold
         ] }
     ];
 
@@ -353,8 +381,12 @@ const Tutorial = (function () {
     // ---- step flow --------------------------------------------------------
     function bulletHtml(step) {
         let html = t(step.key, '');
-        if (step.key === 'tutorial.step1' && !isCoarsePointer()) {
-            html += ' ' + t('tutorial.step1Desktop', '');   // plain second sentence
+        if (step.key === 'tutorial.step1') {
+            // Touch devices get the swipe-direction note; pointer (mouse)
+            // devices get the left/right-click note. Plain second sentence.
+            html += ' ' + (isCoarsePointer()
+                ? t('tutorial.step1Touch', '')
+                : t('tutorial.step1Desktop', ''));
         }
         return html;
     }

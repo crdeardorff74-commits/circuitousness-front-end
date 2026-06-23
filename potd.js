@@ -1530,7 +1530,7 @@ const Potd = (() => {
             const nameRow   = document.getElementById('potdSolveNameRow');
             const nameInput = document.getElementById('potdSolveName');
             const saveBtn   = document.getElementById('potdSolveSaveBtn');
-            const continueEl= document.getElementById('potdSolveContinue');
+            const menuBtn   = document.getElementById('potdSolveMenuBtn');
 
             const t = (key, vars) =>
                 (typeof I18n !== 'undefined' && I18n.t) ? I18n.t(key, vars) : key;
@@ -1543,8 +1543,6 @@ const Potd = (() => {
             // Status messages only when there's no name entry happening.
             if (ineligEl)  ineligEl.hidden  = awaitName || wasOffline;
             if (offlineEl) offlineEl.hidden = !wasOffline;
-            // Tap-to-continue hint only shown in dismiss-on-tap mode.
-            if (continueEl) continueEl.hidden = !!awaitName;
 
             if (awaitName) {
                 if (nameInput) {
@@ -1556,13 +1554,15 @@ const Potd = (() => {
                     saveBtn.textContent = t('marathon.save');
                 }
                 if (nameRow) nameRow.hidden = false;
+                if (menuBtn) menuBtn.hidden = true;   // Save is the dismiss action
             } else {
                 if (nameRow) nameRow.hidden = true;
+                if (menuBtn) menuBtn.hidden = false;  // explicit "Back to menu" dismiss
             }
 
             function close(name) {
                 card.classList.remove('visible');
-                card.removeEventListener('click', onTap);
+                if (menuBtn)   menuBtn.removeEventListener('click', onMenu);
                 if (saveBtn)   saveBtn.removeEventListener('click', onSave);
                 if (nameInput) nameInput.removeEventListener('keydown', onKey);
                 if (nameRow)   nameRow.hidden = true;
@@ -1574,7 +1574,7 @@ const Potd = (() => {
                 }
                 resolve(name || '');
             }
-            function onTap()  { if (!awaitName) close(''); }
+            function onMenu(e) { if (e) e.stopPropagation(); close(''); }
             function onSave(e) {
                 if (e) e.stopPropagation();
                 close(nameInput ? nameInput.value : '');
@@ -1586,10 +1586,14 @@ const Potd = (() => {
                 }
             }
 
-            card.addEventListener('click', onTap);
+            // No tap-anywhere dismiss — the player uses an explicit control
+            // (Save when ranking, "Back to menu" otherwise), so a stray tap
+            // can't land on a share icon.
             if (awaitName) {
                 if (saveBtn)   saveBtn.addEventListener('click', onSave);
                 if (nameInput) nameInput.addEventListener('keydown', onKey);
+            } else {
+                if (menuBtn) menuBtn.addEventListener('click', onMenu);
             }
             card.classList.add('visible');
 

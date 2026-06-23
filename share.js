@@ -74,15 +74,15 @@ const Share = (function () {
         copylink: function (url, text) { return null; },  // see handleClick
     };
 
-    function handleClick(platform, ev) {
+    function handleClick(platform, ev, fromPopup) {
         if (ev && ev.preventDefault) ev.preventDefault();
         const url   = getShareUrl();
         const text  = getShareText();
-        // Tracking ALWAYS fires first — if the user is in dev mode it's
-        // suppressed at the Tracking layer, and a navigation away from
-        // the page (twitter/fb popup, etc.) shouldn't prevent the record.
+        // Record the click immediately, tagged by source: 'popup' = the
+        // "Enjoying it?" prompt, 'score' = the game-over / "Solved!" cards.
+        // (Suppressed at the Tracking layer in dev / on localhost.)
         if (typeof Tracking !== 'undefined' && Tracking.recordShare) {
-            Tracking.recordShare(platform);
+            Tracking.recordShare(platform, fromPopup ? 'popup' : 'score');
         }
         const build = BUILDERS[platform];
         if (!build) return;
@@ -127,7 +127,11 @@ const Share = (function () {
             if (btn.dataset.shareBound === '1') continue;
             btn.dataset.shareBound = '1';
             const platform = btn.dataset.sharePlatform;
-            btn.addEventListener('click', function (ev) { handleClick(platform, ev); });
+            // Buttons inside the "Enjoying it?" popup are the deliberate
+            // surface; everything else (the score-popup icon rows) is the
+            // accidental-prone one that gets deferred + binned.
+            const fromPopup = !!(btn.closest && btn.closest('#shareOverlay'));
+            btn.addEventListener('click', function (ev) { handleClick(platform, ev, fromPopup); });
         }
     }
 
