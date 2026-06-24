@@ -406,7 +406,9 @@ const Marathon = (() => {
         // entry path (menu button, save-score → leaderboard) defaults
         // the tab to whatever mode the player has selected in the main
         // menu's MODE chip — avoids dumping a PotD-player onto a
-        // Marathon board and vice versa.
+        // Marathon board and vice versa. Practice has no board of its
+        // own, so its players default to the Puzzle of the Day board
+        // (the flagship competitive view) rather than Marathon.
         const fromReplay = state === STATE.REPLAYING;
         state = STATE.LEADERBOARD;
         // Save-score → leaderboard leaves credits rolling unless we tear
@@ -423,10 +425,10 @@ const Marathon = (() => {
             const picked = (typeof ModePicker !== 'undefined' && ModePicker.getMode)
                 ? ModePicker.getMode()
                 : 'marathon';
-            // Practice has no leaderboard of its own, so its players land on
-            // the Marathon board (the closest equivalent) rather than an
-            // unhandled mode the render branch doesn't speak.
-            const initialMode = picked === 'potd' ? 'potd' : 'marathon';
+            // Only Marathon-mode players default to the Marathon board.
+            // PotD players and Practice players (Practice has no board of
+            // its own) both land on the Puzzle of the Day board.
+            const initialMode = picked === 'marathon' ? 'marathon' : 'potd';
             applyLeaderboardMode(initialMode, /*render=*/false);
         }
         renderLeaderboard();
