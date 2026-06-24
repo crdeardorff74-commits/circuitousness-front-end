@@ -2,11 +2,12 @@
  * mode-picker.js — top-level mode selector for the main menu.
  *
  * Three modes today:
- *   'potd'     — Puzzle of the Day (default — first-player-generates
- *                client-side, server stores, leaderboard resets daily).
+ *   'potd'     — Puzzle of the Day (first-player-generates client-side,
+ *                server stores, leaderboard resets daily).
  *   'marathon' — Solve as many puzzles as time allows (the original mode).
  *   'practice' — Marathon without the time limit or leaderboards: solve as
- *                many puzzles as you like, untimed, nothing saved.
+ *                many puzzles as you like, untimed, nothing saved. This is
+ *                the DEFAULT mode new players land in (see DEFAULT_MODE).
  *
  * The picker is a chip + popup, lifted verbatim from TANTЯO's Skill /
  * Difficulty pattern (`.menu-dropdown-*`, `.combo-modal-*`, `.selection-*`
@@ -27,7 +28,10 @@
 
 const ModePicker = (() => {
     const MODES        = ['potd', 'marathon', 'practice'];
-    const DEFAULT_MODE = 'potd';
+    // Practice is the default landing mode — new players start in the
+    // untimed, nothing-saved sandbox (smaller starter puzzle, no leaderboard
+    // pressure) rather than being dropped straight into the daily challenge.
+    const DEFAULT_MODE = 'practice';
     const STORAGE_KEY  =
         (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness') + '_mode';
 

@@ -131,6 +131,12 @@ const MARATHON = {
     // quad mode's underlying maze is 2× per axis. No upper cap.
     MIN_DIM_SINGULAR: 8,
     MIN_DIM_QUAD:    4,
+    // Practice mode starts smaller and gentler than Marathon — new players
+    // land in Practice (it's the default mode), so the first singular puzzle
+    // is a 4×4 instead of Marathon's 8×8. Only lowers the SINGULAR floor;
+    // quad already starts at 4 logical (MIN_DIM_QUAD), and the 4-path bump
+    // below still applies so the generator has room to place 8 endpoints.
+    MIN_DIM_PRACTICE: 4,
     // Per-path-count minimum-dim override. 4-path puzzles need more grid
     // space than 1/2/3-path: 8 distinct perimeter endpoints + 4 DFS paths
     // competing for non-overlapping cells. At 8×8 (regular MIN_DIM) the
@@ -146,10 +152,15 @@ const MARATHON = {
     // (quadMode, pathCount)?". Callers: marathon.js's dimsForLevel,
     // game.js's STARTER_PLAN. Adding more overrides (3-path, etc.) is
     // a matter of adding the constant above + a branch here.
-    minDimFor: function (quadMode, pathCount) {
+    // `practice` (optional) lowers the singular floor for Practice mode so
+    // new players start on a small 4×4 board. The 4-path bump still wins
+    // (those puzzles need the extra room regardless of mode), and quad is
+    // unaffected since it already starts at MIN_DIM_QUAD.
+    minDimFor: function (quadMode, pathCount, practice) {
         if (pathCount === 4) {
             return quadMode ? this.MIN_DIM_QUAD_4PATH : this.MIN_DIM_SINGULAR_4PATH;
         }
+        if (practice && !quadMode) return this.MIN_DIM_PRACTICE;
         return quadMode ? this.MIN_DIM_QUAD : this.MIN_DIM_SINGULAR;
     },
 

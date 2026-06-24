@@ -2,6 +2,12 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-06-24 — Release v0.59
+- **Practice is now the default mode** for new players (`mode-picker.js` `DEFAULT_MODE` 'potd' → 'practice'). Existing players keep their saved `_mode`; only fresh profiles land in Practice.
+- **Practice singular puzzles start at 4×4** (was 8×8). New `MARATHON.MIN_DIM_PRACTICE = 4` in config.js; `minDimFor(quadMode, pathCount, practice)` gained a 3rd `practice` arg, and `marathon.js` `dimsForLevel` passes the module-level `isPractice`. Quad (already 4) and the 4-path floors are untouched — those still need the room. Marathon stays 8×8. Pre-gen STARTER_PLAN is unchanged (still 8×8), so the FIRST practice puzzle misses cache and shows a near-instant build banner; lookahead (`upcomingDims`→`dimsForLevel`) pre-gens the right practice sizes from then on.
+- **Fixed stale "Puzzle N · 8×8" label on PotD.** Root cause: `#hudLevel:empty{display:none}` in styles.css is the design (PotD is meant to leave it empty), but PotD never cleared the leftover Marathon/Practice text. `potd.js` now grabs `#hudLevel` in init and clears it in `startPuzzle`'s HUD setup. No i18n change needed.
+- Not browser-verified — user declined the dev server (AV/EDR killed the session yesterday on bulk file activity). Changes traced through the code paths instead.
+
 ## 2026-06-24 — Release v0.58
 - Ships the embed/redirect visit tagging (see entry below): `tracking.js` now sends `embedded` + `redirected`, sourced from `platform-redirect.js`'s `window.__platformRedirect`. Front-end-only change; needs the circuitousness-api redeploy to store the new fields and the OI-web push for the dashboard panel.
 

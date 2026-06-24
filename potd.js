@@ -75,7 +75,7 @@ const Potd = (() => {
     const SIZE_AVG_MAX_QUAD = 18;
 
     // ── DOM refs (populated in init) ──
-    let menuEl, hudEl, buildBannerEl, hudType, hudTimerVal, hudHintBtn;
+    let menuEl, hudEl, buildBannerEl, hudType, hudLevel, hudTimerVal, hudHintBtn;
 
     // ── Cached puzzle set + active attempt ──
     let puzzles      = null;   // { date, byslot: { s1: snapshot, ... } }
@@ -1165,6 +1165,11 @@ const Potd = (() => {
         if (hudType && typeof I18n !== 'undefined' && I18n.t) {
             hudType.textContent = I18n.t('marathon.mode' + slot.toUpperCase());
         }
+        // PotD doesn't use #hudLevel ("Puzzle N · RxC"); clear any stale text
+        // left over from a previous Marathon/Practice game so the empty-bubble
+        // rule (#hudLevel:empty in styles.css) hides it instead of showing the
+        // wrong size in the top-left corner.
+        if (hudLevel) hudLevel.textContent = '';
         currentSlot = slot;
         puzzleStartMs = Date.now();
         // Reset the per-attempt hint counter — incremented by
@@ -1811,6 +1816,7 @@ const Potd = (() => {
         hudEl         = document.getElementById('hud');
         buildBannerEl = document.getElementById('buildingBanner');
         hudType       = document.getElementById('hudType');
+        hudLevel      = document.getElementById('hudLevel');
         hudHintBtn    = document.getElementById('hudHintBtn');
         const timerEl = document.getElementById('hudTimer');
         hudTimerVal   = timerEl ? timerEl.querySelector('.hudTimerVal') : null;

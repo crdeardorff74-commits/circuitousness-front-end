@@ -498,7 +498,10 @@ const Marathon = (() => {
     // 1-path baseline — fine for 1/2/3-path puzzles, but for 4-path that means
     // an 8×8 grid the generator can't reliably fill. All callers now pass it.
     function dimsForLevel(lev, quadMode, pathCount) {
-        const minDim = MARATHON.minDimFor(quadMode, pathCount);
+        // isPractice (module-level) lowers the singular floor to 4×4 for
+        // Practice runs — read here so every caller (startNextPuzzle, the
+        // HUD label, upcomingDims pre-gen lookahead) gets the right size.
+        const minDim = MARATHON.minDimFor(quadMode, pathCount, isPractice);
         ensureGrowthSequence(lev);
         let rowGrowth = 0, colGrowth = 0;
         for (let i = 0; i < lev - 1; i++) {
