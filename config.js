@@ -132,11 +132,14 @@ const MARATHON = {
     MIN_DIM_SINGULAR: 8,
     MIN_DIM_QUAD:    4,
     // Practice mode starts smaller and gentler than Marathon — new players
-    // land in Practice (it's the default mode), so the first singular puzzle
-    // is a 4×4 instead of Marathon's 8×8. Only lowers the SINGULAR floor;
-    // quad already starts at 4 logical (MIN_DIM_QUAD), and the 4-path bump
-    // below still applies so the generator has room to place 8 endpoints.
-    MIN_DIM_PRACTICE: 4,
+    // land in Practice (it's the default mode), so singular puzzles start
+    // well below Marathon's flat 8×8. The floor scales with path count so
+    // more paths get more room: indexed by pathCount-1 → 1-path 4×4,
+    // 2-path 6×6, 3-path 8×8. 4-path is NOT here — it keeps the generator-
+    // mandated MIN_DIM_SINGULAR_4PATH (10×10) floor regardless of mode, so
+    // the strict 4-path generator has room for all 8 endpoints. Only the
+    // SINGULAR floor is lowered; quad already starts at 4 (MIN_DIM_QUAD).
+    MIN_DIM_PRACTICE_SINGULAR: [4, 6, 8],
     // Per-path-count minimum-dim override. 4-path puzzles need more grid
     // space than 1/2/3-path: 8 distinct perimeter endpoints + 4 DFS paths
     // competing for non-overlapping cells. At 8×8 (regular MIN_DIM) the
@@ -152,15 +155,15 @@ const MARATHON = {
     // (quadMode, pathCount)?". Callers: marathon.js's dimsForLevel,
     // game.js's STARTER_PLAN. Adding more overrides (3-path, etc.) is
     // a matter of adding the constant above + a branch here.
-    // `practice` (optional) lowers the singular floor for Practice mode so
-    // new players start on a small 4×4 board. The 4-path bump still wins
-    // (those puzzles need the extra room regardless of mode), and quad is
-    // unaffected since it already starts at MIN_DIM_QUAD.
+    // `practice` (optional) lowers the singular floor for Practice mode via
+    // the per-path-count MIN_DIM_PRACTICE_SINGULAR table. The 4-path bump
+    // still wins (those puzzles need the extra room regardless of mode), and
+    // quad is unaffected since it already starts at MIN_DIM_QUAD.
     minDimFor: function (quadMode, pathCount, practice) {
         if (pathCount === 4) {
             return quadMode ? this.MIN_DIM_QUAD_4PATH : this.MIN_DIM_SINGULAR_4PATH;
         }
-        if (practice && !quadMode) return this.MIN_DIM_PRACTICE;
+        if (practice && !quadMode) return this.MIN_DIM_PRACTICE_SINGULAR[pathCount - 1];
         return quadMode ? this.MIN_DIM_QUAD : this.MIN_DIM_SINGULAR;
     },
 
