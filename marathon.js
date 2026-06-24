@@ -813,6 +813,20 @@ const Marathon = (() => {
         totalSolveTime += elapsed;
         solvedCount++;
 
+        // Practice never reaches gameOver() (it's untimed and ends only on
+        // Quit), so the engagement funnel's "finished" milestone — which
+        // Marathon fires from gameOver() — would otherwise never fire for the
+        // now-default Practice mode, leaving Practice play as "started, never
+        // finished". Fire it on the FIRST Practice solve so the visit is
+        // marked finished. We only care that the visitor finished *a* puzzle,
+        // not how many — and the server's /finished flag is a sticky per-visit
+        // boolean anyway — so gating on solvedCount === 1 records exactly the
+        // signal we want without re-PATCHing on every subsequent solve.
+        if (isPractice && solvedCount === 1 &&
+            typeof Tracking !== 'undefined' && Tracking.recordFinish) {
+            Tracking.recordFinish();
+        }
+
         // Project the next puzzle's starting clock for the transition popup.
         // solvedCount was just incremented above, so it already reflects
         // the "puzzles solved BEFORE the next one starts" count that
