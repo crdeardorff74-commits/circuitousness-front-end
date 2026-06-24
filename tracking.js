@@ -120,12 +120,26 @@ const Tracking = (function () {
     // (visit_id already set). Returns a Promise that resolves to the
     // visitId so the page-init code can chain other tracking calls
     // after the visit row exists.
+    // Load context set by platform-redirect.js (runs first, in <head>, so the
+    // flag exists by the time we POST). embedded = ran inside an external
+    // embed (itch iframe / CDN); redirected = platform-redirect nudged the
+    // player to the real origin. Lets the funnel separate redirect handoffs
+    // from genuine on-site visits. Defaults to false if the flag is absent
+    // (redirect script didn't load, or a non-embed origin).
+    function _loadContext() {
+        try {
+            var f = (typeof window !== 'undefined') && window.__platformRedirect;
+            return { embedded: !!(f && f.embedded), redirected: !!(f && f.fired) };
+        } catch (e) { return { embedded: false, redirected: false }; }
+    }
+
     function recordVisit() {
         if (isSuppressed()) return Promise.resolve(0);
         if (visitId !== 0 || inFlightVisit) return Promise.resolve(visitId);
         const base = apiBase();
         if (!base) return Promise.resolve(0);
         inFlightVisit = true;
+        const ctx = _loadContext();
         const payload = {
             referrer:     (typeof document !== 'undefined' && document.referrer) || null,
             userAgent:    (typeof navigator !== 'undefined' && navigator.userAgent) || null,
@@ -137,6 +151,8 @@ const Tracking = (function () {
             deviceType:   detectDeviceType(),
             os:           detectOS(),
             sessionId:    _persistentSessionId(),
+            embedded:     ctx.embedded,
+            redirected:   ctx.redirected,
         };
         return fetch(base + '/visit', {
             method:  'POST',

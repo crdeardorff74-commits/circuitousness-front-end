@@ -2,6 +2,18 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-06-24 — Release v0.58
+- Ships the embed/redirect visit tagging (see entry below): `tracking.js` now sends `embedded` + `redirected`, sourced from `platform-redirect.js`'s `window.__platformRedirect`. Front-end-only change; needs the circuitousness-api redeploy to store the new fields and the OI-web push for the dashboard panel.
+
+## 2026-06-24 — Embed/redirect visit tagging (signal source)
+- WHY: admin "Recent Visits" showed many mobile ○○○ "bailed at intro" rows that are NOT rejections — on mobile+itch-embed, `platform-redirect.js` throws its "play the full version" overlay OVER the intro, so the player never reaches the menu on the itch instance. Needed to tell handoffs apart from real intro bounces.
+- `platform-redirect.js` now exposes `window.__platformRedirect = { embedded, fired }` (set before its early-return): `embedded` = any itch-embed load incl. desktop; `fired` = it actually diverted a mobile player. `tracking.js` reads that via `_loadContext()` and sends `embedded` + `redirected` on `/api/visit`.
+- Pitfall: the back-end's 5-min same-session dedup reuses the first row, so embedded/redirected reflect the FIRST load (consistent with referrer-first-wins); fine.
+- NOT done: per-user correlation id to stitch a specific itch bounce to its real-origin continuation (different origins → different session_ids, so they can't be linked yet). Deferred — aggregate on-site funnel answers "is the intro the problem" without it.
+
+## 2026-06-23 — Release v0.57
+- **PotD puzzle sizing: raised floor + added avg floor** (potd.js generateDims). Was singular axes [6,12] capped only by avg ceiling ≤9 → 6×6 easy puzzles were in-spec. Now singular axes [8,12], avg window [9,12]; quad even sub-tile axes [12,18] (6–9 quad-tiles), avg [14,18]. New `SIZE_AVG_MIN`/`_QUAD` floor stops small-on-both-axes rolls. Also rewrote the 3 stale comment blocks that described larger ranges the code never matched. Monte-Carlo verified (no 6×6, ~7–8 worst-case re-rolls). NOTE: PotD puzzles are seeded once/day server-side, so new sizes apply to slots seeded AFTER deploy (next day, or a dev PotD reset to re-seed today).
+
 ## 2026-06-23 — Release v0.56
 - **Phone intro: restore Music + SFX toggles** (was hiding the whole row). intro.js now hides ONLY the Full Screen toggle on phones (`#introFullscreenToggle`, new id on the label) — the install/Add-to-Home-Screen hint owns fullscreen there and iOS can't reliably fullscreen via the API. Music + SFX stay visible so phone players can set audio prefs BEFORE the "I agree" tap starts music (the real gap). Removed the old whole-row `display:none` in `showFullscreenHint`. Verified via preview: desktop = all 3 toggles; mobile path = Music/SFX `flex`, Full Screen `none`.
 

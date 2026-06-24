@@ -91,7 +91,21 @@
         return false;
     }
 
-    if (!isMobile() || isStandalone() || !isExternalEmbed()) return;
+    // Expose load context for tracking.js to tag the visit (it fires after
+    // this — this script loads first in <head>). `embedded` is true for ANY
+    // external-embed load, including desktop, which we deliberately do NOT
+    // redirect. `fired` flips true only when this script actually nudges a
+    // mobile player to the real origin (Stage 1 auto-redirect + Stage 2
+    // overlay). A visit that is embedded && fired && never reached the menu
+    // is a redirect HANDOFF, not a rejection of the intro.
+    var _embedded = isExternalEmbed();
+    try { window.__platformRedirect = { embedded: _embedded, fired: false }; } catch (e) {}
+
+    if (!isMobile() || isStandalone() || !_embedded) return;
+
+    // Past the guard means this script WILL act (redirect + overlay below),
+    // so mark the load as a redirect handoff for tracking.
+    try { window.__platformRedirect.fired = true; } catch (e) {}
 
     var framed;
     try { framed = window.top !== window.self; } catch (e) { framed = true; }
