@@ -2189,7 +2189,7 @@ html.mode-debug #settingsOverlay { display: none !important; }
 .credits-content {
     padding: 20px;
     text-align: center;
-    max-width: 34%;
+    max-width: 36%;
     /* Let the title (and any other content) render outside the 34%-wide
        content box without being clipped by an ancestor. Default is already
        `visible`, but set it explicitly so any future ancestor `overflow:
