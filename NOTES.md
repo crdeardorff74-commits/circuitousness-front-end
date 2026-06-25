@@ -2,6 +2,9 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-06-25 — Release v0.61
+- End credits content updated (manual edit by user; content-only, no logic change). Not browser-verified — dev server declined.
+
 ## 2026-06-24 — Release v0.60
 - **Practice is now the default mode** for new players (`mode-picker.js` `DEFAULT_MODE` 'potd' → 'practice'). Existing players keep their saved `_mode`; only fresh profiles land in Practice.
 - **Practice singular puzzles start smaller, scaled by path count** (was a flat 8×8). New `MARATHON.MIN_DIM_PRACTICE_SINGULAR = [4, 6, 8]` table in config.js (indexed by pathCount-1 → 1-path 4×4, 2-path 6×6, 3-path 8×8). 4-path is NOT in the table — it keeps the generator-mandated `MIN_DIM_SINGULAR_4PATH` (10×10) floor regardless of mode, since the strict 4-path generator needs the room for 8 endpoints. `minDimFor(quadMode, pathCount, practice)` gained a 3rd `practice` arg, and `marathon.js` `dimsForLevel` passes the module-level `isPractice`. Quad is untouched (already starts at 4). Marathon stays 8×8. Pre-gen STARTER_PLAN is unchanged (still 8×8), so the FIRST practice puzzle misses cache and shows a near-instant build banner; lookahead (`upcomingDims`→`dimsForLevel`) pre-gens the right practice sizes from then on.
