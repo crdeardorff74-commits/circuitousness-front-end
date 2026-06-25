@@ -2352,11 +2352,11 @@ html.mode-debug #settingsOverlay { display: none !important; }
 }
 
 .credits-spacer {
-    height: 24vh;
+    height: 20vh;
 }
 
 .credits-spacer-large {
-    height: 42vh;
+    height: 34vh;
 }
 
 .credits-spacer-final {
