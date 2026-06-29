@@ -2,6 +2,10 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-06-29 — Release v0.62
+- Share links now point at the `circuitousness.official-intelligence.art` domain (share-URL source in `share.js`). Mirrors the same change made to Tantro this session.
+- Version bumped 0.61 → 0.62 (`sw.js` APP_VERSION + `index.html` PAGE_VERSION). Not browser-verified — pure constant/URL change.
+
 ## 2026-06-25 — Release v0.61
 - End credits content updated (manual edit by user; content-only, no logic change). Not browser-verified — dev server declined.
 

@@ -28,9 +28,10 @@ const Share = (function () {
     function getShareUrl() {
         // Canonical share URL from config.js. window.location is the opaque
         // CDN URL inside itch's iframe, so always prefer the fixed URL.
-        if (typeof SHARE_URL !== 'undefined' && SHARE_URL) return SHARE_URL;
-        if (typeof window === 'undefined' || !window.location) return '';
-        return window.location.origin + window.location.pathname;
+        // if (typeof SHARE_URL !== 'undefined' && SHARE_URL) return SHARE_URL;
+        // if (typeof window === 'undefined' || !window.location) return '';
+        // return window.location.origin + window.location.pathname;
+		return 'https://circuitousness.official-intelligence.art';
     }
     function getShareText() {
         if (typeof I18n !== 'undefined' && I18n.t) return I18n.t('share.text');
