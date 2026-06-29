@@ -257,6 +257,22 @@
                 <button id="menuHowToBtn" type="button" data-i18n="tutorial.menuButton">❓ How to Solve</button>
                 <button id="menuLeaderboardBtn" type="button" data-i18n="marathon.leaderboards">Leaderboards</button>
             </div>
+
+            <!-- Legal footer. Real anchor links (not modal-only) so they are visible
+                 in the static landing page — required for ad-network review and basic
+                 transparency. Points to the umbrella site's policy pages. -->
+            <footer id="menuLegalFooter" class="menu-legal-footer">
+                <nav class="menu-legal-links">
+                    <a href="https://official-intelligence.art/privacy" target="_blank" rel="noopener" data-i18n="footer.privacy">Privacy</a>
+                    <span class="menu-legal-sep" aria-hidden="true">·</span>
+                    <a href="https://official-intelligence.art/terms" target="_blank" rel="noopener" data-i18n="footer.terms">Terms</a>
+                    <span class="menu-legal-sep" aria-hidden="true">·</span>
+                    <a href="https://official-intelligence.art/about" target="_blank" rel="noopener" data-i18n="footer.about">About</a>
+                    <span class="menu-legal-sep" aria-hidden="true">·</span>
+                    <a href="mailto:privacy@official-intelligence.art" data-i18n="footer.contact">Contact</a>
+                </nav>
+                <div class="menu-legal-copyright">© 2026 Official Intelligence</div>
+            </footer>
         </div>
 
         <!-- How-to-Solve tutorial overlay. A fixed demo puzzle (left) plays the
@@ -918,7 +934,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.62';</script>
+    <script>var PAGE_VERSION = '0.63';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

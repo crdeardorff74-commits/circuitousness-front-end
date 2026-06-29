@@ -2,6 +2,12 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-06-29 — Release v0.63
+- Added a legal footer to the landing/menu screen (`index.html` `#menuLegalFooter`): real anchor links to Privacy / Terms / About / Contact on the umbrella site, plus copyright. Reason: ad-network review (Google "Deceptive Business Practices" + Microsoft "payer identity" suspensions) — crawlers don't open the credits modal, so the policy links had to be visible in static HTML on the page the ads point at.
+- New `footer.privacy/terms/about/contact` i18n keys across all 15 languages; quiet glassy styling in `styles.css` (`.menu-legal-footer`).
+- Umbrella site (`official-intelligence-web`, separate deploy) got new `terms.html` + `about.html` (names Christopher Ryan Deardorff as operator, `privacy@official-intelligence.art` contact) and footer links to them. Not part of this zip.
+- Version bumped 0.62 → 0.63. Not browser-verified — dev server declined (AV risk).
+
 ## 2026-06-29 — Release v0.62
 - Share links now point at the `circuitousness.official-intelligence.art` domain (share-URL source in `share.js`). Mirrors the same change made to Tantro this session.
 - Version bumped 0.61 → 0.62 (`sw.js` APP_VERSION + `index.html` PAGE_VERSION). Not browser-verified — pure constant/URL change.

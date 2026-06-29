@@ -3483,6 +3483,41 @@ body.credits-rolling #potdSolveTransition.visible {
     margin-top: 0;   /* the row owns the top margin now */
 }
 
+/* Legal footer on the landing screen — privacy / terms / about / contact.
+   Deliberately quiet so it doesn't compete with the menu, but always visible. */
+.menu-legal-footer {
+    margin-top: 1.4rem;
+    text-align: center;
+    font-size: clamp(0.72rem, 1.6vw, 0.85rem);
+    line-height: 1.6;
+    opacity: 0.78;
+}
+.menu-legal-links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 0.4em;
+}
+.menu-legal-footer a {
+    color: rgba(255, 255, 255, 0.72);
+    text-decoration: none;
+    transition: color 0.18s ease;
+}
+.menu-legal-footer a:hover,
+.menu-legal-footer a:focus-visible {
+    color: #fff;
+    text-decoration: underline;
+}
+.menu-legal-sep {
+    color: rgba(255, 255, 255, 0.4);
+}
+.menu-legal-copyright {
+    margin-top: 0.35rem;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.9em;
+}
+
 .tutorial-overlay {
     position: fixed;
     inset: 0;

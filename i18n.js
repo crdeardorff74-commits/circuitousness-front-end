@@ -35,6 +35,11 @@ const I18n = (() => {
     // PROJECT_NAME (from config.js) is the single source of truth for the display name.
     const translations = {
         en: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': 'Privacy',
+            'footer.terms':   'Terms',
+            'footer.about':   'About',
+            'footer.contact': 'Contact',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "Play the full version",
             'redirect.body': "On phones, the game runs best on its own site. Tap below to open it — and you can add it to your home screen from there.",
@@ -189,6 +194,11 @@ const I18n = (() => {
             'share.text':        'Check out ' + PROJECT_NAME + ' — a free puzzle game!'
         },
         es: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': 'Privacidad',
+            'footer.terms':   'Términos',
+            'footer.about':   'Acerca de',
+            'footer.contact': 'Contacto',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "Juega la versión completa",
             'redirect.body': "En teléfonos, el juego funciona mejor en su propio sitio. Toca abajo para abrirlo; desde ahí también puedes añadirlo a tu pantalla de inicio.",
@@ -447,6 +457,11 @@ const I18n = (() => {
             'settings.resetVisuals':        'Restablecer visuales'
         },
         fr: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': 'Confidentialité',
+            'footer.terms':   'Conditions',
+            'footer.about':   'À propos',
+            'footer.contact': 'Contact',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "Jouer à la version complète",
             'redirect.body': "Sur téléphone, le jeu fonctionne mieux sur son propre site. Touchez ci-dessous pour l'ouvrir — vous pourrez aussi l'ajouter à votre écran d'accueil.",
@@ -705,6 +720,11 @@ const I18n = (() => {
             'settings.resetVisuals':        'Réinitialiser le visuel'
         },
         de: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': 'Datenschutz',
+            'footer.terms':   'Nutzungsbedingungen',
+            'footer.about':   'Über uns',
+            'footer.contact': 'Kontakt',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "Vollversion spielen",
             'redirect.body': "Auf Handys läuft das Spiel am besten auf seiner eigenen Seite. Tippe unten, um es zu öffnen – von dort kannst du es auch zum Startbildschirm hinzufügen.",
@@ -962,6 +982,11 @@ const I18n = (() => {
             'settings.resetVisuals':        'Visuelles zurücksetzen'
         },
         pt: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': 'Privacidade',
+            'footer.terms':   'Termos',
+            'footer.about':   'Sobre',
+            'footer.contact': 'Contato',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "Jogue a versão completa",
             'redirect.body': "Em celulares, o jogo funciona melhor no próprio site. Toque abaixo para abri-lo — de lá você também pode adicioná-lo à tela inicial.",
@@ -1219,6 +1244,11 @@ const I18n = (() => {
             'settings.resetVisuals':        'Restaurar visuais'
         },
         ja: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': 'プライバシー',
+            'footer.terms':   '利用規約',
+            'footer.about':   '概要',
+            'footer.contact': 'お問い合わせ',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "フルバージョンをプレイ",
             'redirect.body': "スマホでは、ゲームは専用サイトで最も快適に動作します。下をタップして開いてください。そこからホーム画面に追加することもできます。",
@@ -1475,6 +1505,11 @@ const I18n = (() => {
             'settings.resetVisuals':        '表示を初期値に戻す'
         },
         ko: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': '개인정보',
+            'footer.terms':   '이용약관',
+            'footer.about':   '소개',
+            'footer.contact': '문의',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "전체 버전 플레이",
             'redirect.body': "휴대폰에서는 게임이 전용 사이트에서 가장 잘 작동합니다. 아래를 눌러 열어 보세요. 거기서 홈 화면에 추가할 수도 있습니다.",
@@ -1731,6 +1766,11 @@ const I18n = (() => {
             'settings.resetVisuals':        '화면 기본값 복원'
         },
         zh: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': '隐私',
+            'footer.terms':   '条款',
+            'footer.about':   '关于',
+            'footer.contact': '联系',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "畅玩完整版",
             'redirect.body': "在手机上，游戏在自己的网站上运行最佳。点击下方打开，你还可以从那里将它添加到主屏幕。",
@@ -1987,6 +2027,11 @@ const I18n = (() => {
             'settings.resetVisuals':        '恢复显示默认值'
         },
         ru: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': 'Конфиденциальность',
+            'footer.terms':   'Условия',
+            'footer.about':   'О нас',
+            'footer.contact': 'Контакты',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "Играть в полную версию",
             'redirect.body': "На телефонах игра лучше всего работает на собственном сайте. Нажмите ниже, чтобы открыть её — оттуда можно добавить игру на главный экран.",
@@ -2244,6 +2289,11 @@ const I18n = (() => {
             'settings.resetVisuals':        'Сбросить визуал'
         },
         it: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': 'Privacy',
+            'footer.terms':   'Termini',
+            'footer.about':   'Informazioni',
+            'footer.contact': 'Contatti',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "Gioca alla versione completa",
             'redirect.body': "Su telefono, il gioco funziona meglio sul proprio sito. Tocca qui sotto per aprirlo — da lì puoi anche aggiungerlo alla schermata Home.",
@@ -2500,6 +2550,11 @@ const I18n = (() => {
             'settings.resetVisuals':        'Reimposta aspetto'
         },
         nl: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': 'Privacy',
+            'footer.terms':   'Voorwaarden',
+            'footer.about':   'Over',
+            'footer.contact': 'Contact',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "Speel de volledige versie",
             'redirect.body': "Op telefoons werkt het spel het best op zijn eigen site. Tik hieronder om het te openen — daar kun je het ook aan je beginscherm toevoegen.",
@@ -2756,6 +2811,11 @@ const I18n = (() => {
             'settings.resetVisuals':        'Visueel terugzetten'
         },
         pl: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': 'Prywatność',
+            'footer.terms':   'Warunki',
+            'footer.about':   'O nas',
+            'footer.contact': 'Kontakt',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "Zagraj w pełną wersję",
             'redirect.body': "Na telefonach gra działa najlepiej na własnej stronie. Dotknij poniżej, aby ją otworzyć — stamtąd możesz też dodać ją do ekranu głównego.",
@@ -3012,6 +3072,11 @@ const I18n = (() => {
             'settings.resetVisuals':        'Resetuj wygląd'
         },
         tr: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': 'Gizlilik',
+            'footer.terms':   'Koşullar',
+            'footer.about':   'Hakkında',
+            'footer.contact': 'İletişim',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "Tam sürümü oyna",
             'redirect.body': "Telefonlarda oyun en iyi kendi sitesinde çalışır. Açmak için aşağıya dokun — oradan ana ekranına da ekleyebilirsin.",
@@ -3268,6 +3333,11 @@ const I18n = (() => {
             'settings.resetVisuals':        'Görseli sıfırla'
         },
         ar: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': 'الخصوصية',
+            'footer.terms':   'الشروط',
+            'footer.about':   'حول',
+            'footer.contact': 'اتصل بنا',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "العب النسخة الكاملة",
             'redirect.body': "على الهواتف، تعمل اللعبة بأفضل شكل على موقعها الخاص. انقر بالأسفل لفتحها — ومن هناك يمكنك أيضًا إضافتها إلى شاشتك الرئيسية.",
@@ -3524,6 +3594,11 @@ const I18n = (() => {
             'settings.resetVisuals':        'إعادة ضبط المظهر'
         },
         hi: {
+            // Landing-screen legal footer (links to umbrella policy pages)
+            'footer.privacy': 'गोपनीयता',
+            'footer.terms':   'शर्तें',
+            'footer.about':   'परिचय',
+            'footer.contact': 'संपर्क',
             // Home-screen redirect overlay (platform-redirect.js)
             'redirect.title': "पूरा संस्करण खेलें",
             'redirect.body': "फ़ोन पर, गेम अपनी साइट पर सबसे अच्छा चलता है। इसे खोलने के लिए नीचे टैप करें — वहाँ से आप इसे अपनी होम स्क्रीन पर भी जोड़ सकते हैं।",
