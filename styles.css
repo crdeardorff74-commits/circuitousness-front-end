@@ -2244,7 +2244,7 @@ html.mode-debug #settingsOverlay { display: none !important; }
 .credits-thanks {
     font-size: 18px;
     color: #FFD700;
-    margin: 60px 0;
+    margin: 60px 0 10px 0;
 }
 
 .credits-disclaimer {
