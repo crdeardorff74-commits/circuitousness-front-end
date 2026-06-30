@@ -2244,7 +2244,7 @@ html.mode-debug #settingsOverlay { display: none !important; }
 .credits-thanks {
     font-size: 18px;
     color: #FFD700;
-    margin: 60px 0 10px 0;
+    margin: 60px 0 16px 0;
 }
 
 .credits-disclaimer {
@@ -2352,11 +2352,11 @@ html.mode-debug #settingsOverlay { display: none !important; }
 }
 
 .credits-spacer {
-    height: 20vh;
+    height: 18vh;
 }
 
 .credits-spacer-large {
-    height: 34vh;
+    height: 32vh;
 }
 
 .credits-spacer-final {
