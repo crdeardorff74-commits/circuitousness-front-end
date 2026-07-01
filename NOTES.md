@@ -2,6 +2,12 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-01 — Release v0.65
+- Leaderboard replay: the "Now Playing" box now only shows if the ORIGINAL player had music on. A music-off recording drives no scripted playback, so the watcher's own (silently-continuing) menu music was leaking into the box. Fixed by splitting "replay in progress" from "recording had music" in `music.js`: new `replayActive` (bracketed by the replay driver via `Music.setReplayActive`, held across the whole session so it survives inter-puzzle gaps where `scriptedPlayback` goes null) + `replayHadMusic` (flips true only when scripted songs actually schedule). Now Playing visibility = `replayActive ? didReplayHaveMusic() : !isMuted()`. `setReplayActive(true)` fires `notifySongChange()` — that was the missing signal that lets a music-off replay hide the box on start (startScriptedPlayback no-ops silently for empty events).
+- `game.js` `replay()` and `replayAll()` now call `Music.setReplayActive(true/false)` around the whole replay (session-level, not per-puzzle, to avoid box flicker between marathon puzzles). Guarded by `typeof Music` like the existing scripted-playback calls; matches existing no-try/finally style (same fragility as the pre-existing `isReplaying` handling).
+- Preserved prior intent: during a music-ON replay the box still shows the recorded title even if the WATCHER has music muted (keys off the recording, not the watcher's mute).
+- Version bumped 0.64 → 0.65. Not browser-verified — repro needs an actual music-off leaderboard recording; dev-server preview declined this session (AV).
+
 ## 2026-07-01 — Release v0.64
 - Added a 🏆 trophy icon to the main-menu **Leaderboards** button (`index.html` `#menuLeaderboardBtn`). Implemented as a decorative `<span class="btnIcon" aria-hidden="true">🏆</span>` sibling, with `data-i18n="marathon.leaderboards"` moved onto an inner `<span>`. Reason: `marathon.leaderboards` is shared with the leaderboard panel's `<h2>` heading, so baking the emoji into the i18n string (the "How to Solve" `❓` pattern) would have put a trophy on the heading too and required editing 15 language blocks. The DOM helper does `el.innerHTML = text` on the `data-i18n` element, so an icon sibling survives translation. No `.btnIcon` CSS yet — emoji renders inline; class is a future styling hook.
 - Version bumped 0.63 → 0.64. Not browser-verified — dev-server preview declined by user (AV risk); change is a static-markup icon add.
