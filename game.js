@@ -912,7 +912,11 @@
             isReplaying = true;
             replayCancelled = false;
             replayBtn.disabled = true;
+            // Mark the replay session so the Now Playing box tracks the
+            // recorded player's music state (see music.js setReplayActive).
+            if (typeof Music !== 'undefined' && Music.setReplayActive) Music.setReplayActive(true);
             await playOneRecording(recording);
+            if (typeof Music !== 'undefined' && Music.setReplayActive) Music.setReplayActive(false);
             isReplaying = false;
             replayCancelled = false;
             replayBtn.disabled = false;
@@ -928,6 +932,10 @@
             if (isReplaying || !Array.isArray(events) || events.length === 0) return false;
             isReplaying = true;
             replayCancelled = false;
+            // Session-level marker held across the whole multi-puzzle
+            // sequence so the Now Playing box doesn't flicker in the gaps
+            // between puzzles (see music.js setReplayActive).
+            if (typeof Music !== 'undefined' && Music.setReplayActive) Music.setReplayActive(true);
             let completed = true;
             for (let i = 0; i < events.length; i++) {
                 if (replayCancelled) { completed = false; break; }
@@ -949,6 +957,7 @@
                     });
                 }
             }
+            if (typeof Music !== 'undefined' && Music.setReplayActive) Music.setReplayActive(false);
             isReplaying = false;
             replayCancelled = false;
             return completed;

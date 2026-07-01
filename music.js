@@ -960,6 +960,31 @@ const Music = (function () {
     // works (player can pause a replay) but won't picked the next
     // scripted song — that's driven by setTimeout.
     let scriptedPlayback = null;   // { timers: [Number] } when active, null when not
+    // Replay-session state for the Now Playing box (separate from the
+    // per-puzzle scriptedPlayback above). `replayActive` brackets the
+    // whole replay — set by the replay driver (game.js) via setReplayActive
+    // — so it stays true across the inter-puzzle gaps of a marathon replay
+    // where scriptedPlayback is momentarily null. `replayHadMusic` records
+    // whether the recording actually drove any music: it flips true the
+    // first time scripted songs are scheduled and stays true for the rest
+    // of the session. Together they let the Now Playing box show ONLY when
+    // the original player had music on — a music-off run leaves
+    // replayHadMusic false, so the box hides even though the watcher's own
+    // menu music keeps playing silently underneath.
+    let replayActive   = false;
+    let replayHadMusic = false;
+    function setReplayActive(on) {
+        replayActive = !!on;
+        // Each new replay session starts assuming no music until scripted
+        // playback proves otherwise.
+        if (on) replayHadMusic = false;
+        // Re-evaluate the Now Playing box immediately: a music-off replay
+        // schedules nothing (startScriptedPlayback no-ops without notifying),
+        // so this is the only signal that tells the box to hide on start.
+        notifySongChange();
+    }
+    function isReplayActive()    { return replayActive; }
+    function didReplayHaveMusic() { return replayHadMusic; }
     function startScriptedPlayback(events) {
         stopScriptedPlayback();
         if (!events || !Array.isArray(events) || events.length === 0) return;
@@ -979,6 +1004,10 @@ const Music = (function () {
         });
         if (cleaned.length === 0) return;
         scriptedPlayback = { timers: [] };
+        // The recording drove real music — remember it for the whole replay
+        // session so the Now Playing box stays visible across inter-puzzle
+        // gaps (where scriptedPlayback briefly returns to null).
+        replayHadMusic = true;
         // Refresh the Now Playing UI so it knows replay just started —
         // its callback hides the prev/pause/next controls during
         // scripted playback (since those are owned by the scripted
@@ -1081,6 +1110,9 @@ const Music = (function () {
         startScriptedPlayback:    startScriptedPlayback,
         stopScriptedPlayback:     stopScriptedPlayback,
         isScriptedPlayback:       isScriptedPlayback,
+        setReplayActive:          setReplayActive,
+        isReplayActive:           isReplayActive,
+        didReplayHaveMusic:       didReplayHaveMusic,
         setMode:               setMode,
         getMode:               getMode,
         setMenuPhase:          setMenuPhase,
@@ -1109,19 +1141,25 @@ const Music = (function () {
 
         const controlsEl = document.getElementById('nowPlayingControls');
         Music.setOnSongChange(function (song, paused) {
-            // Replay (Music.isScriptedPlayback()) takes precedence over
-            // the muted check: even with music muted, the watcher sees
-            // the title of what WOULD be playing in the original run,
-            // since the music history is part of the recording. Controls
-            // are hidden during replay because skipNext/skipPrev/pause
-            // are owned by the scripted timeline and the buttons would
-            // be dead UI.
-            const replaying = (typeof Music.isScriptedPlayback === 'function' && Music.isScriptedPlayback());
-            if (song && (replaying || !Music.isMuted())) {
+            // During a replay the box's visibility follows the ORIGINAL
+            // player's music state, not the watcher's: show the recorded
+            // song title iff the recording actually had music
+            // (didReplayHaveMusic). A run recorded with music off drives no
+            // scripted playback, so even though the watcher's own menu music
+            // keeps playing silently underneath, the box stays hidden — it
+            // must not surface the watcher's menu track as if it were the
+            // replay's. Outside a replay it's the normal not-muted check.
+            // Controls are hidden throughout a replay because skipNext/
+            // skipPrev/pause are owned by the scripted timeline (dead UI).
+            const replayActive = (typeof Music.isReplayActive === 'function' && Music.isReplayActive());
+            const show = replayActive
+                ? (typeof Music.didReplayHaveMusic === 'function' && Music.didReplayHaveMusic())
+                : !Music.isMuted();
+            if (song && show) {
                 el.classList.add('visible');
                 titleEl.textContent = song.name || '';
                 if (pauseBtn) pauseBtn.textContent = paused ? '▶' : '⏸';
-                if (controlsEl) controlsEl.style.display = replaying ? 'none' : '';
+                if (controlsEl) controlsEl.style.display = replayActive ? 'none' : '';
             } else {
                 el.classList.remove('visible');
                 // Restore control visibility for the next showing — the
