@@ -2,10 +2,15 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-01 — Release v0.64
+- Added a 🏆 trophy icon to the main-menu **Leaderboards** button (`index.html` `#menuLeaderboardBtn`). Implemented as a decorative `<span class="btnIcon" aria-hidden="true">🏆</span>` sibling, with `data-i18n="marathon.leaderboards"` moved onto an inner `<span>`. Reason: `marathon.leaderboards` is shared with the leaderboard panel's `<h2>` heading, so baking the emoji into the i18n string (the "How to Solve" `❓` pattern) would have put a trophy on the heading too and required editing 15 language blocks. The DOM helper does `el.innerHTML = text` on the `data-i18n` element, so an icon sibling survives translation. No `.btnIcon` CSS yet — emoji renders inline; class is a future styling hook.
+- Version bumped 0.63 → 0.64. Not browser-verified — dev-server preview declined by user (AV risk); change is a static-markup icon add.
+- Back-end (separate, not zipped): confirmed share/credits/donate tracking are in-place columns on `page_visits` rows (not separate rows), so a per-`session_id` `DELETE FROM page_visits` cleanly wipes a test visit incl. `share_platform`/`share_from_*`/`credits_clicks` with nothing orphaned.
+
 ## 2026-06-29 — Release v0.63
 - Added a legal footer to the landing/menu screen (`index.html` `#menuLegalFooter`): real anchor links to Privacy / Terms / About / Contact on the umbrella site, plus copyright. Reason: ad-network review (Google "Deceptive Business Practices" + Microsoft "payer identity" suspensions) — crawlers don't open the credits modal, so the policy links had to be visible in static HTML on the page the ads point at.
 - New `footer.privacy/terms/about/contact` i18n keys across all 15 languages; quiet glassy styling in `styles.css` (`.menu-legal-footer`).
-- Umbrella site (`official-intelligence-web`, separate deploy) got new `terms.html` + `about.html` (names Christopher Ryan Deardorff as operator, `privacy@official-intelligence.art` contact) and footer links to them. Not part of this zip.
+- Umbrella site (`official-intelligence-web`, separate deploy) got new `terms.html` + `about.html` (names Christopher Ryan Deardorff as operator (full legal name — matches Microsoft Advertising's "Legal business name" exactly; Google Ads verified payer is "Christopher Deardorff", a non-conflicting subset), `privacy@official-intelligence.art` contact) and footer links to them. Not part of this zip.
 - Version bumped 0.62 → 0.63. Not browser-verified — dev server declined (AV risk).
 
 ## 2026-06-29 — Release v0.62
