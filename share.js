@@ -75,15 +75,18 @@ const Share = (function () {
         copylink: function (url, text) { return null; },  // see handleClick
     };
 
-    function handleClick(platform, ev, fromPopup) {
+    function handleClick(platform, ev, kind) {
         if (ev && ev.preventDefault) ev.preventDefault();
         const url   = getShareUrl();
         const text  = getShareText();
         // Record the click immediately, tagged by source: 'popup' = the
-        // "Enjoying it?" prompt, 'score' = the game-over / "Solved!" cards.
+        // "Enjoying it?" prompt, 'score' = the game-over / "Solved!" cards,
+        // 'credits' = the menu-triggered credits popup. The back-end only
+        // bins popup/score into source columns; 'credits' still counts as
+        // a share (shared_game + platform CSV), just uncategorized.
         // (Suppressed at the Tracking layer in dev / on localhost.)
         if (typeof Tracking !== 'undefined' && Tracking.recordShare) {
-            Tracking.recordShare(platform, fromPopup ? 'popup' : 'score');
+            Tracking.recordShare(platform, kind || 'score');
         }
         const build = BUILDERS[platform];
         if (!build) return;
@@ -128,11 +131,13 @@ const Share = (function () {
             if (btn.dataset.shareBound === '1') continue;
             btn.dataset.shareBound = '1';
             const platform = btn.dataset.sharePlatform;
-            // Buttons inside the "Enjoying it?" popup are the deliberate
-            // surface; everything else (the score-popup icon rows) is the
-            // accidental-prone one that gets deferred + binned.
-            const fromPopup = !!(btn.closest && btn.closest('#shareOverlay'));
-            btn.addEventListener('click', function (ev) { handleClick(platform, ev, fromPopup); });
+            // Tag each button by the surface it lives on: the "Enjoying
+            // it?" popup, the menu-triggered credits popup, or (default)
+            // the score-card icon rows.
+            const kind = (btn.closest && btn.closest('#shareOverlay'))  ? 'popup'
+                       : (btn.closest && btn.closest('#creditsPopup'))  ? 'credits'
+                       : 'score';
+            btn.addEventListener('click', function (ev) { handleClick(platform, ev, kind); });
         }
     }
 

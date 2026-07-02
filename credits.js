@@ -88,6 +88,19 @@ const Credits = (function () {
             titleDiv.textContent = PROJECT_NAME.toUpperCase();
         }
 
+        // The "digging the music?" blurb only makes sense if the player can
+        // actually hear the music — hide it when music is muted. Checked on
+        // every start() (before the content-height measurement below, so the
+        // scroll length accounts for it) rather than once at load, so a
+        // Settings toggle between rolls is respected.
+        const musicDig = document.getElementById('music-dig');
+        if (musicDig) {
+            const musicOff = (typeof Music !== 'undefined' && Music.isMuted)
+                ? Music.isMuted()
+                : false;
+            musicDig.style.display = musicOff ? 'none' : '';
+        }
+
         const screenHeight = window.innerHeight;
         overlay.style.display = 'block';
         overlay.style.cursor  = 'none';

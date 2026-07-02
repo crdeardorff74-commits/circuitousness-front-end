@@ -77,6 +77,7 @@ const Marathon = (() => {
     let gameOverScore, gameOverTime, gameOverRank, gameOverName, gameOverSave, gameOverMenu, gameOverNameRow;
     let leaderboardTileTabsEl, leaderboardPathTabsEl, leaderboardEntries, leaderboardEmpty, leaderboardClose, menuLeaderboardBtn;
     let leaderboardTabsEl;
+    let menuCreditsBtn, creditsPopupEl, creditsPopupMenu;
     let replayLabel, replayStopBtn;
 
     // Which mode's leaderboard the user is currently viewing. Drives both
@@ -145,6 +146,10 @@ const Marathon = (() => {
         menuLeaderboardBtn = $('menuLeaderboardBtn');
         leaderboardTabsEl  = $('leaderboardTabs');
 
+        menuCreditsBtn   = $('menuCreditsBtn');
+        creditsPopupEl   = $('creditsPopup');
+        creditsPopupMenu = $('creditsPopupMenuBtn');
+
         replayLabel   = $('replayLabel');
         replayStopBtn = $('replayStopBtn');
 
@@ -176,6 +181,10 @@ const Marathon = (() => {
             });
         });
         if (menuLeaderboardBtn) menuLeaderboardBtn.addEventListener('click', showLeaderboard);
+        if (menuCreditsBtn)     menuCreditsBtn.addEventListener('click', showCredits);
+        // goToMenu already tears the credits roll down (Credits.stop) and
+        // restarts menu music — the popup's exit needs nothing extra.
+        if (creditsPopupMenu)   creditsPopupMenu.addEventListener('click', goToMenu);
         if (hudQuit)            hudQuit.addEventListener('click', quitToMenu);
         if (gameOverSave)       gameOverSave.addEventListener('click', saveScore);
         if (gameOverMenu)       gameOverMenu.addEventListener('click', goToMenu);
@@ -248,7 +257,7 @@ const Marathon = (() => {
 
     function showOnly(...els) {
         const set = new Set(els);
-        [menuEl, hudEl, gameOverEl, leaderboardEl, replayHudEl].forEach((el) => {
+        [menuEl, hudEl, gameOverEl, leaderboardEl, replayHudEl, creditsPopupEl].forEach((el) => {
             if (!el) return;
             el.classList.toggle('visible', set.has(el));
         });
@@ -362,6 +371,19 @@ const Marathon = (() => {
         }
         pendingHighlight = null;   // leaving the leaderboard drops the highlight
         showOnly(menuEl);
+    }
+
+    // CREDITS menu button — roll the end credits on demand, without a game
+    // ending. Same audio/visual flow as the game-over roll: stop the menu
+    // music first (Credits.start schedules the credits track a beat later),
+    // swap the menu for the floating #creditsPopup card (share row + Back
+    // to Menu). State stays MENU — nothing game-related is in flight, and
+    // goToMenu (the popup's only exit) is a no-op-safe re-entry that tears
+    // the credits down and restarts menu music.
+    function showCredits() {
+        if (typeof Music !== 'undefined' && Music.stop) Music.stop();
+        showOnly(creditsPopupEl);
+        if (typeof Credits !== 'undefined' && Credits.start) Credits.start();
     }
 
     // Combined-slot getter: reads the active tile-type tab (Singular/Quad)
