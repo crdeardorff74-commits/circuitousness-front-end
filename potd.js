@@ -1309,6 +1309,16 @@ const Potd = (() => {
 
         setSlotState(slot, date, 'solved');
 
+        // Audio-context tally — same call marathon.onSolve makes; see the
+        // comment there. The STATE.PLAYING guard at the top excludes
+        // replays here too.
+        if (typeof Tracking !== 'undefined' && Tracking.recordSolve) {
+            Tracking.recordSolve(
+                (typeof Music !== 'undefined' && Music.isMuted) ? !Music.isMuted() : false,
+                (typeof Sfx   !== 'undefined' && Sfx.isMuted)   ? !Sfx.isMuted()   : false
+            );
+        }
+
         // Submit. The events payload is the current recording from Game.
         let recording = null;
         try {

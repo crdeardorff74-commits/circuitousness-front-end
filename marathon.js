@@ -849,6 +849,19 @@ const Marathon = (() => {
             Tracking.recordFinish();
         }
 
+        // Audio-context tally: was music / SFX audible at the moment of
+        // this solve? Fired on EVERY solve (marathon + practice) — the
+        // stat is per-puzzle, not per-visit. Replays never reach onSolve
+        // (the STATE.PLAYING guard at the top), so watched replays don't
+        // count. Missing module/getter defaults to "off" — matches the
+        // no-audio experience the player actually had.
+        if (typeof Tracking !== 'undefined' && Tracking.recordSolve) {
+            Tracking.recordSolve(
+                (typeof Music !== 'undefined' && Music.isMuted) ? !Music.isMuted() : false,
+                (typeof Sfx   !== 'undefined' && Sfx.isMuted)   ? !Sfx.isMuted()   : false
+            );
+        }
+
         // Project the next puzzle's starting clock for the transition popup.
         // solvedCount was just incremented above, so it already reflects
         // the "puzzles solved BEFORE the next one starts" count that

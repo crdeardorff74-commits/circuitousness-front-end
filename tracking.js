@@ -204,6 +204,20 @@ const Tracking = (function () {
             silentFetch(apiBase() + '/visit/' + id + '/finished', { method: 'PATCH' });
         });
     }
+    // One call per puzzle SOLVE (marathon, practice, PotD — callers'
+    // state guards exclude replays), carrying whether music / SFX were
+    // audible at that moment. The server accumulates per-visit on/off
+    // counters so the admin page can show "% of puzzles solved with
+    // music on" — a per-solve tally, unlike the sticky funnel booleans.
+    function recordSolve(musicOn, sfxOn) {
+        withVisit(function (id) {
+            silentFetch(apiBase() + '/visit/' + id + '/solved', {
+                method:  'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ music: !!musicOn, sfx: !!sfxOn }),
+            });
+        });
+    }
     // `kind` tags the share source for the stats breakdown:
     //   'popup' — from the "Enjoying it?" popup
     //   'score' — from a game-over / "Solved!" card share row
@@ -240,6 +254,7 @@ const Tracking = (function () {
         recordAgreed:       recordAgreed,
         recordStart:        recordStart,
         recordFinish:       recordFinish,
+        recordSolve:        recordSolve,
         recordShare:        recordShare,
         recordCreditsClick: recordCreditsClick,
         recordDonateClick:  recordDonateClick,

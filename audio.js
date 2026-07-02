@@ -445,6 +445,8 @@ const Sfx = (function () {
         gateClick: gateClick,
         setVolume: setVolume,
         setMuted: setMuted,
+        // Read-back for the solve-audio tracking stat (mirrors Music.isMuted).
+        isMuted: function () { return muted; },
         setAudienceReactionsEnabled: setAudienceReactionsEnabled,
     };
 })();
