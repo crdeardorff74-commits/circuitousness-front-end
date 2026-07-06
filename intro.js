@@ -145,6 +145,36 @@ const Intro = (() => {
             return;
         }
 
+        // CrazyGames: auto-skip the warning gag — their QA requires players
+        // reach gameplay in ≤1 click, and CG's own loading screen is the
+        // gate there. Bailing here also (deliberately) never registers the
+        // Full Screen toggle or the F11/PageUp/PageDown shortcuts below —
+        // custom fullscreen controls are prohibited on CG, which provides
+        // its own fullscreen button. Unlike the debug bail above, this is a
+        // real player reaching the menu, so the funnel milestone still
+        // fires. dismiss()'s Music.start() can't be used directly — there's
+        // no user gesture yet and start() won't queue itself pre-gesture —
+        // so menu music kicks off on the first click/keydown instead. Those
+        // BUBBLE-phase listeners fire after music.js's capture-phase
+        // gesture-blessing listeners flip gestureReady, so start() works.
+        if (typeof IS_CRAZYGAMES !== 'undefined' && IS_CRAZYGAMES) {
+            overlay.style.display = 'none';
+            dismissed = true;
+            document.documentElement.classList.add('intro-dismissed');
+            if (typeof Tracking !== 'undefined' && Tracking.recordAgreed) Tracking.recordAgreed();
+            if (typeof Music !== 'undefined' && Music.setMenuPhase) Music.setMenuPhase(true);
+            const kickMusic = () => {
+                document.removeEventListener('click', kickMusic);
+                document.removeEventListener('keydown', kickMusic);
+                document.removeEventListener('touchend', kickMusic);
+                if (typeof Music !== 'undefined' && Music.start) Music.start();
+            };
+            document.addEventListener('click', kickMusic);
+            document.addEventListener('keydown', kickMusic);
+            document.addEventListener('touchend', kickMusic);
+            return;
+        }
+
         // Fill the body text with a random activity. The template comes
         // from i18n (so it translates per locale); we splice the
         // activity in directly since I18n.t doesn't support runtime

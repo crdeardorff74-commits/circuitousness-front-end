@@ -53,6 +53,30 @@ const AppConfig = {
 // fixed URL instead, on every host. (Worker-safe: a plain string, no DOM.)
 const SHARE_URL = 'https://digeratist.itch.io/circuitousness';
 
+// True on any CrazyGames origin — the published-game host
+// (games.crazygames.com) or the per-game dev-portal preview subdomains
+// (e.g. circuitousness.game-files.crazygames.com). Per CrazyGames QA
+// requirements, several behaviors key off this:
+//   - intro warning auto-skips (≤1-click-to-gameplay rule: with the menu
+//     as the landing screen, any mode card is the one click; intro.js)
+//   - custom fullscreen controls suppressed (prohibited — CG provides its
+//     own fullscreen; the intro skip covers this since the toggle + key
+//     shortcuts only register from the intro's init)
+//   - share surfaces + cross-promo credits links hidden (no links to
+//     playable versions elsewhere; html.is-crazygames CSS in styles.css)
+//   - service worker registration skipped (PWA install is meaningless in
+//     their iframe, and the SW update flow could reload mid-QA)
+// Worker-safe: `location` exists in both window and worker scopes.
+const IS_CRAZYGAMES = (typeof location !== 'undefined') &&
+    /(^|\.)crazygames\.com$/i.test(location.hostname || '');
+
+// Mirror the flag onto <html> so styles.css can gate rules on it (same
+// mechanism as the .is-safari class set in index.html). The typeof guard
+// keeps this file worker-safe for sw.js's importScripts.
+if (IS_CRAZYGAMES && typeof document !== 'undefined') {
+    document.documentElement.classList.add('is-crazygames');
+}
+
 // iPad / iPhone Safari can't follow GitHub's 302 redirects in <audio>
 // elements (error code 4) and `fetch()` for SFX decoding can't read
 // GitHub's responses (no CORS headers). On iOS we route music through

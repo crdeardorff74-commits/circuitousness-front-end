@@ -747,7 +747,10 @@
                     <div class="credits-spacer"></div>
 
                     <div class="credits-copyright">© 2026 Official Intelligence</div>
-                    <a href="https://official-intelligence.art/" data-credit-link="official-intelligence" class="credits-link">https://official-intelligence.art/</a>
+                    <!-- cg-hide: official-intelligence.art hosts playable games, so
+                         linking it from CrazyGames violates their no-cross-promotion
+                         rule (html.is-crazygames CSS hides every .cg-hide). -->
+                    <a href="https://official-intelligence.art/" data-credit-link="official-intelligence" class="credits-link cg-hide">https://official-intelligence.art/</a>
 
                     <div class="credits-spacer-large"></div>
 
@@ -764,7 +767,10 @@
 
                     <div class="credits-spacer-large"></div>
 					
-					<div class="credits-disclaimer">If you like falling block games, check out <a data-credit-link="tantro" href="https://tantro.official-intelligence.art" class="credits-link">TANTЯO</a></div>
+					<!-- cg-hide: a link to a playable game elsewhere = cross-promotion,
+					     prohibited on CrazyGames. The whole line hides, not just the
+					     anchor, so no orphaned "check out" text remains. -->
+					<div class="credits-disclaimer cg-hide">If you like falling block games, check out <a data-credit-link="tantro" href="https://tantro.official-intelligence.art" class="credits-link">TANTЯO</a></div>
 
                     <div class="credits-spacer-large"></div>
 					
@@ -1231,7 +1237,11 @@
     </script>
 
     <script>
-    if ('serviceWorker' in navigator) {
+    // No SW on CrazyGames origins: PWA install is meaningless inside their
+    // iframe, and the SW update flow's auto-reload could flash a refresh
+    // during their QA review ("plays seamlessly without errors").
+    if ('serviceWorker' in navigator &&
+        !(typeof IS_CRAZYGAMES !== 'undefined' && IS_CRAZYGAMES)) {
         let updateHandled = false;
 
         // Snapshot the controller state at page-load time. If the page is

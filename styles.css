@@ -715,6 +715,19 @@ html.mode-debug #introOverlay { display: none !important; }
     }
 }
 
+/* ----- CrazyGames-only adjustments -----
+   html.is-crazygames is set by config.js on crazygames.com origins.
+   Their QA prohibits links to playable versions elsewhere, so the share
+   surfaces and the cross-promo credits lines (marked .cg-hide in the
+   HTML) all hide there. The ≤1-click-to-gameplay rule is satisfied by
+   the intro auto-skip (intro.js) — the menu is the landing screen and
+   any mode card is the one click. */
+html.is-crazygames .cg-hide,
+html.is-crazygames .shareRow,
+html.is-crazygames #shareOverlay {
+    display: none !important;
+}
+
 /* ----- Main menu ----- */
 #menu {
     position: absolute;
