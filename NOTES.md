@@ -2,6 +2,10 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-06 — Release v0.68
+- Content-only release; all changes are manual user edits to the credits in `index.html` (verified by diffing against the v0.67 zip — nothing else changed since). Soundtrack links: the commented-out Spotify placeholder (which held a wrong album id) is now a live link to the real CIRCUITOUSNESS Vol. 1 album, and the Apple Music link was fixed from the TANTЯO Vol. 1 URL to the Circuitousness one. Easter-egg pasta recipe tweaked (dijon 2→1 tbsp, "or bowtie" pasta, save/add pasta-water steps).
+- Version bumped 0.67 → 0.68. Not browser-verified — static content edits; dev-server preview skipped per standing AV preference.
+
 ## 2026-07-02 — Release v0.67
 - **Solve-audio tracking**: every puzzle solve now reports whether music / SFX were audible at that moment. New `Tracking.recordSolve(musicOn, sfxOn)` → `PATCH /visit/<id>/solved`; called from `marathon.js` `onSolve` (marathon + practice) and `potd.js` `onSolve`. Both callers' `state !== PLAYING` guards exclude replays. New `Sfx.isMuted()` getter in audio.js (Music already had one); missing module/getter reports "off". Per-PUZZLE counters, not sticky per-visit booleans — the stat is "% of solves with music on".
 - **Back-end (separate Render redeploy, deploy BEFORE this zip ideally)**: 4 new `page_visits` counters `solves_music_on/off` / `solves_sfx_on/off` (+ idempotent migrations, backfill 0 — lifetime %s only reflect post-deploy solves), `/api/visit/<id>/solved` endpoint, `/stats` returns the 4 sums × lifetime/24h/7d/30d. Until the API redeploys, front-end solve PATCHes 404 silently (solves uncounted, nothing breaks).
