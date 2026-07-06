@@ -32,8 +32,10 @@
  * DOMContentLoaded so I18n has detected the language by then, with an English
  * fallback if I18n is somehow unavailable.
  *
- * Inert on desktop, in an installed/standalone PWA, and on the game's own
- * origin — so it can never loop and never fires where it shouldn't.
+ * Inert on desktop, in an installed/standalone PWA, on the game's own
+ * origin, and inside NON-itch embeds (CrazyGames and other game portals we
+ * submit to forbid redirecting players off-portal) — so it can never loop
+ * and never fires where it shouldn't.
  */
 (function () {
     'use strict';
@@ -76,19 +78,31 @@
         return uaMobile || iPadOS;
     }
 
-    // Running as an external embed (itch.io) rather than on our own origin?
-    // Covers both itch's in-page iframe and its top-level CDN host.
+    // Running as an external embed rather than on our own origin? Used ONLY
+    // for tracking's `embedded` tag — ANY framed/foreign-host load counts,
+    // including game portals (CrazyGames etc.) and desktop embeds.
     function isExternalEmbed() {
         var host = location.hostname || '';
         if (/official-intelligence\.art$/i.test(host)) return false; // our own origin → never
         if (/itch\.(io|zone)$/i.test(host)) return true;             // top-level on itch's CDN
+        try { return window.top !== window.self; } catch (e) { return true; } // cross-origin access → framed
+    }
+
+    // Specifically an ITCH embed? The redirect ACTION below is gated on this,
+    // NOT on isExternalEmbed(): portals we deliberately submit to (CrazyGames,
+    // Poki, GameDistribution, ...) also host the game in a foreign iframe, and
+    // redirecting their players off-portal breaks the play session AND
+    // violates portal terms — an instant QA rejection. itch is the one
+    // embedder whose mobile flow is broken enough (Add-to-Home-Screen
+    // bookmarks itch's listing, not the PWA) to justify the nudge, so only
+    // itch's CDN host or an itch.io referrer qualifies. Unknown embedders
+    // default to INERT.
+    function isItchEmbed() {
+        var host = location.hostname || '';
+        if (/itch\.(io|zone)$/i.test(host)) return true; // itch's CDN, top-level or framed
         var framed;
-        try { framed = window.top !== window.self; } catch (e) { framed = true; } // cross-origin access → framed
-        if (framed) {
-            if (/itch\.io/i.test(document.referrer || '')) return true; // embedder is itch.io
-            return true; // framed on a non-official host → treat as external embed
-        }
-        return false;
+        try { framed = window.top !== window.self; } catch (e) { framed = true; }
+        return framed && /itch\.io/i.test(document.referrer || '');
     }
 
     // Expose load context for tracking.js to tag the visit (it fires after
@@ -101,7 +115,7 @@
     var _embedded = isExternalEmbed();
     try { window.__platformRedirect = { embedded: _embedded, fired: false }; } catch (e) {}
 
-    if (!isMobile() || isStandalone() || !_embedded) return;
+    if (!isMobile() || isStandalone() || !isItchEmbed()) return;
 
     // Past the guard means this script WILL act (redirect + overlay below),
     // so mark the load as a redirect handoff for tracking.

@@ -722,7 +722,16 @@ html.mode-debug #introOverlay { display: none !important; }
     z-index: 30;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    /* flex-start + the auto-margin pair below (titleFrame margin-top,
+       legal-footer margin-bottom) — NOT justify-content: center. Centering
+       a flex column that overflows its scroll container pushes the top
+       half into a negative scroll region that can't be scrolled to (this
+       cropped the title + MODE chip inside short embed iframes, e.g.
+       CrazyGames). Auto margins split any spare space equally (visually
+       identical to center when content fits) but collapse to 0 on
+       overflow, so the stack top-anchors and everything stays reachable
+       via scroll. */
+    justify-content: flex-start;
     gap: 0.6rem;
     /* Top padding gets its own clamp with a higher floor so the title
        always has breathing room from the window edge, even on short
@@ -734,6 +743,11 @@ html.mode-debug #introOverlay { display: none !important; }
     overflow: auto;
     -webkit-overflow-scrolling: touch;  /* momentum scroll on iOS */
 }
+/* The auto-margin pair that replaces justify-content: center (see the
+   #menu comment above). Scoped to #menu's own children — the intro's
+   .introTitleFrame must not pick up the margin-top. */
+#menu > .titleFrame { margin-top: auto; }
+#menu > .menu-legal-footer { margin-bottom: auto; }
 /* Title frame — small viewfinder-style corner brackets. Tighter padding
    pulls them in close to the text; slightly thicker borders give them more
    visual presence at small sizes. */
@@ -1183,28 +1197,33 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
    .modeThumb, #menuLeaderboardBtn). At equal specificity CSS resolves
    ties by source order — the base styles above would otherwise override
    this @media's same-specificity rules even when the media matches.
-   Two adjustments together get everything visible on tablets:
-     1. Anchor #menu to flex-start so overflow only goes downward
-        (centered overflow would clip the top, which isn't
-        scroll-reachable on iOS).
-     2. Shrink the mode cards + section chrome moderately so the
-        whole stack fits in the tablet's usable height. Earlier
-        values (4.5vh title, 8.5vh thumbs) shrank too far and the
-        user reported the result felt cramped; current values are
-        a middle tier closer to desktop defaults.
+   The overflow-safety half of the old fix (anchoring so overflow only
+   goes downward, since centered overflow clips a top that isn't
+   scroll-reachable) now lives in the base #menu rule via the
+   flex-start + auto-margin pair. This block's job is just to shrink
+   the mode cards + section chrome moderately so the whole stack fits
+   the viewport's usable height. Earlier values (4.5vh title, 8.5vh
+   thumbs) shrank too far and the user reported the result felt
+   cramped; current values are a middle tier closer to desktop
+   defaults.
    Intro screen's .introTitleFrame is NOT touched here — it has its
    own font-size rule with higher source-order precedence further up,
    so the intro title stays at its dramatic size; this block only
    adjusts the menu title via #menu .titleFrame. */
-@media (max-height: 1080px) and (min-height: 501px) and (pointer: coarse) {
+/* Second query in the list: same squeeze for SHORT FINE-POINTER viewports
+   (desktop windows and, critically, portal embed iframes — CrazyGames
+   hands the game a ~600px-tall desktop iframe). The full-size desktop
+   menu stack needs ~900px+ of height, so below ~920px it must shrink like
+   the tablets do; pointer: coarse alone left mouse users with an
+   overflowing full-size menu. 501px floor on both — under that the
+   harder landscape-phone squeeze below takes over. */
+@media (max-height: 1080px) and (min-height: 501px) and (pointer: coarse),
+       (max-height: 920px) and (min-height: 501px) {
     #menu {
-        /* Center the content vertically so any unused space splits
-           top/bottom evenly (instead of all piling at the bottom under
-           a flex-start anchor). The shrunken sizes below leave the
-           content comfortably smaller than the iPad viewport — the
-           overflow:auto + smooth scroll on #menu still catches the
-           edge case where a really short viewport (and full safe-area
-           insets) makes things overflow. */
+        /* The base auto-margin pair centers the content when it fits and
+           top-anchors it when it overflows; overflow:auto + smooth scroll
+           on #menu still catches the edge case where a really short
+           viewport (and full safe-area insets) makes things overflow. */
         gap: 0.5rem;
         /* Padding respects iOS status-bar / dynamic-island safe-area
            in PWA fullscreen so the title doesn't tuck under it. The
