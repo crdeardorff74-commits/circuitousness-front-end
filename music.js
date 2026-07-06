@@ -214,10 +214,21 @@ const Music = (function () {
             }
             const data = await resp.json();
             const lists = (data && data.lists) ? data.lists : {};
-            const introRows   = (INTRO_NAME   && Array.isArray(lists[INTRO_NAME]))   ? lists[INTRO_NAME]   : [];
-            const shuffleRows = (SHUFFLE_NAME && Array.isArray(lists[SHUFFLE_NAME])) ? lists[SHUFFLE_NAME] : [];
-            const creditsRows = (CREDITS_NAME && Array.isArray(lists[CREDITS_NAME])) ? lists[CREDITS_NAME] : [];
-            const menuRows    = (MENU_NAME    && Array.isArray(lists[MENU_NAME]))    ? lists[MENU_NAME]    : [];
+            // Family-strict platforms (CrazyGames requires PEGI 12): drop
+            // songs the admin flagged `explicit` before they reach any
+            // playlist. Filtering here — ahead of mapAndSort AND the cache
+            // write below — means the CG origin's localStorage cache only
+            // ever holds clean pools too, so even the offline/cached path
+            // can't surface a flagged song there. Other origins play the
+            // full catalog. Intro-order positions are preserved since
+            // filter() keeps relative order and mapAndSort sorts by the
+            // rows' own position values.
+            const familyStrict = (typeof IS_CRAZYGAMES !== 'undefined' && IS_CRAZYGAMES);
+            const clean = (rows) => familyStrict ? rows.filter((r) => !r.explicit) : rows;
+            const introRows   = clean((INTRO_NAME   && Array.isArray(lists[INTRO_NAME]))   ? lists[INTRO_NAME]   : []);
+            const shuffleRows = clean((SHUFFLE_NAME && Array.isArray(lists[SHUFFLE_NAME])) ? lists[SHUFFLE_NAME] : []);
+            const creditsRows = clean((CREDITS_NAME && Array.isArray(lists[CREDITS_NAME])) ? lists[CREDITS_NAME] : []);
+            const menuRows    = clean((MENU_NAME    && Array.isArray(lists[MENU_NAME]))    ? lists[MENU_NAME]    : []);
             // Defensive: don't wipe a populated cache with an empty API
             // response (could be a bad deploy on the admin side). If ALL
             // lists came back empty, keep the existing cached pools.
