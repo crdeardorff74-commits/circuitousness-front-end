@@ -1223,8 +1223,13 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
         /* The base auto-margin pair centers the content when it fits and
            top-anchors it when it overflows; overflow:auto + smooth scroll
            on #menu still catches the edge case where a really short
-           viewport (and full safe-area insets) makes things overflow. */
-        gap: 0.5rem;
+           viewport (and full safe-area insets) makes things overflow.
+           Vertical dimensions throughout this block are vh-fluid with low
+           floors: on tablets (768px+ tall) the clamps resolve to the same
+           comfortable values as before, while short embed iframes
+           (CrazyGames hands us ~620px) compress smoothly enough that the
+           whole stack — through the legal footer — fits without scrolling. */
+        gap: clamp(0.3rem, 0.8vh, 0.5rem);
         /* Padding respects iOS status-bar / dynamic-island safe-area
            in PWA fullscreen so the title doesn't tuck under it. The
            clamp() floor governs desktop and Android, where the env()
@@ -1239,7 +1244,10 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
        so the dramatic intro title (.introTitleFrame in #introOverlay)
        keeps its own larger sizing. */
     #menu .titleFrame {
-        font-size: clamp(2.8rem, 6.5vh, 3.6rem);
+        /* Floor lowered from 2.8rem — it only binds below ~590px viewport
+           height, where the old floor was part of what pushed the footer
+           off-screen. Tablets still resolve via the 6.5vh middle term. */
+        font-size: clamp(2.4rem, 6.5vh, 3.6rem);
     }
     /* Mode picker chip + subtitle — close to desktop, slight tightening. */
     #menu .menuSubtitle {
@@ -1247,16 +1255,16 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
         margin: max(0.6vh, 6px) 0 max(1vh, 10px);
     }
     .menuSection {
-        padding: 0.8rem 1.1rem;
-        gap: 0.5rem;
+        padding: clamp(0.4rem, 1.3vh, 0.8rem) 1.1rem;
+        gap: clamp(0.3rem, 0.8vh, 0.5rem);
     }
     .menuSection h2 {
-        font-size: clamp(1rem, 2.2vh, 1.2rem);
+        font-size: clamp(0.85rem, 2.2vh, 1.2rem);
         margin-bottom: 0.15rem;
     }
     .menuModeRow { gap: 0.5rem; }
     .menuModeBtn {
-        padding: 0.55rem 0.65rem;
+        padding: clamp(0.35rem, 0.9vh, 0.55rem) 0.65rem;
         font-size: clamp(0.85rem, 1.8vh, 1rem);
         gap: 0.35rem;
         min-width: 6rem;
@@ -1268,8 +1276,12 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
        largest iPad while still using more vertical space than the
        prior over-cautious 7rem cap. */
     .menuModeBtn .modeThumb {
-        width: clamp(5.5rem, 12vh, 8rem);
-        height: clamp(5.5rem, 12vh, 8rem);
+        /* Floor lowered from 5.5rem: 12vh only dips under the old 5.5rem
+           floor below ~733px viewport height, so tablets are untouched;
+           short embed iframes get proportionally smaller cards instead of
+           an overflowing menu. */
+        width: clamp(4.5rem, 12vh, 8rem);
+        height: clamp(4.5rem, 12vh, 8rem);
     }
     /* PotD slot badges: scale with the thumbnail. */
     .menuModeBtn.potd-solved::after,
@@ -1281,11 +1293,29 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
         top: 0.3rem;
         right: 0.35rem;
     }
-    #menuLeaderboardBtn,
-    #menuCreditsBtn {
-        margin-top: 0.4rem;
-        padding: 0.5rem 1.5rem;
+    /* All three bottom buttons shrink together — the row is
+       align-items: stretch, so leaving How-to at full size would prop the
+       whole row up (same reasoning as the max-height:500px block; that
+       block never conflicts with this one — the min-height:501px floor
+       here keeps the two ranges disjoint). The .menuBottomBtns prefix is
+       REQUIRED for How-to: its base #id rule lives much later in the
+       file, so a bare-ID rule here would lose the source-order
+       tie-break. No margin-top — the .menuBottomBtns row owns the top
+       margin and zeroes the buttons' own at this same specificity, later
+       in the file. */
+    .menuBottomBtns #menuHowToBtn,
+    .menuBottomBtns #menuLeaderboardBtn,
+    .menuBottomBtns #menuCreditsBtn {
+        padding: clamp(0.35rem, 0.9vh, 0.5rem) 1.5rem;
         font-size: clamp(0.9rem, 1.9vh, 1.05rem);
+    }
+    /* Legal footer: tuck it in on short viewports. #menu prefix beats the
+       base .menu-legal-footer rule (which sets margin-top: 1.4rem and lives
+       LATER in the file, so bare-class specificity here would lose the
+       source-order tie-break). */
+    #menu .menu-legal-footer {
+        margin-top: clamp(0.3rem, 0.9vh, 1.4rem);
+        font-size: clamp(0.62rem, 1.5vh, 0.85rem);
     }
 }
 
