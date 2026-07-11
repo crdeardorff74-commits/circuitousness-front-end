@@ -1328,10 +1328,12 @@ const Potd = (() => {
         // Audio-context tally — same call marathon.onSolve makes; see the
         // comment there. The STATE.PLAYING guard at the top excludes
         // replays here too.
+        // isEffectivelyMuted so the CG container mute counts as "off" —
+        // see the matching comment in marathon.js onSolve.
         if (typeof Tracking !== 'undefined' && Tracking.recordSolve) {
             Tracking.recordSolve(
-                (typeof Music !== 'undefined' && Music.isMuted) ? !Music.isMuted() : false,
-                (typeof Sfx   !== 'undefined' && Sfx.isMuted)   ? !Sfx.isMuted()   : false
+                (typeof Music !== 'undefined' && Music.isEffectivelyMuted) ? !Music.isEffectivelyMuted() : false,
+                (typeof Sfx   !== 'undefined' && Sfx.isEffectivelyMuted)   ? !Sfx.isEffectivelyMuted()   : false
             );
         }
 

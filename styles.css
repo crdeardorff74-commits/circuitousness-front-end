@@ -178,21 +178,33 @@ body {
        eat the bottom-right corner where this panel sits. max(default, inset)
        collapses to the default on platforms where the insets are 0 (desktop,
        Android, Safari with a visible URL bar), so this is a no-op there. */
-    bottom: max(0.8rem, env(safe-area-inset-bottom));
-    right:  max(0.8rem, env(safe-area-inset-right));
+    bottom: max(clamp(0.4rem, 1vmin, 0.8rem), env(safe-area-inset-bottom));
+    right:  max(clamp(0.4rem, 1vmin, 0.8rem), env(safe-area-inset-right));
     z-index: 24;
-    padding: 0.5rem 0.7rem;
+    /* Everything scales off vmin (the SMALLER viewport axis): the old vw
+       clamps hit their caps in wide-but-short embeds (CG's ~680px iframe
+       is 1190px wide), so the panel rendered full-size exactly where
+       space is scarcest. Inner text/buttons are em-sized, so the
+       font-size clamp scales the whole panel. Big puzzles can reach this
+       corner, so the shrink directly reduces how much grid it can cover. */
+    padding: clamp(0.3rem, 0.9vmin, 0.5rem) clamp(0.4rem, 1.2vmin, 0.7rem);
     background: rgba(26, 26, 46, 0.85);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 0.4rem;
     color: #aaa;
-    font-size: clamp(0.7rem, 1.2vw, 0.85rem);
+    font-size: clamp(0.55rem, 1.4vmin, 0.85rem);
     line-height: 1.2;
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
-    max-width: clamp(12rem, 30vw, 20rem);
+    max-width: clamp(9.5rem, 26vmin, 20rem);
+    /* Never block the puzzle: the panel itself is click-transparent so
+       tiles underneath stay playable even when a large grid runs under
+       it — only the transport buttons (below) take pointer input.
+       Trade-off (deliberate): a click on the song TITLE now reaches
+       whatever tile is under it. */
+    pointer-events: none;
 }
-#nowPlaying.visible { display: flex; flex-direction: column; gap: 0.3rem; }
+#nowPlaying.visible { display: flex; flex-direction: column; gap: clamp(0.15rem, 0.45vmin, 0.3rem); }
 #nowPlayingLabel {
     color: rgba(255, 215, 0, 0.6);
     font-size: 0.85em;
@@ -210,11 +222,14 @@ body {
 }
 #nowPlayingControls {
     display: flex;
-    gap: 0.3rem;
+    gap: clamp(0.15rem, 0.45vmin, 0.3rem);
+    /* Re-enable input on the transport row — the panel container is
+       pointer-events:none (see #nowPlaying) so the grid stays playable. */
+    pointer-events: auto;
 }
 #nowPlayingControls button {
     flex: 1;
-    padding: 0.2rem 0;
+    padding: clamp(0.1rem, 0.3vmin, 0.2rem) 0;
     background: rgba(42, 42, 58, 0.9);
     color: #ddd;
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1330,6 +1345,11 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
         margin-top: clamp(0.3rem, 0.9vh, 1.4rem);
         font-size: clamp(0.62rem, 1.5vh, 0.85rem);
     }
+    /* NOTE: the settings-popup squeeze for this same height range lives
+       in its own media block AFTER the settings base rules (search
+       "Settings popup squeeze") — placed here it would lose the
+       source-order tie-break to the base #settingsPopup rules, which
+       come later in the file than this menu-era block. */
 }
 
 /* ----- Settings (menu-only) -----
@@ -1391,6 +1411,14 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    /* The popup's natural height (~44rem with every row) exceeds short
+       embeds — CG hands a ~615-680px desktop iframe — and the overlay
+       centers it, so overflow clipped BOTH the title and the CLOSE
+       button off-screen with no way to scroll to them. Cap + scroll
+       keeps everything reachable. The ≤500px squeeze block overrides
+       with its own tighter 97vh cap + compressed spacing. */
+    max-height: 94vh;
+    overflow-y: auto;
 }
 #settingsPopup h2 {
     margin: 0 0 0.3rem 0;
@@ -1628,6 +1656,46 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
    sessions, so the settings popup is meaningless — keep it out of the way. */
 html.mode-debug #settingsBtn,
 html.mode-debug #settingsOverlay { display: none !important; }
+
+/* ----- Settings popup squeeze (short viewports, 501-920px) -----
+   vh-fluid compression so the full stack (title + 13 rows + Close) FITS
+   ~615-680px embeds (CG's desktop iframe) — the base rule's 94vh cap +
+   scrollbar stays only as a last-resort backstop for the 501-540px
+   sliver if content ever grows. Every clamp coefficient resolves to its
+   base value at ~920px, so nothing jumps crossing the breakpoint; the
+   popup just breathes less as the viewport shortens.
+   PLACEMENT MATTERS: this block must sit AFTER the base #settingsPopup
+   rules above — same specificity, so source order decides. (It briefly
+   lived inside the menu's moderate-squeeze block near the top of the
+   file, where the later base rules silently won every property.)
+   The ≤500px landscape-phone block further down still owns its range —
+   these two queries are mutually exclusive. */
+@media (max-height: 1080px) and (min-height: 501px) and (pointer: coarse),
+       (max-height: 920px) and (min-height: 501px) {
+    #settingsPopup {
+        padding: clamp(0.6rem, 2.4vh, 1.4rem) 1.6rem;
+        gap: clamp(0.3rem, 1.72vh, 1rem);
+    }
+    #settingsPopup h2 {
+        font-size: clamp(0.95rem, 2.4vh, 1.4rem);
+        margin-bottom: 0.1rem;
+    }
+    .settingsRow {
+        padding: clamp(0.12rem, 0.85vh, 0.5rem) 0.3rem;
+    }
+    .settingsRow label,
+    .settingsVisualLabel {
+        font-size: clamp(0.8rem, 1.72vh, 1rem);
+    }
+    .settingsSelect {
+        padding: clamp(3px, 0.65vh, 6px) 10px;
+        font-size: clamp(0.78rem, 1.55vh, 0.9rem);
+    }
+    #settingsCloseBtn {
+        margin-top: clamp(0.1rem, 0.7vh, 0.4rem);
+        padding: clamp(0.3rem, 0.85vh, 0.5rem) 1.2rem;
+    }
+}
 
 /* ----- In-game HUD ----- */
 #hud {

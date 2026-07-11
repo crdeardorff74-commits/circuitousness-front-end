@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Circuitousness — Cover Art Generator</title>
+<!--
+    One-off marketing-art tool (same family as heart-art.html — excluded from
+    the deploy zip; see CLAUDE.md). Open this file directly in a browser
+    (file:// is fine, no server needed), pick a size, click DOWNLOAD PNG.
+
+    Everything is drawn on a canvas at the exact output resolution, so the
+    downloaded PNG is pixel-perfect — no screenshotting required. Layout is
+    defined in normalized 0..1 coordinates so every aspect ratio recomposes
+    sensibly. Stars/sparks use a seeded PRNG so the output is reproducible.
+-->
+<style>
+    body { margin: 0; background: #14162a; color: #cfe0ff; font-family: 'Segoe UI', sans-serif;
+           display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 1.5rem; }
+    h1 { font-size: 1rem; letter-spacing: 0.2em; color: #6eb5ff; }
+    #controls { display: flex; gap: 0.6rem; flex-wrap: wrap; justify-content: center; }
+    button { cursor: pointer; font: inherit; padding: 0.5rem 1.1rem; border-radius: 0.4rem;
+             border: 1px solid rgba(120,180,240,0.5); background: rgba(40,60,100,0.7); color: #d8ecff; }
+    button.active { border-color: #FFD700; color: #FFD700; }
+    #dl { background: linear-gradient(135deg,#2a7a44,#1d5c8a); border-color: rgba(120,240,170,0.6); font-weight: 700; }
+    canvas { max-width: 92vw; max-height: 70vh; border: 1px solid rgba(120,180,240,0.35);
+             border-radius: 0.4rem; box-shadow: 0 1rem 3rem rgba(0,0,0,0.5); }
+</style>
+</head>
+<body>
+<h1>CIRCUITOUSNESS — COVER ART</h1>
+<div id="controls">
+    <!-- Style: BOLD is the CrazyGames-facing design (big tile-O hero, no
+         tagline — their cover rules forbid text beyond the game title).
+         CLASSIC is the original wordmark poster, kept for itch/social. -->
+    <button data-style="bold" class="active">STYLE: BOLD</button>
+    <button data-style="classic">STYLE: CLASSIC</button>
+    <button data-size="1920x1080" class="active">16:9 (1920×1080)</button>
+    <button data-size="1280x720">16:9 (1280×720)</button>
+    <button data-size="1080x1080">1:1 (1080×1080)</button>
+    <button data-size="800x800">1:1 (800×800)</button>
+    <button data-size="800x1200">2:3 (800×1200)</button>
+    <button data-size="1600x1200">4:3 (1600×1200)</button>
+    <button id="dl">⬇ DOWNLOAD PNG</button>
+</div>
+<canvas id="c"></canvas>
+
+<script>
+'use strict';
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// Seeded PRNG (mulberry32) — reproducible stars.
+function rng(seed) {
+    let a = seed >>> 0;
+    return function () {
+        a |= 0; a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+// Neon palette pulled from the game's path colors.
+const NEON = ['#7dff5e', '#5ad1ff', '#ff7cc8', '#ffb347'];
+const GOLD = '#FFD700';
+
+// Hex color mixing for the tube shading.
+function mixHex(a, b, t) {
+    const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+    const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+    return '#' + pa.map((c, i) =>
+        Math.round(c + (pb[i] - c) * t).toString(16).padStart(2, '0')).join('');
+}
+// Cross-section shade for a wire at t (0 = outer edge, 1 = center):
+// darkened edge → base color → near-white hot core. Same idea as the
+// title-O ring's radial gradient, approximated with stacked strokes since
+// a polyline can't take a single radial gradient.
+function tubeShade(hex, t) {
+    return t < 0.5
+        ? mixHex(mixHex(hex, '#000000', 0.55), hex, t * 2)
+        : mixHex(hex, mixHex(hex, '#ffffff', 0.85), (t - 0.5) * 2);
+}
+
+// Circuit routes in normalized coords. Axis-aligned segments only, so any
+// aspect ratio keeps the 90° elbows. Each route: {c: color, p: [[x,y]...]}.
+// Composed to frame the title band (y ≈ 0.40–0.60) rather than cross it.
+const ROUTES = [
+    { c: NEON[0], p: [[-0.02,0.16],[0.22,0.16],[0.22,0.30],[0.46,0.30],[0.46,0.20],[0.72,0.20]] },
+    { c: NEON[1], p: [[1.02,0.10],[0.80,0.10],[0.80,0.26],[0.60,0.26],[0.60,0.34],[0.34,0.34]] },
+    { c: NEON[2], p: [[-0.02,0.76],[0.18,0.76],[0.18,0.66],[0.42,0.66],[0.42,0.82],[0.66,0.82]] },
+    { c: NEON[3], p: [[1.02,0.70],[0.86,0.70],[0.86,0.86],[0.58,0.86],[0.58,0.72],[0.30,0.72]] },
+    { c: GOLD,    p: [[0.10,1.02],[0.10,0.88],[0.34,0.88],[0.34,0.94],[0.90,0.94],[0.90,0.78],[1.02,0.78]] },
+    { c: NEON[1], p: [[0.06,-0.02],[0.06,0.08],[0.34,0.08],[0.34,0.04],[0.62,0.04],[0.62,0.12],[0.94,0.12],[0.94,0.30]] },
+];
+
+// Dispatcher — the size/style buttons and the download handler all call
+// draw(); the active style decides which composition renders.
+function draw(W, H) {
+    if (currentStyle === 'bold') drawBold(W, H);
+    else drawClassic(W, H);
+}
+
+function drawClassic(W, H) {
+    canvas.width = W; canvas.height = H;
+    const S = Math.min(W, H);           // scale unit for strokes/fonts
+    const portrait = H > W;
+
+    // ---- Background: deep space navy + vignette ----
+    const bg = ctx.createRadialGradient(W/2, H/2, S*0.1, W/2, H/2, Math.max(W,H)*0.75);
+    bg.addColorStop(0, '#141a3e');
+    bg.addColorStop(0.6, '#0a0e2a');
+    bg.addColorStop(1, '#04051a');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // Stars (two depths).
+    const rand = rng(74);
+    for (let i = 0; i < 240; i++) {
+        const x = rand()*W, y = rand()*H, r = rand()*1.4 + 0.3, a = rand()*0.5 + 0.15;
+        ctx.fillStyle = 'rgba(210,225,255,' + a.toFixed(2) + ')';
+        ctx.beginPath(); ctx.arc(x, y, r * S/1080, 0, Math.PI*2); ctx.fill();
+    }
+
+    // Faint board grid — evokes the tile grid without being a screenshot.
+    ctx.strokeStyle = 'rgba(120,150,220,0.07)';
+    ctx.lineWidth = Math.max(1, S/1080);
+    const cell = S/10;
+    for (let x = (W % cell)/2; x <= W; x += cell) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for (let y = (H % cell)/2; y <= H; y += cell) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+    // ---- Neon circuit routes ----
+    // In portrait, stretch each half's routes vertically toward the title
+    // band (top routes down, bottom routes up) so they fill the taller
+    // frame instead of hugging the edges. 1.1 is tuned against the route
+    // table: the deepest top segment (y 0.34) lands at 0.374 and the
+    // highest bottom segment (y 0.66) at 0.626 — just clear of the title
+    // band (0.40–0.60) on both sides.
+    const mapPt = ([x, y]) => {
+        let yy = y;
+        if (portrait) yy = y < 0.5 ? y * 1.1 : 1 - (1 - y) * 1.1;
+        return [x * W, yy * H];
+    };
+    const lw = S * 0.030;
+    for (const r of ROUTES) {
+        const pts = r.p.map(mapPt);
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        const strokePass = (width, color, blur, alpha) => {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            if (blur) { ctx.shadowColor = color; ctx.shadowBlur = blur; }
+            ctx.beginPath();
+            pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+            ctx.stroke();
+            ctx.restore();
+        };
+        // Wide soft glow halo, then the tube: concentric strokes stepping
+        // from full width to a thin core, colors interpolated per
+        // tubeShade — a smooth dark-edge → hot-center cross-section
+        // instead of the old three visibly distinct bands.
+        strokePass(lw * 2.6, r.c, lw * 2.2, 0.25);
+        const STEPS = 9;
+        for (let i = 0; i < STEPS; i++) {
+            const t = i / (STEPS - 1);
+            strokePass(lw * (1 - 0.84 * t), tubeShade(r.c, t), 0, 1);
+        }
+        // Endpoint ports: rounded squares at each end that lies inside the frame.
+        for (const [x, y] of [pts[0], pts[pts.length-1]]) {
+            if (x < -1 || x > W+1 || y < -1 || y > H+1) continue;
+            const s = lw * 1.7;
+            ctx.save();
+            ctx.shadowColor = r.c; ctx.shadowBlur = lw;
+            ctx.fillStyle = '#0a0e2a';
+            ctx.strokeStyle = r.c; ctx.lineWidth = lw*0.4;
+            roundRect(x - s/2, y - s/2, s, s, s*0.25); ctx.fill(); ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    // ---- Title band backdrop (glassy, like the game's panels) ----
+    const bandH = portrait ? H*0.20 : H*0.26;
+    const bandY = H/2 - bandH/2;
+    const band = ctx.createLinearGradient(0, bandY, 0, bandY + bandH);
+    band.addColorStop(0, 'rgba(8,10,28,0)');
+    band.addColorStop(0.25, 'rgba(8,10,28,0.82)');
+    band.addColorStop(0.75, 'rgba(8,10,28,0.82)');
+    band.addColorStop(1, 'rgba(8,10,28,0)');
+    ctx.fillStyle = band;
+    ctx.fillRect(0, bandY - bandH*0.3, W, bandH*1.6);
+
+    // ---- Wordmark: CIRCUIT [tile-O] USNESS ----
+    // Condensed heavy sans via horizontal scale, mirroring the game title.
+    const condense = 0.78;
+    let fontPx = S * (portrait ? 0.155 : 0.16);
+    const setFont = () => { ctx.font = '900 ' + fontPx + 'px "Arial Black", Impact, sans-serif'; };
+    setFont();
+    // Tile-O runs taller than the letters' cap height, and the gaps are
+    // NEGATIVE so the neighboring T and U slightly overlap the tiles —
+    // game parity: index.html gives the words z-index above the O canvas
+    // and pulls them inward. Both are fontPx-derived so the shrink-to-fit
+    // loop keeps the proportions.
+    const tileSize = () => fontPx * 1.14;
+    const tileGap  = () => -fontPx * 0.10;
+    const measure = () => (ctx.measureText('CIRCUIT').width + ctx.measureText('USNESS').width) * condense
+                          + tileSize() + tileGap()*2;
+    // Shrink to fit 92% of width.
+    while (measure() > W * 0.92) {
+        fontPx *= 0.97;
+        setFont();
+    }
+    const totalW = measure();
+    const baseX = (W - totalW) / 2;
+    const midY = H / 2;
+    ctx.textBaseline = 'middle';
+
+    const drawWord = (word, x) => {
+        ctx.save();
+        ctx.translate(x, midY);
+        ctx.scale(condense, 1);
+        ctx.shadowColor = 'rgba(140,190,255,0.9)';
+        ctx.shadowBlur = fontPx * 0.16;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(word, 0, fontPx*0.04);
+        ctx.restore();
+        return ctx.measureText(word).width * condense;
+    };
+
+    // Tile-O: the game's actual title-O (see title-renderer.js) — a 2×2
+    // group of beveled elbow tiles whose four quarter-arc channels join
+    // into the red ring players see on the menu. Drawn BEFORE the words so
+    // the overlapping letter edges paint on top of the tiles.
+    const circuitW = ctx.measureText('CIRCUIT').width * condense;
+    const tx = baseX + circuitW + tileGap();
+    // -0.04 lifts the group slightly above the letters' optical center
+    // (was +0.04, which sat it a touch low once the tiles outgrew the caps).
+    const ty = midY - tileSize()/2 - fontPx*0.04;
+    drawTitleO(tx, ty, tileSize());
+
+    drawWord('CIRCUIT', baseX);
+    drawWord('USNESS', tx + tileSize() + tileGap());
+
+    // Viewfinder corner brackets around the wordmark — hugging the letters
+    // (the game's titleFrame uses a similarly tight 0.06em padding). The
+    // tile-O intentionally overshoots the implied top line a touch; the
+    // brackets frame the LETTERS, matching the in-game composition.
+    // Asymmetric height: with textBaseline 'middle', the caps sit higher
+    // than the geometric middle (no descenders below the baseline), so a
+    // symmetric box leaves the bottom brackets floating. 0.96 total puts
+    // the bottom pair as tight to the baseline as the top pair is to the
+    // cap tops.
+    const bx = baseX - fontPx*0.08, bw = totalW + fontPx*0.16;
+    const by = midY - fontPx*0.54, bh = fontPx*0.96;
+    const arm = fontPx*0.22, bt = Math.max(2, fontPx*0.075);
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = bt;
+    ctx.shadowColor = 'rgba(140,190,255,0.8)'; ctx.shadowBlur = bt*2;
+    for (const [cx, cy, dx, dy] of [[bx,by,1,1],[bx+bw,by,-1,1],[bx,by+bh,1,-1],[bx+bw,by+bh,-1,-1]]) {
+        ctx.beginPath();
+        ctx.moveTo(cx + arm*dx, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy + arm*dy);
+        ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+
+    // ---- Tagline ----
+    const tagPx = fontPx * 0.16;
+    ctx.font = '600 ' + tagPx + 'px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(140,215,255,0.95)';
+    ctx.shadowColor = 'rgba(90,209,255,0.8)'; ctx.shadowBlur = tagPx*0.8;
+    const tag = 'T W I S T   ·   C O N N E C T   ·   S O L V E';
+    // Centered right of the title's midline — dead-center put "TWIST" on
+    // top of the pink route's horizontal run and made it unreadable.
+    ctx.fillText(tag, W * 0.63, midY + fontPx*0.92);
+    ctx.shadowBlur = 0;
+    ctx.textAlign = 'start';
+}
+
+// The game's title-O, replicated from title-renderer.js + render.js: four
+// beveled tiles in a 2×2 group whose elbow channels join into a red circle.
+// Palette is render.js's TILE_BASE_COLOR (#153050) with its BEVEL_DELTAS
+// pre-applied; ring colors are the title snippet's litLo/litColor/litHi trio
+// (#4a0000 / #a02020 / #cc4040); bevel thickness is render.js's BEVEL_FRAC
+// (0.07 of a cell) and the ring width tracks its 0.28 widthFrac. Static
+// (no pulse) — it's a poster.
+function drawTitleO(x, y, size) {
+    const cell = size / 2;
+    const b = cell * 0.07;
+    const PALETTE = { face: '#153050', top: '#385880', left: '#27466e',
+                      bot: '#001833', right: '#08223f' };
+    // Group drop shadow so the tiles sit above the band like the wordmark.
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.55)';
+    ctx.shadowBlur = size * 0.09;
+    ctx.fillStyle = PALETTE.face;
+    ctx.fillRect(x, y, size, size);
+    ctx.restore();
+    // Four tiles, each with its own bevel trapezoids (light fixed top-left,
+    // as in-game) — the per-tile bevels are what make the internal cross
+    // seams read as four joined tiles instead of one big one.
+    for (const [cx, cy] of [[x, y], [x + cell, y], [x, y + cell], [x + cell, y + cell]]) {
+        ctx.fillStyle = PALETTE.face;
+        ctx.fillRect(cx, cy, cell, cell);
+        const quads = {
+            top:   [[cx, cy], [cx + cell, cy], [cx + cell - b, cy + b], [cx + b, cy + b]],
+            left:  [[cx, cy], [cx + b, cy + b], [cx + b, cy + cell - b], [cx, cy + cell]],
+            bot:   [[cx, cy + cell], [cx + b, cy + cell - b], [cx + cell - b, cy + cell - b], [cx + cell, cy + cell]],
+            right: [[cx + cell, cy], [cx + cell - b, cy + b], [cx + cell - b, cy + cell - b], [cx + cell, cy + cell]]
+        };
+        for (const k in quads) {
+            ctx.fillStyle = PALETTE[k];
+            ctx.beginPath();
+            quads[k].forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py));
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+    // The joined channel: a recessed groove, then the red lit ring on top.
+    // Drawing the ring last leaves the four port crossings open, like the
+    // in-game walls' port gaps.
+    const ccx = x + size/2, ccy = y + size/2, radius = cell / 2;
+    const ring = (color, width, blur) => {
+        ctx.save();
+        ctx.strokeStyle = color; ctx.lineWidth = width;
+        if (blur) { ctx.shadowColor = color; ctx.shadowBlur = blur; }
+        ctx.beginPath(); ctx.arc(ccx, ccy, radius, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+    };
+    ring('#050b1e', cell * 0.46, 0);            // groove
+    // Red lit ring: ONE stroke with a radial gradient across its width —
+    // litLo at both edges, through litColor, to a bright litHi center —
+    // so the tube shades smoothly instead of reading as a few concentric
+    // flat bands.
+    const w = cell * 0.34;
+    const grad = ctx.createRadialGradient(ccx, ccy, radius - w/2, ccx, ccy, radius + w/2);
+    grad.addColorStop(0,    '#4a0000');
+    grad.addColorStop(0.28, '#a02020');
+    grad.addColorStop(0.5,  '#d45454');
+    grad.addColorStop(0.72, '#a02020');
+    grad.addColorStop(1,    '#4a0000');
+    ctx.save();
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = w;
+    ctx.shadowColor = '#a02020';
+    ctx.shadowBlur = cell * 0.35;
+    ctx.beginPath();
+    ctx.arc(ccx, ccy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+}
+
+// ---- BOLD style --------------------------------------------------------
+// CrazyGames-facing composition. Rationale: at CG tile size (~200px wide)
+// CLASSIC reads as "dark card with white text" — no focal object, 6px
+// lines. BOLD leads with ONE big hero: the game's red tile-O ring at ~60%
+// of the short axis, with thick neon routes plugging INTO its four ring
+// ports — the image literally depicts the game's verb (connect the
+// paths). Wordmark stays (CG encourages the game name on covers) but
+// smaller, beneath the hero. NO tagline: CG rejects covers with any text
+// beyond the game title.
+
+// Shared tube renderer (BOLD only — CLASSIC keeps its inline version):
+// soft glow halo, then concentric strokes stepping to a hot core.
+function drawTube(pts, color, lw) {
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    const pass = (width, col, blur, alpha) => {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = col;
+        ctx.lineWidth = width;
+        if (blur) { ctx.shadowColor = col; ctx.shadowBlur = blur; }
+        ctx.beginPath();
+        pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+        ctx.stroke();
+        ctx.restore();
+    };
+    pass(lw * 2.6, color, lw * 2.2, 0.28);
+    const STEPS = 9;
+    for (let i = 0; i < STEPS; i++) {
+        const t = i / (STEPS - 1);
+        pass(lw * (1 - 0.84 * t), tubeShade(color, t), 0, 1);
+    }
+}
+
+// White-hot spark with a colored halo — placed on route elbows for life.
+function drawSpark(x, y, r, color) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, 'rgba(255,255,255,0.95)');
+    g.addColorStop(0.25, color);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawBold(W, H) {
+    canvas.width = W; canvas.height = H;
+    const S = Math.min(W, H);
+    const portrait = H > W;
+    const square = Math.abs(W - H) < W * 0.05;
+
+    // Background: same navy family as CLASSIC, a touch warmer/brighter.
+    const bg = ctx.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0,    '#1d1650');
+    bg.addColorStop(0.55, '#0d1136');
+    bg.addColorStop(1,    '#04051c');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // Hero geometry first — bloom, routes, and wordmark all key off it.
+    // Ring center = hero center, ring radius = heroSize/4 (see drawTitleO:
+    // cell = size/2, radius = cell/2).
+    const heroSize = portrait ? W * 0.66 : (square ? S * 0.56 : H * 0.58);
+    const cx = W / 2;
+    const cy = portrait ? H * 0.36 : H * 0.42;
+    const R  = heroSize / 4;
+
+    // Red-violet bloom behind the hero so the center pops at tile size.
+    const bloom = ctx.createRadialGradient(cx, cy, heroSize * 0.1, cx, cy, heroSize * 1.15);
+    bloom.addColorStop(0,   'rgba(190,60,70,0.34)');
+    bloom.addColorStop(0.5, 'rgba(120,40,90,0.16)');
+    bloom.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = bloom;
+    ctx.fillRect(0, 0, W, H);
+
+    // Stars — slightly sparser than CLASSIC (the hero carries the frame).
+    const rand = rng(74);
+    for (let i = 0; i < 170; i++) {
+        const x = rand()*W, y = rand()*H, r = rand()*1.4 + 0.3, a = rand()*0.5 + 0.15;
+        ctx.fillStyle = 'rgba(210,225,255,' + a.toFixed(2) + ')';
+        ctx.beginPath(); ctx.arc(x, y, r * S/1080, 0, Math.PI*2); ctx.fill();
+    }
+    // Faint board grid.
+    ctx.strokeStyle = 'rgba(120,150,220,0.08)';
+    ctx.lineWidth = Math.max(1, S/1080);
+    const cell = S/9;
+    for (let x = (W % cell)/2; x <= W; x += cell) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for (let y = (H % cell)/2; y <= H; y += cell) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+    // ---- Routes: thick tubes, each ENDING at one of the ring's ports ----
+    // 1.6× CLASSIC's line weight so they survive thumbnail scaling.
+    const lw = S * 0.048;
+    // Elbow offsets are hero-relative so every aspect ratio composes the
+    // same "plugged in" read. Ends stop exactly at the port points
+    // (cx, cy±R) / (cx±R, cy); the tube caps + ring glow overlap there.
+    // Clamped inward so portrait (where 0.72×heroSize ≈ half the width)
+    // doesn't pin the elbows to the frame edge and clip their glow.
+    const xW = Math.max(cx - heroSize * 0.72, W * 0.08);   // west route's vertical leg
+    const xE = Math.min(cx + heroSize * 0.72, W * 0.92);   // east route's vertical leg
+    const yN = cy - heroSize * 0.66;   // north route's horizontal leg
+    // 0.52 (not 0.60) keeps this leg clear of the wordmark band on every
+    // aspect: landscape band-top sits at ~0.75H and 0.60 put the gold run
+    // inside it; 0.52 clears all three CG formats by ≥ 24px.
+    const yS = cy + heroSize * 0.52;   // south route's horizontal leg
+    const routes = [
+        { c: NEON[0], p: [[-lw, cy + H*0.26], [xW, cy + H*0.26], [xW, cy], [cx - R, cy]] },              // west  (green)
+        { c: NEON[2], p: [[W + lw, cy - H*0.22], [xE, cy - H*0.22], [xE, cy], [cx + R, cy]] },           // east  (pink)
+        { c: NEON[1], p: [[cx - W*0.30, -lw], [cx - W*0.30, yN], [cx, yN], [cx, cy - R]] },              // north (cyan)
+        { c: GOLD,    p: [[cx, cy + R], [cx, yS], [cx + W*0.26, yS], [cx + W*0.26, H + lw]] },           // south (gold)
+    ];
+    for (const r of routes) drawTube(r.p, r.c, lw);
+    // Sparks on the elbows nearest the hero — reads as current flowing in.
+    drawSpark(xW, cy, lw * 2.6, NEON[0]);
+    drawSpark(xE, cy, lw * 2.6, NEON[2]);
+    drawSpark(cx, yN, lw * 2.6, NEON[1]);
+    drawSpark(cx + W*0.26, yS, lw * 2.6, GOLD);
+
+    // ---- Hero: the game's tile-O, big ----
+    drawTitleO(cx - heroSize/2, cy - heroSize/2, heroSize);
+
+    // ---- Wordmark beneath the hero (no tagline — CG rule) ----
+    const midY = portrait ? H * 0.80 : (square ? H * 0.83 : H * 0.84);
+    const condense = 0.78;
+    let fontPx = S * (portrait ? 0.115 : 0.105);
+    const setFont = () => { ctx.font = '900 ' + fontPx + 'px "Arial Black", Impact, sans-serif'; };
+    setFont();
+    // BOLD's wordmark O is a plain letter — the hero above IS the tile-O,
+    // and repeating it small next to a big twin reads as a typo. Plain
+    // caps keep the name legible at thumbnail size.
+    const measure = () => ctx.measureText('CIRCUITOUSNESS').width * condense;
+    while (measure() > W * 0.86) { fontPx *= 0.97; setFont(); }
+    const totalW = measure();
+    // Glassy band for legibility over the south route.
+    const bandH = fontPx * 1.7;
+    const band = ctx.createLinearGradient(0, midY - bandH/2, 0, midY + bandH/2);
+    band.addColorStop(0,    'rgba(8,10,28,0)');
+    band.addColorStop(0.3,  'rgba(8,10,28,0.85)');
+    band.addColorStop(0.7,  'rgba(8,10,28,0.85)');
+    band.addColorStop(1,    'rgba(8,10,28,0)');
+    ctx.fillStyle = band;
+    ctx.fillRect(0, midY - bandH/2, W, bandH);
+
+    ctx.textBaseline = 'middle';
+    const baseX = (W - totalW) / 2;
+    ctx.save();
+    ctx.translate(baseX, midY);
+    ctx.scale(condense, 1);
+    ctx.shadowColor = 'rgba(140,190,255,0.9)';
+    ctx.shadowBlur = fontPx * 0.16;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('CIRCUITOUSNESS', 0, fontPx * 0.04);
+    ctx.restore();
+
+    // Viewfinder corner brackets — same in-game framing as CLASSIC.
+    const bx = baseX - fontPx*0.10, bw = totalW + fontPx*0.20;
+    const by = midY - fontPx*0.54, bh = fontPx*0.96;
+    const arm = fontPx*0.22, bt = Math.max(2, fontPx*0.075);
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = bt;
+    ctx.shadowColor = 'rgba(140,190,255,0.8)'; ctx.shadowBlur = bt*2;
+    for (const [ccx, ccy, dx, dy] of [[bx,by,1,1],[bx+bw,by,-1,1],[bx,by+bh,1,-1],[bx+bw,by+bh,-1,-1]]) {
+        ctx.beginPath();
+        ctx.moveTo(ccx + arm*dx, ccy); ctx.lineTo(ccx, ccy); ctx.lineTo(ccx, ccy + arm*dy);
+        ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+}
+
+function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+}
+
+// ---- Controls ----
+let current = [1920, 1080];
+let currentStyle = 'bold';
+// Style and size are independent toggles — each group clears only its own
+// buttons' active state.
+document.querySelectorAll('#controls button[data-style]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('#controls button[data-style]').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentStyle = btn.dataset.style;
+        draw(current[0], current[1]);
+    });
+});
+document.querySelectorAll('#controls button[data-size]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('#controls button[data-size]').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        current = btn.dataset.size.split('x').map(Number);
+        draw(current[0], current[1]);
+    });
+});
+document.getElementById('dl').addEventListener('click', () => {
+    canvas.toBlob((blob) => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'circuitousness-cover-' + currentStyle + '-' + current[0] + 'x' + current[1] + '.png';
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }, 'image/png');
+});
+
+draw(current[0], current[1]);
+</script>
+</body>
+</html>

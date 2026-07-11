@@ -469,7 +469,7 @@ const Music = (function () {
                 a.volume = savedVol;
             }
         };
-        ['click', 'touchend', 'keydown'].forEach(function (evt) {
+        ['click', 'contextmenu', 'touchend', 'keydown'].forEach(function (evt) {
             document.addEventListener(evt, blessOnGesture, { capture: true });
         });
     }
@@ -479,9 +479,14 @@ const Music = (function () {
     // the same event (intro Continue button, mode buttons, settings unmute).
     // Without that ordering, the first gesture-blessed start() call would
     // still see gestureReady=false and skip.
+    //
+    // 'contextmenu' matters on the CG auto-start path: right-click is the
+    // CW rotate — the most natural first input — and it never produces a
+    // 'click' event. Without it here, a right-click-only player's gestures
+    // count for nothing and music can't start until their first left-click.
     if (typeof document !== 'undefined') {
         const markGestureReady = function () { gestureReady = true; };
-        ['click', 'touchend', 'keydown'].forEach(function (evt) {
+        ['click', 'contextmenu', 'touchend', 'keydown'].forEach(function (evt) {
             document.addEventListener(evt, markGestureReady, { capture: true });
         });
     }
@@ -976,6 +981,12 @@ const Music = (function () {
     }
 
     function isMuted()        { return muted; }
+    // True when the player CAN'T hear music for any reason — their own
+    // setting OR the platform mute (CrazyGames container button). This is
+    // the getter for "was audio audible" questions (the solve-audio stats
+    // tally); isMuted() stays the player's-own-setting predicate that the
+    // Settings UI and Now Playing surfaces key off.
+    function isEffectivelyMuted() { return muted || externalMuted; }
     function isPaused()       { return paused; }
     function isPlaying()      { return shouldPlay && !muted && !paused && !!currentSong; }
     function getCurrentSong() { return currentSong; }
@@ -1179,6 +1190,7 @@ const Music = (function () {
         setMuted:              setMuted,
         setExternalMuted:      setExternalMuted,
         isMuted:               isMuted,
+        isEffectivelyMuted:    isEffectivelyMuted,
         isPaused:              isPaused,
         isPlaying:             isPlaying,
         togglePause:           togglePause,

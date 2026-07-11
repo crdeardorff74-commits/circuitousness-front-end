@@ -964,10 +964,14 @@ const Marathon = (() => {
         // (the STATE.PLAYING guard at the top), so watched replays don't
         // count. Missing module/getter defaults to "off" — matches the
         // no-audio experience the player actually had.
+        // isEffectivelyMuted (not isMuted) so the CrazyGames container mute
+        // counts as "off" — a CG player is far likelier to hit the site's
+        // mute button than to open our Settings, and the stat's question is
+        // whether audio was AUDIBLE, not what the in-game toggle says.
         if (typeof Tracking !== 'undefined' && Tracking.recordSolve) {
             Tracking.recordSolve(
-                (typeof Music !== 'undefined' && Music.isMuted) ? !Music.isMuted() : false,
-                (typeof Sfx   !== 'undefined' && Sfx.isMuted)   ? !Sfx.isMuted()   : false
+                (typeof Music !== 'undefined' && Music.isEffectivelyMuted) ? !Music.isEffectivelyMuted() : false,
+                (typeof Sfx   !== 'undefined' && Sfx.isEffectivelyMuted)   ? !Sfx.isEffectivelyMuted()   : false
             );
         }
 

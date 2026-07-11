@@ -137,7 +137,11 @@ const Sfx = (function () {
         unlocked = true;
     }
     if (typeof document !== 'undefined') {
-        ['click', 'touchend', 'keydown'].forEach(function (evt) {
+        // 'contextmenu' included because right-click = CW rotate: on the CG
+        // first-visit auto-start a player can right-click tiles for a long
+        // while before ever producing a 'click' — their rotate SFX would
+        // stay silent until the first left-click unlocked the context.
+        ['click', 'contextmenu', 'touchend', 'keydown'].forEach(function (evt) {
             document.addEventListener(evt, unlockAudio, { capture: true });
         });
     }
@@ -409,6 +413,11 @@ const Sfx = (function () {
         muted = !!b;
         if (muted) stopAllLoops();
     }
+    // True when the player CAN'T hear SFX for any reason — their own
+    // setting OR the platform mute. For "was audio audible" questions
+    // (solve-audio stats); isMuted() stays the player's-own-setting
+    // predicate.
+    function isEffectivelyMuted() { return muted || externalMuted; }
     // CrazyGames container mute (see externalMuted above). Mirrors
     // setMuted's loop handling and additionally fades in-flight one-shots
     // so the mute lands immediately, not at the next cue. Loops don't
@@ -464,6 +473,7 @@ const Sfx = (function () {
         setVolume: setVolume,
         setMuted: setMuted,
         setExternalMuted: setExternalMuted,
+        isEffectivelyMuted: isEffectivelyMuted,
         // Read-back for the solve-audio tracking stat (mirrors Music.isMuted).
         isMuted: function () { return muted; },
         setAudienceReactionsEnabled: setAudienceReactionsEnabled,

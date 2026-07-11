@@ -176,15 +176,32 @@ const Intro = (() => {
             // startGame's Music.start() is a pre-gesture no-op), so the
             // first-interaction kick below stays: it starts whichever pool
             // the phase flag now points at (game on auto-start, else menu).
+            //
+            // 'contextmenu' is in the set because right-click is the CW
+            // rotate — a player can right-click tiles indefinitely without
+            // ever producing a 'click'. (music.js/audio.js's capture-phase
+            // gesture listeners gained it too, so gestureReady/unlock have
+            // already flipped by the time this bubble-phase kick runs.)
+            //
+            // The kick RE-ARMS until a song actually engages: the song
+            // lists load async from the umbrella API (which can cold-start
+            // slowly on Render), and a too-early start() just records
+            // shouldPlay and returns. Removing the listeners on that first
+            // silent attempt would strand music until something else poked
+            // it — observed on CG as "music only started when the Settings
+            // popup opened". Muted players also release the listeners; the
+            // Settings unmute path owns starting music for them.
+            const KICK_EVENTS = ['click', 'contextmenu', 'keydown', 'touchend'];
             const kickMusic = () => {
-                document.removeEventListener('click', kickMusic);
-                document.removeEventListener('keydown', kickMusic);
-                document.removeEventListener('touchend', kickMusic);
-                if (typeof Music !== 'undefined' && Music.start) Music.start();
+                if (typeof Music === 'undefined') return;
+                if (Music.start) Music.start();
+                const engaged =
+                    (Music.getCurrentSong && Music.getCurrentSong()) ||
+                    (Music.isMuted && Music.isMuted());
+                if (!engaged) return; // stay armed for the next gesture
+                KICK_EVENTS.forEach((evt) => document.removeEventListener(evt, kickMusic));
             };
-            document.addEventListener('click', kickMusic);
-            document.addEventListener('keydown', kickMusic);
-            document.addEventListener('touchend', kickMusic);
+            KICK_EVENTS.forEach((evt) => document.addEventListener(evt, kickMusic));
             return;
         }
 
