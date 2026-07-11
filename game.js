@@ -466,6 +466,14 @@
         }
         function undo() {
             if (isBuilding || isReplaying) return;
+            // Tutorial open = the live Maze is temporarily the tutorial's
+            // teaching grid (Tutorial.open swaps it in, close restores).
+            // Ctrl+Z is the one game input the tutorial's modal overlay
+            // can't physically block — undoing here would rotate tiles on
+            // the TUTORIAL grid and pop real-game entries off undoStack
+            // whose effects then get restored anyway on tutorial close,
+            // leaving the stack out of sync with the board.
+            if (typeof Tutorial !== 'undefined' && Tutorial.isOpen && Tutorial.isOpen()) return;
             // Same transition guards as handlePointer/handleHintClick: don't
             // rewind a puzzle the player has already solved and is leaving.
             if (typeof Marathon !== 'undefined' && Marathon.isInTransition && Marathon.isInTransition()) return;

@@ -38,6 +38,18 @@ const Marathon = (() => {
     // every branch that touches the countdown, hint penalty, or score save
     // gates on this. Same state machine + puzzle flow as Marathon otherwise.
     let isPractice     = false;
+    // True only during the one-time first-visit auto-started Practice run
+    // (see autoStartFirstPractice). Gates the in-HUD "How to Solve" button
+    // — a brand-new player skipped the menu entirely, so this run is the
+    // only surface where the tutorial entry point must live. Cleared by
+    // every subsequent startGame (3rd arg omitted → false) and by goToMenu
+    // (covers the PotD path, which starts games without startGame).
+    let isFirstRunAutoStart = false;
+    // Consumed-flag key for the one-time auto-start. Deliberately its own
+    // key (not _mode / _lastPlayerName) so the semantics stay "the intro
+    // auto-start has fired once", independent of what else the player did.
+    const AUTO_START_KEY = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness')
+        + '_firstVisitAutoStarted_v1';
     let activeType     = null;     // 's1'..'s4', 'q1'..'q4'
     let sessionToken   = null;     // server-issued cheat-proof timing token (from /api/game/start)
     let level          = 0;        // current puzzle index, 1-based
@@ -72,7 +84,7 @@ const Marathon = (() => {
 
     // DOM refs (populated in init)
     let menuEl, hudEl, gameOverEl, leaderboardEl, solveTransitionEl, replayHudEl;
-    let hudType, hudLevel, hudTimer, hudQuit;
+    let hudType, hudLevel, hudTimer, hudQuit, hudHowTo;
     let solveHeadline, solveBanked;
     let gameOverScore, gameOverTime, gameOverRank, gameOverName, gameOverSave, gameOverMenu, gameOverNameRow;
     let leaderboardTileTabsEl, leaderboardPathTabsEl, leaderboardEntries, leaderboardEmpty, leaderboardClose, menuLeaderboardBtn;
@@ -126,6 +138,7 @@ const Marathon = (() => {
         hudLevel = $('hudLevel');
         hudTimer = $('hudTimer');
         hudQuit  = $('hudQuitBtn');
+        hudHowTo = $('hudHowToBtn');
 
         solveHeadline = $('solveHeadline');
         solveBanked   = $('solveBanked');
@@ -186,6 +199,17 @@ const Marathon = (() => {
         // restarts menu music — the popup's exit needs nothing extra.
         if (creditsPopupMenu)   creditsPopupMenu.addEventListener('click', goToMenu);
         if (hudQuit)            hudQuit.addEventListener('click', quitToMenu);
+        // In-HUD tutorial entry — only ever visible during the first-visit
+        // auto-started Practice run (see isFirstRunAutoStart). Tutorial.open
+        // snapshots + restores the live Maze/Gates around the teaching
+        // puzzle, so opening mid-run is safe; game.js's undo() additionally
+        // gates on Tutorial.isOpen so Ctrl+Z can't poke the swapped grid.
+        // Ignored during the between-puzzles transition: advance() rebuilds
+        // the maze under the tutorial's feet otherwise.
+        if (hudHowTo) hudHowTo.addEventListener('click', () => {
+            if (inTransition) return;
+            if (typeof Tutorial !== 'undefined' && Tutorial.open) Tutorial.open();
+        });
         if (gameOverSave)       gameOverSave.addEventListener('click', saveScore);
         if (gameOverMenu)       gameOverMenu.addEventListener('click', goToMenu);
         if (gameOverName)       gameOverName.addEventListener('keydown', (ev) => {
@@ -326,6 +350,13 @@ const Marathon = (() => {
         state = STATE.MENU;
         stopTimer();
         clearTransition();
+        // The one-time auto-start run (if that's what we're leaving) is
+        // over — from here on the player navigates normally. Hiding the
+        // button here (not just clearing the flag) covers PotD, whose
+        // startPuzzle path shows #hud without going through startGame /
+        // startNextPuzzle, so it would never re-hide a stale button.
+        isFirstRunAutoStart = false;
+        if (hudHowTo) hudHowTo.hidden = true;
         // Cancel any pending lock-tip timer — without this, a player who
         // quits within 30s of puzzle start would see the lock tip pop up
         // on the menu (contextually wrong; the tip's about mid-puzzle
@@ -574,8 +605,11 @@ const Marathon = (() => {
         return fresh * 1000;
     }
 
-    function startGame(type, practice) {
+    function startGame(type, practice, firstRunAutoStart) {
         isPractice       = !!practice;
+        // Only autoStartFirstPractice passes the 3rd arg — every normal
+        // start (menu card click) leaves it undefined, clearing the flag.
+        isFirstRunAutoStart = !!firstRunAutoStart;
         activeType       = type;
         sessionToken     = null;  // cleared until /api/game/start resolves
         level            = 0;
@@ -625,6 +659,43 @@ const Marathon = (() => {
         startNextPuzzle();
     }
 
+    // One-time first-visit auto-start: skip the menu and drop a brand-new
+    // player straight into the gentlest puzzle (1-path singular Practice,
+    // 4×4 via MIN_DIM_PRACTICE_SINGULAR) so they see gameplay before ever
+    // having to decode the menu's mode/type choices. Called by intro.js at
+    // the two "player just cleared the intro" points (the I-agree dismiss,
+    // and the CrazyGames auto-skip bail where there is no intro). Returns
+    // true when it started a game — the caller then skips its own menu-music
+    // startup, since startGame already handles the game-phase music.
+    //
+    // "First visit" = none of: the consumed flag, a saved mode pick, or a
+    // saved leaderboard name. The extra two keys stop the auto-start from
+    // surprising RETURNING players who predate this feature (they know the
+    // menu already). Players who visited before but never touched either
+    // key get one auto-start into Practice — which is where the menu's
+    // default card would have landed them anyway.
+    //
+    // localStorage-unavailable (private mode, quota): bail to the menu.
+    // Without storage the flag can't persist, and auto-starting EVERY visit
+    // would lock repeat private-mode players out of the menu flow.
+    function autoStartFirstPractice() {
+        if (state !== STATE.MENU) return false;
+        const slug = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness');
+        let seen;
+        try {
+            seen = localStorage.getItem(AUTO_START_KEY)
+                || localStorage.getItem(slug + '_mode')
+                || localStorage.getItem(slug + '_lastPlayerName');
+        } catch (e) { return false; }
+        if (seen) return false;
+        // Consume BEFORE starting: if startGame throws for any reason we
+        // still never re-trigger, and the player gets the normal menu on
+        // their next load rather than a repeating broken auto-start.
+        try { localStorage.setItem(AUTO_START_KEY, '1'); } catch (e) {}
+        startGame('s1', true, true);
+        return true;
+    }
+
     async function requestSessionToken(type) {
         const base = apiBase();
         if (!base) return;
@@ -671,6 +742,11 @@ const Marathon = (() => {
         state = STATE.PLAYING;
         showOnly(hudEl);
         updateHud(logical);
+        // First-visit auto-start run: surface the How-to-Solve button in the
+        // HUD (the player never saw the menu's one). It occupies the timer's
+        // center slot — always free here because the auto-start run is
+        // Practice, and Practice hides #hudTimer (body.mode-practice CSS).
+        if (hudHowTo) hudHowTo.hidden = !isFirstRunAutoStart;
 
         if (callbacks.startPuzzle) {
             callbacks.startPuzzle({
@@ -1918,6 +1994,7 @@ const Marathon = (() => {
     }
 
     return { init, onSolve, onHintUsed, onPuzzleReady, advance, isPlaying, isMenuVisible, isInTransition, isReplaying, upcomingDims,
+             autoStartFirstPractice,
              wipeLocalLeaderboards,
              showPotdLeaderboard,
              // Reusable iOS-standalone keyboard helpers — exposed so PotD's

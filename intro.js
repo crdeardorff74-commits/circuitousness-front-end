@@ -162,7 +162,20 @@ const Intro = (() => {
             dismissed = true;
             document.documentElement.classList.add('intro-dismissed');
             if (typeof Tracking !== 'undefined' && Tracking.recordAgreed) Tracking.recordAgreed();
-            if (typeof Music !== 'undefined' && Music.setMenuPhase) Music.setMenuPhase(true);
+            // First-visit auto-start: brand-new players go straight into a
+            // 1-path Practice puzzle instead of the menu (zero clicks to
+            // gameplay). Safe to call synchronously here: script order puts
+            // game.js (whose DOMContentLoaded handler runs Marathon.init)
+            // before intro.js, so Marathon is fully wired by the time this
+            // listener fires. When it starts a game it also sets the music
+            // phase to GAME — only set the menu phase on the menu path.
+            const autoStarted = (typeof Marathon !== 'undefined' && Marathon.autoStartFirstPractice)
+                ? Marathon.autoStartFirstPractice() : false;
+            if (!autoStarted && typeof Music !== 'undefined' && Music.setMenuPhase) Music.setMenuPhase(true);
+            // Either way music can't actually start yet (no user gesture —
+            // startGame's Music.start() is a pre-gesture no-op), so the
+            // first-interaction kick below stays: it starts whichever pool
+            // the phase flag now points at (game on auto-start, else menu).
             const kickMusic = () => {
                 document.removeEventListener('click', kickMusic);
                 document.removeEventListener('keydown', kickMusic);
@@ -475,6 +488,14 @@ const Intro = (() => {
             if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
         }, 350);  // matches the CSS transition-duration on .introDismissing
         document.documentElement.classList.add('intro-dismissed');
+        // First-visit auto-start: a brand-new player skips the menu and
+        // lands directly in a 1-path Practice puzzle. This dismiss IS a
+        // user gesture, so startGame's internal Music.start() (game phase)
+        // works synchronously — when the auto-start fires, the menu-music
+        // block below must be skipped or it would flip the phase back to
+        // menu over the already-started game music.
+        const autoStarted = (typeof Marathon !== 'undefined' && Marathon.autoStartFirstPractice)
+            ? Marathon.autoStartFirstPractice() : false;
         // Kick off the menu/gameplay music here — this dismiss is fired
         // from a user gesture (button click / Enter / Escape), so the
         // AudioContext can resume and iOS audio elements get blessed
@@ -490,7 +511,7 @@ const Intro = (() => {
         // the menu pool (menu_only list in admin) rather than the
         // intro/gameplay pool. Defaults to true on module load anyway,
         // but being explicit here makes the flow easier to follow.
-        if (typeof Music !== 'undefined') {
+        if (!autoStarted && typeof Music !== 'undefined') {
             if (Music.setMenuPhase) Music.setMenuPhase(true);
             if (Music.start)        Music.start();
         }

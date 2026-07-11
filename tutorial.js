@@ -570,7 +570,15 @@ const Tutorial = (function () {
         }
     }
 
-    return { open: open, close: close, isWatched: function () {
+    return { open: open, close: close,
+        // Live-state predicate for input gating: while the tutorial is open
+        // the module has SWAPPED the real Maze/Gates/Render state for the
+        // fixed teaching puzzle, so game input paths that survive the modal
+        // overlay (keyboard shortcuts — the overlay already blocks pointer
+        // input) must no-op or they'd mutate the tutorial grid and desync
+        // state that close() restores (e.g. game.js's undo stack).
+        isOpen: function () { return isOpen; },
+        isWatched: function () {
         try { return localStorage.getItem(WATCHED_KEY) === '1'; } catch (e) { return false; }
     } };
 })();

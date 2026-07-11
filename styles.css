@@ -1715,6 +1715,18 @@ html.mode-debug #settingsOverlay { display: none !important; }
     top: 50%;
     transform: translateY(-50%);
 }
+/* First-visit How-to-Solve button (see the #hud markup comment): takes the
+   timer's center slot. Never visible at the same time as #hudTimer — the
+   button only shows on the auto-started Practice run, and body.mode-practice
+   hides the timer. Default-hidden via the HTML [hidden] attribute; no
+   display property here so [hidden] keeps working. */
+#hudHowToBtn {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
+}
 #hudTimer.urgent {
     color: #ff6060;
     border-color: rgba(255, 96, 96, 0.5);
@@ -1794,6 +1806,7 @@ html.mode-debug #settingsOverlay { display: none !important; }
 #hudType { display: none; }
 #hudHintBtn,
 #hudUndoBtn,
+#hudHowToBtn,
 #hudQuitBtn {
     padding: 0.4rem 0.9rem;
     background: rgba(40, 30, 50, 0.7);
@@ -1844,6 +1857,20 @@ html.mode-debug #settingsOverlay { display: none !important; }
     background: rgba(60, 40, 70, 0.9);
     border-color: rgba(255, 215, 0, 0.75);
     color: #FFD700;
+}
+/* Same cool-blue accent as the menu's #menuHowToBtn so the two tutorial
+   entry points read as the same control. */
+#hudHowToBtn {
+    color: rgba(110, 181, 255, 0.9);
+    border: 1px solid rgba(110, 181, 255, 0.4);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+#hudHowToBtn:hover {
+    background: rgba(40, 56, 78, 0.9);
+    border-color: rgba(110, 181, 255, 0.75);
+    color: #6eb5ff;
 }
 #hudQuitBtn {
     color: rgba(220, 200, 230, 0.85);
@@ -3336,6 +3363,7 @@ body.credits-rolling #potdSolveTransition.visible {
     #hudTimer   { min-width: 3.6rem; }
     #hudHintBtn,
     #hudUndoBtn,
+    #hudHowToBtn,
     #hudQuitBtn {
         padding: 0.25rem 0.55rem;
         font-size: clamp(0.65rem, 2vh, 0.8rem);

@@ -206,6 +206,13 @@
             <div id="hudLevel"></div>
             <button id="hudUndoBtn" type="button" data-i18n="undo.button">Undo</button>
             <div id="hudTimer"><span class="hudTimerVal"></span></div>
+            <!-- How-to-Solve entry for the one-time first-visit auto-started
+                 Practice run (marathon.js unhides it only then) — that player
+                 skipped the menu, so the menu's How-to button was never seen.
+                 Sits in the timer's center slot, which is guaranteed free:
+                 the auto-start run is Practice and body.mode-practice hides
+                 #hudTimer. Reuses the menu button's i18n key. -->
+            <button id="hudHowToBtn" type="button" data-i18n="tutorial.menuButton" hidden>❓ How to Solve</button>
             <button id="hudHintBtn" type="button" data-i18n="hint.button">Hint</button>
             <button id="hudSettingsBtn" type="button" data-i18n-attr="title:settings.title" title="Settings">⚙</button>
             <button id="hudQuitBtn" type="button" data-i18n="marathon.quit">Quit</button>
