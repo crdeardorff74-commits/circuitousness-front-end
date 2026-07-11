@@ -2908,86 +2908,50 @@ body.credits-rolling #potdSolveTransition.visible {
     cursor: default;
 }
 
-/* ───────────────────── Mode picker ─────────────────────
-   Chip + popup pattern lifted from TANTЯO's Skill/Difficulty
-   selection. The chip lives in the main menu, the modal appears
-   on click. Mirrors TANTЯO's exact class names so future visual
-   tweaks stay portable across the projects. */
+/* ───────────────────── Mode selector ─────────────────────
+   Segmented row of all three modes, always visible on the menu
+   (replaced the TANTЯO chip + popup — with only three modes,
+   hiding two behind a popup cost more discovery than it saved
+   in space). Same glassy gradient + blue accent family as the
+   old chip so the menu's look stays consistent. */
 
-.menu-dropdown-wrapper {
-    position: relative;
-    width: 90%;
-    max-width: 340px;
+.menu-mode-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: max(0.6vh, 5px);
     margin: 0 auto;
+    max-width: 95%;
     pointer-events: auto;
 }
-.menu-dropdown-label {
-    font-size: max(1.45vh, 12px);
-    color: #c0c4d0;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin: 0 0 max(0.4vh, 3px) 0;
-    padding: 0;
-    line-height: 1.2;
-    text-align: left;
-    font-weight: 500;
-}
-.menu-dropdown-btn {
-    width: 100%;
-    margin: 0;
-    padding: max(1.2vh, 10px) max(1.5vw, 15px);
-    font-size: max(1.8vh, 14px);
+.menu-mode-tab {
+    padding: max(0.9vh, 8px) max(1.2vw, 12px);
+    font-size: max(1.6vh, 13px);
     font-weight: 600;
     font-family: inherit;
     background: linear-gradient(180deg, #2a2a3a 0%, #1a1a2a 100%);
-    color: #e0e0e0;
+    color: #c9cede;
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: max(0.8vh, 6px);
     cursor: pointer;
-    transition: all 0.2s;
-    text-align: center;
-    box-sizing: border-box;
-    pointer-events: auto;
+    transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+    white-space: nowrap;
 }
-.menu-dropdown-btn::after {
-    content: ' ▼';
-    font-size: max(1.2vh, 10px);
-    opacity: 0.7;
-}
-/* Same iOS-Safari first-tap-hovers fix — and especially important
-   here because the hover includes a transform (translateY(-1px))
-   that visibly "lifts" the chip on first tap, telegraphing
-   "responded" without actually firing the chip's click handler. */
+/* iOS-Safari first-tap-hovers fix: hover styling only where a real
+   pointer exists, so the first tap fires the click instead of a
+   sticky hover state. */
 @media (hover: hover) and (pointer: fine) {
-    .menu-dropdown-btn:hover {
+    .menu-mode-tab:hover {
         background: linear-gradient(180deg, #3a3a4a 0%, #2a2a3a 100%);
         border-color: rgba(110, 181, 255, 0.5);
         color: #fff;
-        transform: translateY(-1px);
     }
 }
-.menu-dropdown-btn:active {
-    transform: translateY(0);
-}
-/* Gentle breathing glow on the mode chip so players notice it's a
-   changeable selector (Marathon exists alongside Puzzle of the Day),
-   not a static header. Animates ONLY box-shadow so it coexists with the
-   hover rule's border-color/transform. Scoped to #modeBtn — the only
-   chip that should call attention to itself. */
-#modeBtn {
-    animation: modeChipPulse 2.6s ease-in-out infinite;
-}
-@keyframes modeChipPulse {
-    0%, 100% { box-shadow: 0 0 max(0.5vh, 4px)  rgba(110, 181, 255, 0.12); }
-    50%      { box-shadow: 0 0 max(1.6vh, 13px) rgba(110, 181, 255, 0.40); }
-}
-/* Respect reduced-motion: drop the pulse but keep a steady glow so the
-   discoverability cue survives without animation. */
-@media (prefers-reduced-motion: reduce) {
-    #modeBtn {
-        animation: none;
-        box-shadow: 0 0 max(1vh, 8px) rgba(110, 181, 255, 0.28);
-    }
+.menu-mode-tab.selected {
+    background: linear-gradient(180deg, #2e3d5e 0%, #1e2740 100%);
+    border-color: rgba(110, 181, 255, 0.65);
+    color: #fff;
+    box-shadow: 0 0 max(1vh, 8px) rgba(110, 181, 255, 0.28);
 }
 
 /* Modal overlay + container */
@@ -3168,56 +3132,6 @@ body.credits-rolling #potdSolveTransition.visible {
     }
 }
 
-/* Selection options inside the modal */
-.selection-modal {
-    /* combo-modal already sets the box; selection-modal is just a hook
-       in case we want different sizing later. */
-}
-.selection-options-list {
-    display: flex;
-    flex-direction: column;
-    gap: max(0.6vh, 4px);
-}
-.selection-option {
-    padding: max(1.2vh, 10px) max(1.5vw, 14px);
-    background: transparent;
-    border-radius: max(0.6vh, 5px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    cursor: pointer;
-    transition: all 0.15s;
-}
-.selection-option:hover {
-    border-color: rgba(110, 181, 255, 0.4);
-    background: rgba(110, 181, 255, 0.08);
-}
-.selection-option.selected {
-    border-color: rgba(110, 181, 255, 0.6);
-    background: rgba(110, 181, 255, 0.15);
-}
-.selection-option-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-.selection-option-name {
-    font-size: max(1.6vh, 14px);
-    font-weight: 600;
-    color: #e0e0e0;
-}
-.selection-option.selected .selection-option-name {
-    color: #6eb5ff;
-}
-.selection-option .challenge-description {
-    font-size: max(1.5vh, 13px);
-    color: #888;
-    margin-top: max(1.4vh, 11px);
-    margin-bottom: max(1.0vh, 8px);
-    margin-left: 0;
-}
-.selection-option.selected .challenge-description {
-    color: #aaa;
-}
-
 /* ============================================================
    SHORT-VIEWPORT SQUEEZE  (landscape phones, max-height: 500px)
    ----------------------------------------------------------
@@ -3253,29 +3167,16 @@ body.credits-rolling #potdSolveTransition.visible {
         font-size: clamp(1.3rem, 8vh, 2.2rem);
         margin-bottom: 0.2rem;
     }
-    /* MODE dropdown: the default sizing (max-width 340px, ~10-14px
-       padding + 14px font + ~14px label above) gives a ~50px-tall
-       block that dominates a 390px landscape viewport. Trim padding,
-       font, and label so the dropdown takes ~30px instead, freeing
-       ~20px for the puzzle thumbnails below. Narrower max-width too
-       so it doesn't visually crowd the title. */
-    .menu-dropdown-wrapper {
-        max-width: 16rem;
-    }
-    .menu-dropdown-label {
-        font-size: clamp(0.7rem, 1.9vh, 0.85rem);
-        margin: 0 0 0.1rem 0;
-        /* text-align left to match the desktop dropdown — left-aligned
-           tag-style label over the wider button reads as a labeled control
-           rather than a centered heading. */
-    }
-    .menu-dropdown-btn {
-        padding: 0.35rem 0.7rem;
-        font-size: clamp(0.75rem, 2.4vh, 0.95rem);
+    /* Mode tabs: trim padding + font so the three-button row takes
+       ~30px instead of ~40px on a 390px-tall landscape viewport,
+       freeing room for the puzzle thumbnails below. Verbose locales
+       may still wrap the row to two lines here — flex-wrap handles
+       it and the #menu scroll fallback covers the worst case. */
+    .menu-mode-tabs { gap: 0.3rem; }
+    .menu-mode-tab {
+        padding: 0.3rem 0.6rem;
+        font-size: clamp(0.7rem, 2.2vh, 0.9rem);
         border-radius: 0.4rem;
-    }
-    .menu-dropdown-btn::after {
-        font-size: clamp(0.55rem, 1.6vh, 0.7rem);
     }
     #menu .menuSubtitle {
         font-size: clamp(0.7rem, 2.6vh, 0.9rem);

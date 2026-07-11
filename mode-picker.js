@@ -9,15 +9,18 @@
  *                many puzzles as you like, untimed, nothing saved. This is
  *                the DEFAULT mode new players land in (see DEFAULT_MODE).
  *
- * The picker is a chip + popup, lifted verbatim from TANTЯO's Skill /
- * Difficulty pattern (`.menu-dropdown-*`, `.combo-modal-*`, `.selection-*`
- * classes — see styles.css). This module owns the chip's state, the
- * modal's open/close, and the localStorage round-trip.
+ * The selector is a segmented row of three always-visible buttons
+ * (#modeTabs > .menu-mode-tab in index.html). It replaced the original
+ * chip + popup pattern (TANTЯO's Skill/Difficulty modal): with only three
+ * modes, hiding two of them behind a popup cost more discovery than it
+ * saved in space — players never learned the other modes existed. This
+ * module owns the .selected/aria-pressed state, the subtitle swap, and
+ * the localStorage round-trip.
  *
- * STUB NOTE (current iteration): selecting PotD changes the chip label and
- * persists the choice, but the rest of the front-end still runs the
- * marathon flow underneath. The Potd module + wiring lands in the next
- * iteration; until then the picker is testable in isolation.
+ * Language changes need no JS round-trip here: each tab carries a static
+ * data-i18n key (mode.<m>.name), so I18n.applyTranslations() re-renders
+ * them directly. Only the subtitle swaps its key per mode (see
+ * updateMenuSubtitle).
  *
  * Public API:
  *   ModePicker.getMode()         — 'potd' | 'marathon' | 'practice'
@@ -56,7 +59,7 @@ const ModePicker = (() => {
         if (m === currentMode) return;
         currentMode = m;
         saveToStorage();
-        updateChipLabel();
+        updateTabSelection();
         updateMenuSubtitle();
         applyBodyClass();
         for (const cb of listeners) {
@@ -77,33 +80,22 @@ const ModePicker = (() => {
         if (typeof cb === 'function') listeners.push(cb);
     }
 
-    // Chip label uses the same i18n key as the modal card name so the
-    // (emoji + display name) stays in lockstep across the two surfaces.
-    function chipLabel(mode) {
-        if (typeof I18n !== 'undefined' && I18n.t) {
-            return I18n.t('mode.' + mode + '.name');
-        }
-        // Fallback for the moment i18n hasn't initialized yet — matches
-        // the data-i18n defaults in index.html.
-        if (mode === 'potd')     return '📅 Puzzle of the Day';
-        if (mode === 'practice') return '🧩 Practice';
-        return '🏃 Marathon';
-    }
-
-    function updateChipLabel() {
-        const btn = document.getElementById('modeBtn');
-        if (!btn) return;
-        // Update the data-i18n attribute too so a later I18n.setLanguage()
-        // → applyTranslations() pass picks up the chip and re-renders it
-        // in the new language. Without this the chip would lock to the
-        // language that was active at the moment of the last mode switch.
-        btn.setAttribute('data-i18n', 'mode.' + currentMode + '.name');
-        btn.textContent = chipLabel(currentMode);
+    // Highlight the active mode's tab. aria-pressed mirrors .selected so
+    // assistive tech announces which of the three toggles is active.
+    function updateTabSelection() {
+        const wrap = document.getElementById('modeTabs');
+        if (!wrap) return;
+        wrap.querySelectorAll('.menu-mode-tab').forEach((btn) => {
+            const on = btn.dataset.mode === currentMode;
+            btn.classList.toggle('selected', on);
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
     }
 
     // Menu subtitle follows the active mode — `mode.<m>.desc` instead of
-    // marathon's hard-coded tagline. Same data-i18n round-trip pattern as
-    // the chip so setLanguage() updates it cleanly.
+    // marathon's hard-coded tagline. The data-i18n attribute is swapped
+    // alongside the text so a later I18n.setLanguage() →
+    // applyTranslations() pass re-renders the right description.
     function updateMenuSubtitle() {
         const sub = document.querySelector('.menuSubtitle');
         if (!sub) return;
@@ -114,46 +106,20 @@ const ModePicker = (() => {
         }
     }
 
-    function updateModalSelection() {
-        const overlay = document.getElementById('modeModalOverlay');
-        if (!overlay) return;
-        overlay.querySelectorAll('.selection-option').forEach((opt) => {
-            opt.classList.toggle('selected', opt.dataset.mode === currentMode);
-        });
-    }
-
     function init() {
         loadFromStorage();
-        updateChipLabel();
+        updateTabSelection();
         updateMenuSubtitle();
         applyBodyClass();
 
-        const chip    = document.getElementById('modeBtn');
-        const overlay = document.getElementById('modeModalOverlay');
-        if (!chip || !overlay) return;
-
-        chip.addEventListener('click', () => {
-            updateModalSelection();
-            overlay.style.display = 'flex';
-        });
-
-        overlay.querySelectorAll('.selection-option').forEach((opt) => {
-            opt.addEventListener('click', () => {
-                const m = opt.dataset.mode;
+        const wrap = document.getElementById('modeTabs');
+        if (!wrap) return;
+        wrap.querySelectorAll('.menu-mode-tab').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const m = btn.dataset.mode;
                 if (m) setMode(m);
-                overlay.style.display = 'none';
             });
         });
-
-        // Backdrop click closes; click on the inner modal box does not.
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) overlay.style.display = 'none';
-        });
-
-        // Language-change handling is implicit: the chip carries a
-        // data-i18n attribute that I18n.applyTranslations() updates on
-        // every setLanguage() call. updateChipLabel keeps the attribute
-        // in sync with currentMode whenever the mode changes.
     }
 
     if (document.readyState === 'loading') {

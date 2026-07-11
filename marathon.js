@@ -355,8 +355,13 @@ const Marathon = (() => {
         // button here (not just clearing the flag) covers PotD, whose
         // startPuzzle path shows #hud without going through startGame /
         // startNextPuzzle, so it would never re-hide a stale button.
+        // Same PotD-coverage reasoning for restoring the Quit label.
         isFirstRunAutoStart = false;
         if (hudHowTo) hudHowTo.hidden = true;
+        if (hudQuit) {
+            hudQuit.setAttribute('data-i18n', 'marathon.quit');
+            hudQuit.textContent = I18n.t('marathon.quit');
+        }
         // Cancel any pending lock-tip timer — without this, a player who
         // quits within 30s of puzzle start would see the lock tip pop up
         // on the menu (contextually wrong; the tip's about mid-puzzle
@@ -747,6 +752,17 @@ const Marathon = (() => {
         // center slot — always free here because the auto-start run is
         // Practice, and Practice hides #hudTimer (body.mode-practice CSS).
         if (hudHowTo) hudHowTo.hidden = !isFirstRunAutoStart;
+        // Same run: "Quit" would read as "leave the game" to a player who
+        // doesn't know a menu exists — relabel it to advertise that the
+        // menu (PotD / Marathon / quad types) is behind it. The data-i18n
+        // attribute is swapped too so a mid-run language change re-renders
+        // the right string. Restored by goToMenu and by any normal start
+        // (isFirstRunAutoStart false → quit branch).
+        if (hudQuit) {
+            const quitKey = isFirstRunAutoStart ? 'marathon.moreModes' : 'marathon.quit';
+            hudQuit.setAttribute('data-i18n', quitKey);
+            hudQuit.textContent = I18n.t(quitKey);
+        }
 
         if (callbacks.startPuzzle) {
             callbacks.startPuzzle({
