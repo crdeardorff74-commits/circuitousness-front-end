@@ -551,10 +551,29 @@ const Maze = (() => {
     // both. Heavy elbow bias makes random configurations unlikely to admit
     // straight-through alternates around a long winding intended path,
     // which lets BFS shortest = intended length much more often.
-    function pickFillerType() {
-        const r = Math.random();
-        if (r < 0.65) return T_ELBOW;
-        if (r < 0.85) return T_STRAIGHT;
+    //
+    // Boundary cells (singular mode) never roll a cross. A cross is
+    // rotation-invariant, so a filler cross on the outer edge always has a
+    // lane pointing off-grid — no rotation can make it part of any solution,
+    // which hands the player a free "this tile is filler" tell. Solution
+    // crosses can't land on the boundary either (both lanes need in-grid
+    // continuations; only entry/exit cells connect off-grid, through the
+    // visible notch), so with this ban the edge carries no information.
+    // Quad mode is deliberately EXEMPT: quads scramble sub-tile POSITIONS,
+    // so any sub-tile — solution crosses included — can legitimately sit on
+    // a boundary cell mid-solve and rotate away with the quad. Banning
+    // filler crosses there would invert the leak: an edge cross would then
+    // prove "solution cross in a mis-rotated quad".
+    function pickFillerType(r, c) {
+        const noCross = !quadMode &&
+            (r === 0 || c === 0 || r === ROWS - 1 || c === COLS - 1);
+        const roll = Math.random();
+        if (noCross) {
+            // Same 65:20 elbow:straight ratio with the cross share removed.
+            return roll < 0.65 / 0.85 ? T_ELBOW : T_STRAIGHT;
+        }
+        if (roll < 0.65) return T_ELBOW;
+        if (roll < 0.85) return T_STRAIGHT;
         return T_CROSS;
     }
 
@@ -568,7 +587,7 @@ const Maze = (() => {
                 if (r === entry.row && c === entry.col) continue;
                 if (r === exit.row  && c === exit.col)  continue;
                 const t = grid[r][c];
-                if (t._solution === undefined) t.type = pickFillerType();
+                if (t._solution === undefined) t.type = pickFillerType(r, c);
                 t.rotation = Math.floor(Math.random() * 4);
             }
         }
@@ -852,7 +871,7 @@ const Maze = (() => {
                 const ls = cellLanes.get(r + ',' + c);
                 if (!ls || ls.length === 0) {
                     grid[r][c] = {
-                        type: pickFillerType(),
+                        type: pickFillerType(r, c),
                         rotation: Math.floor(Math.random() * 4)
                     };
                 } else if (ls.length === 1) {
