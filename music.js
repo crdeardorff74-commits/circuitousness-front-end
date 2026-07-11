@@ -214,21 +214,72 @@ const Music = (function () {
             }
             const data = await resp.json();
             const lists = (data && data.lists) ? data.lists : {};
-            // Family-strict platforms (CrazyGames requires PEGI 12): drop
-            // songs the admin flagged `explicit` before they reach any
-            // playlist. Filtering here — ahead of mapAndSort AND the cache
-            // write below — means the CG origin's localStorage cache only
-            // ever holds clean pools too, so even the offline/cached path
-            // can't surface a flagged song there. Other origins play the
-            // full catalog. Intro-order positions are preserved since
-            // filter() keeps relative order and mapAndSort sorts by the
-            // rows' own position values.
+            // Family-strict platforms (CrazyGames requires PEGI 12): songs
+            // the admin flagged `explicit` don't reach any playlist — but a
+            // censored twin can stand in. Convention: a song row whose key
+            // is `<base>_censored` is the clean re-cut of the song keyed
+            // `<base>`. Twins never play as their own list entries anywhere;
+            // they exist only to substitute. Handling all of this here —
+            // ahead of mapAndSort AND the cache write below — means every
+            // origin's localStorage cache only ever holds its final pools,
+            // so even the offline/cached path can't surface a flagged song
+            // on CG or double-play a twin elsewhere.
+            //   family-strict origin: explicit row → replaced by its twin
+            //     (twin's label/filename, ORIGINAL's position so the intro
+            //     sequence slot is preserved); no twin → dropped as before.
+            //   other origins: explicit row plays as-is; the twin is hidden.
+            //   orphan `_censored` row (its base key isn't in any list):
+            //     treated as a normal song — the admin evidently only
+            //     published the censored cut.
+            // A twin mistakenly flagged explicit itself is never substituted
+            // (that would defeat the point) — its base row just drops.
             const familyStrict = (typeof IS_CRAZYGAMES !== 'undefined' && IS_CRAZYGAMES);
-            const clean = (rows) => familyStrict ? rows.filter((r) => !r.explicit) : rows;
-            const introRows   = clean((INTRO_NAME   && Array.isArray(lists[INTRO_NAME]))   ? lists[INTRO_NAME]   : []);
-            const shuffleRows = clean((SHUFFLE_NAME && Array.isArray(lists[SHUFFLE_NAME])) ? lists[SHUFFLE_NAME] : []);
-            const creditsRows = clean((CREDITS_NAME && Array.isArray(lists[CREDITS_NAME])) ? lists[CREDITS_NAME] : []);
-            const menuRows    = clean((MENU_NAME    && Array.isArray(lists[MENU_NAME]))    ? lists[MENU_NAME]    : []);
+            const CENSORED_SUFFIX = '_censored';
+            const introRaw   = (INTRO_NAME   && Array.isArray(lists[INTRO_NAME]))   ? lists[INTRO_NAME]   : [];
+            const shuffleRaw = (SHUFFLE_NAME && Array.isArray(lists[SHUFFLE_NAME])) ? lists[SHUFFLE_NAME] : [];
+            const creditsRaw = (CREDITS_NAME && Array.isArray(lists[CREDITS_NAME])) ? lists[CREDITS_NAME] : [];
+            const menuRaw    = (MENU_NAME    && Array.isArray(lists[MENU_NAME]))    ? lists[MENU_NAME]    : [];
+            // Twin lookup spans the UNION of the four lists, so a twin
+            // attached to any one list covers its base song in all of them
+            // (forgiving of admin membership slips).
+            const isCensoredKey = (k) => typeof k === 'string'
+                && k.length > CENSORED_SUFFIX.length && k.endsWith(CENSORED_SUFFIX);
+            const allRows  = [].concat(introRaw, shuffleRaw, creditsRaw, menuRaw);
+            const baseKeys = new Set();
+            const twinByKey = {};
+            for (const r of allRows) {
+                if (!r || typeof r.key !== 'string') continue;
+                if (isCensoredKey(r.key)) twinByKey[r.key] = r;
+                else baseKeys.add(r.key);
+            }
+            const clean = (rows) => {
+                const out = [];
+                for (const r of rows) {
+                    if (!r) continue;
+                    // Twin of a published base song: never a standalone entry.
+                    if (isCensoredKey(r.key)
+                        && baseKeys.has(r.key.slice(0, -CENSORED_SUFFIX.length))) continue;
+                    if (familyStrict && r.explicit) {
+                        const twin = twinByKey[r.key + CENSORED_SUFFIX];
+                        if (twin && !twin.explicit) {
+                            out.push({
+                                key:      twin.key,
+                                label:    twin.label,
+                                filename: twin.filename,
+                                position: r.position,
+                                explicit: false
+                            });
+                        }
+                        continue;
+                    }
+                    out.push(r);
+                }
+                return out;
+            };
+            const introRows   = clean(introRaw);
+            const shuffleRows = clean(shuffleRaw);
+            const creditsRows = clean(creditsRaw);
+            const menuRows    = clean(menuRaw);
             // Defensive: don't wipe a populated cache with an empty API
             // response (could be a bad deploy on the admin side). If ALL
             // lists came back empty, keep the existing cached pools.

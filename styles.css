@@ -3178,6 +3178,18 @@ body.credits-rolling #potdSolveTransition.visible {
         font-size: clamp(0.7rem, 2.2vh, 0.9rem);
         border-radius: 0.4rem;
     }
+    /* Legal footer: this block's tuning predates the v0.63 footer, so
+       the base rule's flat 1.4rem margin-top (plus full-size links)
+       alone pushed the footer past the bottom edge on ~430px-tall
+       windows. Mirror the moderate block's vh-fluid clamps — measured
+       fit at 430px is exact; below ~420px the flex-start + scroll
+       fallback keeps the footer reachable. #menu prefix beats the base
+       .menu-legal-footer rule, which lives LATER in the file and would
+       otherwise win the source-order tie-break. */
+    #menu .menu-legal-footer {
+        margin-top: clamp(0.2rem, 0.9vh, 1.4rem);
+        font-size: clamp(0.6rem, 1.5vh, 0.85rem);
+    }
     #menu .menuSubtitle {
         font-size: clamp(0.7rem, 2.6vh, 0.9rem);
         margin: 0.2rem 0 0.3rem;
