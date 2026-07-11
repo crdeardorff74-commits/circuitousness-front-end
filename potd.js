@@ -191,6 +191,15 @@ const Potd = (() => {
     function showMenu() {
         if (hudEl)  hudEl.classList.remove('visible');
         if (menuEl) menuEl.classList.add('visible');
+        // Wipe the finished puzzle from the canvas so it doesn't linger
+        // behind the translucent menu (body background image untouched —
+        // it lives on documentElement, not the canvas). Mirrors
+        // marathon.js goToMenu; PotD returns here without passing through
+        // that function.
+        if (typeof Maze !== 'undefined' && Maze.clear) {
+            Maze.clear();
+            if (typeof Render !== 'undefined' && Render.draw) Render.draw();
+        }
         refreshMenuIndicators();
     }
 

@@ -350,6 +350,17 @@ const Marathon = (() => {
         state = STATE.MENU;
         stopTimer();
         clearTransition();
+        // Wipe the last puzzle from the canvas — the menu overlays it
+        // translucently and a lingering board reads as clutter. Only the
+        // canvas: the body background image lives on documentElement
+        // (Render.applyBodyBackground), and Render.draw on a cleared Maze
+        // just blanks the canvas over it. game.js's undo() bails on a null
+        // grid, so a stray Ctrl+Z at the menu can't resurrect the board.
+        // PotD's own menu return (potd.js showMenu) mirrors this wipe.
+        if (typeof Maze !== 'undefined' && Maze.clear) {
+            Maze.clear();
+            if (typeof Render !== 'undefined' && Render.draw) Render.draw();
+        }
         // The one-time auto-start run (if that's what we're leaving) is
         // over — from here on the player navigates normally. Hiding the
         // button here (not just clearing the flag) covers PotD, whose

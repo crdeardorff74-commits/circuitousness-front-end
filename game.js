@@ -478,6 +478,11 @@
             // rewind a puzzle the player has already solved and is leaving.
             if (typeof Marathon !== 'undefined' && Marathon.isInTransition && Marathon.isInTransition()) return;
             if (typeof Potd !== 'undefined' && Potd.isInSolveTransition && Potd.isInSolveTransition()) return;
+            // No live puzzle (menu wiped it via Maze.clear) — a stray Ctrl+Z
+            // here would loadSnapshot the finished board right back onto the
+            // canvas behind the menu. The stack itself is reset by the next
+            // puzzle's resetUndo, so bailing (not clearing) is enough.
+            if (!Maze.grid) return;
             if (undoStack.length === 0) return;
 
             const entry = undoStack.pop();
