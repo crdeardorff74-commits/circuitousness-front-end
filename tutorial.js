@@ -480,6 +480,12 @@ const Tutorial = (function () {
         document.addEventListener('keydown', onKeyDown, true);
         window.addEventListener('resize', onResize);
 
+        // CrazyGames: the tutorial modal suspends play without ending the
+        // run (only reachable mid-game on the first-visit auto-start).
+        // overlayPause no-ops when gameplay isn't active, so menu-opened
+        // tutorials report nothing. No-op off-CG.
+        if (typeof CgSdk !== 'undefined' && CgSdk.overlayPause) CgSdk.overlayPause();
+
         // Wait a frame so the canvas has its display size, then bind the
         // renderer to the tutorial canvas and lay out the grid.
         requestAnimationFrame(function () {
@@ -517,6 +523,10 @@ const Tutorial = (function () {
 
         Render.endTutorial();
         if (overlay) overlay.hidden = true;
+
+        // Resume the CrazyGames gameplay signal if open() paused it (no-op
+        // off-CG and when the tutorial was opened from the menu).
+        if (typeof CgSdk !== 'undefined' && CgSdk.overlayResume) CgSdk.overlayResume();
     }
 
     function onKeyDown(ev) {

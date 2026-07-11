@@ -361,6 +361,8 @@ const Marathon = (() => {
             Maze.clear();
             if (typeof Render !== 'undefined' && Render.draw) Render.draw();
         }
+        // CrazyGames engagement signal (no-op off-CG / when not playing).
+        if (typeof CgSdk !== 'undefined') CgSdk.gameplayStop();
         // The one-time auto-start run (if that's what we're leaving) is
         // over — from here on the player navigates normally. Hiding the
         // button here (not just clearing the flag) covers PotD, whose
@@ -796,6 +798,10 @@ const Marathon = (() => {
         // the player quits. Marathon starts its per-puzzle clock here.
         if (!isPractice) startTimer();
         if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
+        // CrazyGames engagement signal (no-op off-CG). Deduped internally, so
+        // firing on every puzzle of a run is fine; the state-PLAYING guard
+        // above keeps replays (state REPLAYING) from ever reporting.
+        if (typeof CgSdk !== 'undefined') CgSdk.gameplayStart();
         // Background shuffle has already fired at the START of the build
         // (in game.js startPuzzle callback) so the new image is visible
         // throughout the "Building puzzle…" wait — not after it.
@@ -1031,6 +1037,9 @@ const Marathon = (() => {
         if (typeof Tracking !== 'undefined' && Tracking.recordFinish) Tracking.recordFinish();
         // Share popup gate (Share module owns the dismissal + count).
         if (typeof Share !== 'undefined' && Share.maybeShowPopup) Share.maybeShowPopup();
+        // CrazyGames engagement signal (no-op off-CG): the run is over — the
+        // game-over card / credits roll isn't active play.
+        if (typeof CgSdk !== 'undefined') CgSdk.gameplayStop();
         // Zero-solve game-overs aren't eligible to rank, so fire the
         // "no rank" SFX immediately. For non-zero scores we wait for
         // the leaderboard fetch in renderGameOver — the right SFX
@@ -1320,6 +1329,11 @@ const Marathon = (() => {
             if (typeof Sfx !== 'undefined') {
                 Sfx.play(rank === 1 ? 'audience_cheer_long' : 'audience_cheer');
             }
+            // CrazyGames page-level celebration (confetti; no-op off-CG).
+            // Their docs say to use happytime sparingly — ranking on the
+            // global top-20 board is exactly the "reaching a highscore"
+            // moment they describe, and it's rare by construction.
+            if (typeof CgSdk !== 'undefined') CgSdk.happytime();
         } else if (typeof Sfx !== 'undefined') {
             // Ineligible: same SFX as the zero-solve path. Leaves the row
             // hidden / no rank text — the player still sees score + time.

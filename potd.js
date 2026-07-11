@@ -200,6 +200,8 @@ const Potd = (() => {
             Maze.clear();
             if (typeof Render !== 'undefined' && Render.draw) Render.draw();
         }
+        // CrazyGames engagement signal (no-op off-CG / when not playing).
+        if (typeof CgSdk !== 'undefined') CgSdk.gameplayStop();
         refreshMenuIndicators();
     }
 
@@ -1240,6 +1242,11 @@ const Potd = (() => {
         showHud();
         hideBanner();
         state = STATE.PLAYING;
+        // CrazyGames engagement signal (no-op off-CG). Real plays only —
+        // replay-watching never routes through this block (it goes via the
+        // leaderboard's replay flow), matching how Tracking.recordStart
+        // above only fires for genuine attempts.
+        if (typeof CgSdk !== 'undefined') CgSdk.gameplayStart();
         // First-play educational tooltips:
         //   • potdHint — appears immediately so the player reads the
         //     hint-disqualification rule BEFORE they're tempted to use
