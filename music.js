@@ -145,6 +145,13 @@ const Music = (function () {
     let audio        = null;   // single reusable HTMLAudioElement
     let shouldPlay   = false;  // true while in a Marathon game session
     let muted        = false;  // mirror of Settings.isMusicMuted()
+    // Platform-level mute (CrazyGames container mute button, via cg-sdk.js).
+    // NOT persisted and independent of the player's own mute/volume settings
+    // — per CG rules it takes priority over in-game audio toggles, which is
+    // guaranteed structurally: every point that applies volume to the audio
+    // element routes through effectiveVolume(), so no in-game toggle can
+    // raise the output while this is set. Off-CG nothing ever sets it.
+    let externalMuted = false;
     let paused       = false;  // user-initiated pause via the now-playing ⏸ button
     let volume       = 0.6;    // 0..1, mirror of Settings.musicVolume slider
 
@@ -789,7 +796,7 @@ const Music = (function () {
         if (muted) return;
         const a = ensureAudio();
         a.src = song.url;
-        a.volume = volume;
+        a.volume = effectiveVolume();
         const p = a.play();
         if (p && p.catch) p.catch(function (err) {
             // Autoplay rejection (no user gesture yet, iOS quirk, etc).
@@ -973,12 +980,25 @@ const Music = (function () {
     function isPlaying()      { return shouldPlay && !muted && !paused && !!currentSong; }
     function getCurrentSong() { return currentSong; }
     function getVolume()      { return volume; }
+    // Output volume = player's setting, hard-floored to 0 while the
+    // platform (CrazyGames container) has the game muted.
+    function effectiveVolume() { return externalMuted ? 0 : volume; }
     function setVolume(v) {
         volume = Math.max(0, Math.min(1, v));
         // Apply live so dragging the slider mid-song changes loudness
         // immediately rather than waiting for the next track.
         if (audio) {
-            try { audio.volume = volume; } catch (e) {}
+            try { audio.volume = effectiveVolume(); } catch (e) {}
+        }
+    }
+    // CrazyGames container mute (see externalMuted above). Volume-0 rather
+    // than pause: playback state machines (intro progress, scripted replay
+    // timelines, Now Playing UI) keep running untouched, and unmuting
+    // restores sound instantly mid-song.
+    function setExternalMuted(b) {
+        externalMuted = !!b;
+        if (audio) {
+            try { audio.volume = effectiveVolume(); } catch (e) {}
         }
     }
     function setOnSongChange(cb) { onSongChange = (typeof cb === 'function') ? cb : null; }
@@ -1157,6 +1177,7 @@ const Music = (function () {
         start:                 start,
         stop:                  stop,
         setMuted:              setMuted,
+        setExternalMuted:      setExternalMuted,
         isMuted:               isMuted,
         isPaused:              isPaused,
         isPlaying:             isPlaying,

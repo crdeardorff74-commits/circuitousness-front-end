@@ -115,6 +115,20 @@ const CgSdk = (() => {
             if (playing && !pausedByOverlay) {
                 call(() => sdk.game.gameplayStart());
             }
+            // Container mute button → the audio modules' external-mute
+            // layer (volume-0 override that outranks the in-game toggles,
+            // per CG's rule, without touching the player's saved
+            // settings). Initial state first — the player may have muted
+            // the container on a previous game — then live changes via
+            // the settings listener. Requires the "supports muting audio
+            // through SDK" box CHECKED on the CG submission form.
+            const applyMuteSetting = (settings) => {
+                const m = !!(settings && settings.muteAudio);
+                if (typeof Music !== 'undefined' && Music.setExternalMuted) Music.setExternalMuted(m);
+                if (typeof Sfx !== 'undefined' && Sfx.setExternalMuted) Sfx.setExternalMuted(m);
+            };
+            call(() => applyMuteSetting(sdk.game.settings));
+            call(() => sdk.game.addSettingsChangeListener(applyMuteSetting));
         };
         document.head.appendChild(s);
     }

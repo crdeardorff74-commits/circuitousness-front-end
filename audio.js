@@ -55,6 +55,12 @@ const Sfx = (function () {
 
     let volume = 0.6;
     let muted  = false;
+    // Platform-level mute (CrazyGames container mute button, via cg-sdk.js).
+    // Not persisted, independent of the player's own SFX setting, and per
+    // CG rules it wins over in-game toggles — every play entry point gates
+    // on it, so unmuting SFX in Settings can't produce sound while the
+    // container is muted. Off-CG nothing ever sets it.
+    let externalMuted = false;
     // Sub-mute that gates the audience-flavored SFX only (anything matching
     // audience_* or applause | applause_*). True = play normally; false =
     // play() silently no-ops for those types. Settings module pushes the
@@ -263,7 +269,7 @@ const Sfx = (function () {
     // nothing. The bag position is only advanced for the type that
     // actually plays — throttled types don't burn through their shuffle.
     function play(spec, skipThrottle) {
-        if (muted) return null;
+        if (muted || externalMuted) return null;
         const allTypes = Array.isArray(spec) ? spec : [spec];
         const now = Date.now();
         const eligible = [];
@@ -304,7 +310,7 @@ const Sfx = (function () {
     const loops = new Map();   // key → entry from startSource
     function playLoop(key, spec) {
         if (loops.has(key)) return;
-        if (muted) return;
+        if (muted || externalMuted) return;
         const allTypes = Array.isArray(spec) ? spec : [spec];
         // Loops are sustained state indicators (e.g. the path-overlap
         // glitch) — they should fire whenever the state re-enters,
@@ -340,7 +346,7 @@ const Sfx = (function () {
     const CLICK_VOLUME    = 0.18;   // relative to master `volume`
     const CLICK_DURATION  = 0.03;   // seconds
     function click() {
-        if (muted) return;
+        if (muted || externalMuted) return;
         const ctx = getAudioCtx();
         if (!ctx) return;
         // Generate a one-shot white-noise buffer the length of the click.
@@ -374,7 +380,7 @@ const Sfx = (function () {
     const GATE_CLICK_VOLUME   = 0.22;
     const GATE_CLICK_DURATION = 0.06;
     function gateClick() {
-        if (muted) return;
+        if (muted || externalMuted) return;
         const ctx = getAudioCtx();
         if (!ctx) return;
         const len    = Math.max(1, Math.floor(ctx.sampleRate * GATE_CLICK_DURATION));
@@ -402,6 +408,18 @@ const Sfx = (function () {
     function setMuted(b)  {
         muted = !!b;
         if (muted) stopAllLoops();
+    }
+    // CrazyGames container mute (see externalMuted above). Mirrors
+    // setMuted's loop handling and additionally fades in-flight one-shots
+    // so the mute lands immediately, not at the next cue. Loops don't
+    // auto-resume on unmute — same semantics as the in-game SFX toggle,
+    // and the loop re-fires when its game state next re-enters.
+    function setExternalMuted(b) {
+        externalMuted = !!b;
+        if (externalMuted) {
+            stopAllLoops();
+            fadeOneShots();
+        }
     }
     function setAudienceReactionsEnabled(b) {
         audienceReactionsEnabled = !!b;
@@ -445,6 +463,7 @@ const Sfx = (function () {
         gateClick: gateClick,
         setVolume: setVolume,
         setMuted: setMuted,
+        setExternalMuted: setExternalMuted,
         // Read-back for the solve-audio tracking stat (mirrors Music.isMuted).
         isMuted: function () { return muted; },
         setAudienceReactionsEnabled: setAudienceReactionsEnabled,
