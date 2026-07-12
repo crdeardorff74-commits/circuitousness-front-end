@@ -806,14 +806,17 @@ const Marathon = (() => {
         // above keeps replays (state REPLAYING) from ever reporting.
         if (typeof CgSdk !== 'undefined') CgSdk.gameplayStart();
         // One-time PotD nudge for the first-visit auto-start run: fires as
-        // puzzle 2 appears — i.e., right after the player's FIRST solve, the
-        // moment they're demonstrably hooked. This is the retention pitch the
-        // auto-start otherwise hides (a menu-skipping first-timer never sees
-        // the Puzzle of the Day exists). The action jumps straight into
+        // puzzle 3 appears — i.e., after the player's SECOND solve. This is
+        // the retention pitch the auto-start otherwise hides (a menu-skipping
+        // first-timer never sees the Puzzle of the Day exists). After the
+        // FIRST solve felt too aggressive given the "📅 Daily & More" button
+        // is already advertising the daily on-screen the whole run — two
+        // solves = demonstrably hooked, and the pitch lands as a suggestion
+        // rather than an interruption. The action jumps straight into
         // today's 1-path daily — same type they're already solving: tear the
-        // Zen run down, flip the picker, start the slot. Level-2-of-first-run
+        // Zen run down, flip the picker, start the slot. Level-3-of-first-run
         // happens once ever; Tooltip.showOnce's seen-flag backstops even that.
-        if (isFirstRunAutoStart && level === 2
+        if (isFirstRunAutoStart && level === 3
             && typeof Tooltip !== 'undefined' && Tooltip.showOnce) {
             Tooltip.showOnce('potdNudge', I18n.t('tooltip.potdNudge'), {
                 label: I18n.t('mode.potd.name'),

@@ -742,6 +742,22 @@ html.is-crazygames .shareRow,
 html.is-crazygames #shareOverlay {
     display: none !important;
 }
+/* Inverse of .cg-hide: content that exists ONLY on CrazyGames origins.
+   Currently the plain-text credits URL that stands in for the clickable
+   dev-site link there — CG's rules explicitly allow dev-site references
+   ("Community links (discord, dev website, ...)"), but the clickable
+   anchor risks their no-cross-promotion rule since the site is one click
+   from playable versions. `revert` restores each element's UA default
+   (inline for span, block for div), so the utility isn't span-specific. */
+.cg-only { display: none !important; }
+html.is-crazygames .cg-only { display: revert !important; }
+/* The stand-in inherits the credits-link size but reads as plain text —
+   no link color, no pointer — because it isn't one. */
+.credits-url {
+    font-size: 16px;
+    color: #8fa3c0;
+    margin-top: 15px;
+}
 
 /* ----- Main menu ----- */
 #menu {
