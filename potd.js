@@ -30,10 +30,12 @@
  * Puzzle sizing: each axis is rolled independently in [MIN, MAX], then
  * the pair is rejection-sampled so the average (W+H)/2 lands within a
  * [AVG_MIN, AVG_MAX] window — a FLOOR (no tiny/easy puzzles) AND a
- * ceiling (stays approachable as a daily exercise). Singular: axes
- * [8,12], avg [9,12]. Quad: even sub-tile axes [12,18] (= 6–9
- * quad-tiles), avg [14,18] sub-tiles (= 7–9 quad-tiles). Quad rounds to
- * even because each player-facing quad-tile is a 2×2 group of sub-tiles.
+ * ceiling (stays approachable as a daily exercise). 3-4 path slots —
+ * singular: axes [8,12], avg [9,12]; quad: even sub-tile axes [12,18]
+ * (= 6–9 quad-tiles), avg [14,18] sub-tiles (= 7–9 quad-tiles). 1-2
+ * path slots run a ~75% LOW tier of those ranges (see the SIZE_*_LOW
+ * constants). Quad rounds to even because each player-facing quad-tile
+ * is a 2×2 group of sub-tiles.
  *
  * No time cap by design — PotD is the "take your time, solve it cleanly"
  * mode. The server's MAX_SESSION_MS (6h) bounds the token; longer than
@@ -61,7 +63,7 @@ const Potd = (() => {
     // group of sub-tiles.
     //
     // Singular: axes [8,12], average [9,12] → grids 8×10 / 9×9 at the
-    // small end up to 12×12.
+    // small end up to 12×12. (3-4 path slots only — see the LOW tier.)
     const SIZE_MIN          = 8;
     const SIZE_MAX          = 12;
     const SIZE_AVG_MIN      = 9;
@@ -73,6 +75,20 @@ const Potd = (() => {
     const SIZE_MAX_QUAD     = 18;
     const SIZE_AVG_MIN_QUAD = 14;
     const SIZE_AVG_MAX_QUAD = 18;
+    // LOW tier: 1-path and 2-path slots run ~75% of the ranges above —
+    // fewer paths mean less signal per cell, so full-size grids dragged.
+    // Singular: axes [6,9], avg [7,9] (floor rejects only 6×6/6×7-ish
+    // rolls, mirroring the full tier's no-tiny-puzzles rule). Quad: even
+    // axes [10,14], avg [11,14] (floor rejects only 10×10). The avg
+    // ceilings keep max×max legal, same as the full tier.
+    const SIZE_MIN_LOW          = 6;
+    const SIZE_MAX_LOW          = 9;
+    const SIZE_AVG_MIN_LOW      = 7;
+    const SIZE_AVG_MAX_LOW      = 9;
+    const SIZE_MIN_QUAD_LOW     = 10;
+    const SIZE_MAX_QUAD_LOW     = 14;
+    const SIZE_AVG_MIN_QUAD_LOW = 11;
+    const SIZE_AVG_MAX_QUAD_LOW = 14;
 
     // ── DOM refs (populated in init) ──
     let menuEl, hudEl, buildBannerEl, hudType, hudLevel, hudTimerVal, hudHintBtn;
@@ -128,14 +144,16 @@ const Potd = (() => {
         return { quadMode: slot[0] === 'q', pathCount: parseInt(slot[1], 10) };
     }
 
-    function generateDims(quadMode) {
+    function generateDims(quadMode, pathCount) {
         // Per-mode physical dim range + average window. Quad sits above
         // singular so it stays the meatier mode (its sub-tile dims map to
-        // half as many player-facing quad-tiles).
-        const min    = quadMode ? SIZE_MIN_QUAD     : SIZE_MIN;
-        const max    = quadMode ? SIZE_MAX_QUAD     : SIZE_MAX;
-        const avgMin = quadMode ? SIZE_AVG_MIN_QUAD : SIZE_AVG_MIN;
-        const avgMax = quadMode ? SIZE_AVG_MAX_QUAD : SIZE_AVG_MAX;
+        // half as many player-facing quad-tiles). 1-2 path slots use the
+        // ~75% LOW tier (see the constants above).
+        const low    = (pathCount | 0) <= 2;
+        const min    = quadMode ? (low ? SIZE_MIN_QUAD_LOW     : SIZE_MIN_QUAD)     : (low ? SIZE_MIN_LOW     : SIZE_MIN);
+        const max    = quadMode ? (low ? SIZE_MAX_QUAD_LOW     : SIZE_MAX_QUAD)     : (low ? SIZE_MAX_LOW     : SIZE_MAX);
+        const avgMin = quadMode ? (low ? SIZE_AVG_MIN_QUAD_LOW : SIZE_AVG_MIN_QUAD) : (low ? SIZE_AVG_MIN_LOW : SIZE_AVG_MIN);
+        const avgMax = quadMode ? (low ? SIZE_AVG_MAX_QUAD_LOW : SIZE_AVG_MAX_QUAD) : (low ? SIZE_AVG_MAX_LOW : SIZE_AVG_MAX);
         // Rejection sample: pick W and H in [min, max], re-roll until the
         // average (W+H)/2 falls within [avgMin, avgMax]. The floor stops
         // a puzzle from landing small on both axes (no more easy 6×6s);
@@ -796,7 +814,7 @@ const Potd = (() => {
     // gen during play doesn't clobber the player's current puzzle.
     async function generateOneViaWorker(slot) {
         const cfg = slotConfig(slot);
-        const dims = generateDims(cfg.quadMode);
+        const dims = generateDims(cfg.quadMode, cfg.pathCount);
         const mazeSnap = await requestWorkerMaze({
             rows: dims.h, cols: dims.w,
             pathCount: cfg.pathCount, quadMode: cfg.quadMode,
@@ -855,7 +873,7 @@ const Potd = (() => {
     // pre-iteration behavior.
     async function generateOneOnMain(slot) {
         const cfg = slotConfig(slot);
-        const dims = generateDims(cfg.quadMode);
+        const dims = generateDims(cfg.quadMode, cfg.pathCount);
         Maze.setQuadMode(cfg.quadMode);
         Maze.setPathCount(cfg.pathCount);
         Maze.setDimensions(dims.w, dims.h);

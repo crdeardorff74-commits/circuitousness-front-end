@@ -2,7 +2,11 @@
  * tooltip.js — once-each first-play educational tooltips.
  *
  * Public API:
- *   Tooltip.showOnce(key, message)
+ *   Tooltip.showOnce(key, message, action?)
+ *     action — optional { label, onClick }: renders a second button beside
+ *     Got It (e.g. the first-run PotD nudge's "jump into today's puzzle").
+ *     Clicking it marks the tip seen, dismisses, THEN runs onClick — that
+ *     order lets onClick tear game state down without racing the card.
  *   Tooltip.cancelPending(key)   — remove a queued (but not-yet-shown) tip
  *
  * Each `key` corresponds to a localStorage flag (`<slug>_tooltipSeen_<key>`)
@@ -31,18 +35,20 @@ const Tooltip = (function () {
     // how to solve, so they stay.)
     const SUPPRESSED_AFTER_TUTORIAL = { lockTile: 1, twinStraightLock: 1 };
 
-    let card     = null;
-    let textEl   = null;
-    let gotItBtn = null;
-    // Queue of { key, message } pending display. The head is whatever's
-    // currently on-screen; the tail waits its turn.
+    let card      = null;
+    let textEl    = null;
+    let gotItBtn  = null;
+    let actionBtn = null;
+    // Queue of { key, message, action } pending display. The head is
+    // whatever's currently on-screen; the tail waits its turn.
     const queue = [];
     let showing = false;
-    // Click handler for the currently-displayed tip's Got It button.
-    // Tracked at module scope so dismissActive() can detach it whether
+    // Click handlers for the currently-displayed tip's buttons.
+    // Tracked at module scope so dismissActive() can detach them whether
     // the dismissal comes from the click itself or from an external
     // caller (puzzle-end transitions).
-    let currentGotItHandler = null;
+    let currentGotItHandler  = null;
+    let currentActionHandler = null;
 
     function isSeen(key) {
         try {
@@ -64,12 +70,12 @@ const Tooltip = (function () {
     // Public — schedule a tooltip if it hasn't been seen and isn't
     // already in the queue (dedupe by key so repeated calls during a
     // single play don't stack duplicates).
-    function showOnce(key, message) {
+    function showOnce(key, message, action) {
         if (isSeen(key)) return;
         for (const entry of queue) {
             if (entry.key === key) return;
         }
-        queue.push({ key: key, message: message });
+        queue.push({ key: key, message: message, action: action || null });
         processQueue();
     }
 
@@ -89,6 +95,28 @@ const Tooltip = (function () {
         if (!card || !textEl || !gotItBtn) return;  // DOM not ready
         const entry = queue[0];   // peek; shift on Got-It dismiss
         textEl.textContent = entry.message;
+        // Optional action button — only tips that carry an action show it
+        // (actionBtn may be null on stale cached index.html; typeof-guard
+        // style keeps the plain-tip path working regardless).
+        if (actionBtn) {
+            if (entry.action && entry.action.label) {
+                actionBtn.textContent = entry.action.label;
+                actionBtn.hidden = false;
+                currentActionHandler = function (e) {
+                    if (e) e.stopPropagation();
+                    const onClick = entry.action.onClick;
+                    // Mark seen + dismiss FIRST so onClick can navigate /
+                    // tear down game state without the card lingering.
+                    dismissActive(true);
+                    if (typeof onClick === 'function') {
+                        try { onClick(); } catch (err) { /* action failure shouldn't break the queue */ }
+                    }
+                };
+                actionBtn.addEventListener('click', currentActionHandler);
+            } else {
+                actionBtn.hidden = true;
+            }
+        }
         // styles.css uses #tooltipCard[hidden] { display: none } so
         // toggling .hidden cleanly shows/hides without inline-style
         // overrides.
@@ -122,6 +150,11 @@ const Tooltip = (function () {
             gotItBtn.removeEventListener('click', currentGotItHandler);
             currentGotItHandler = null;
         }
+        if (currentActionHandler && actionBtn) {
+            actionBtn.removeEventListener('click', currentActionHandler);
+            currentActionHandler = null;
+        }
+        if (actionBtn) actionBtn.hidden = true;
         card.hidden = true;
         showing = false;
         if (markAsSeen) {
@@ -137,9 +170,10 @@ const Tooltip = (function () {
     }
 
     function init() {
-        card     = document.getElementById('tooltipCard');
-        textEl   = document.getElementById('tooltipText');
-        gotItBtn = document.getElementById('tooltipGotItBtn');
+        card      = document.getElementById('tooltipCard');
+        textEl    = document.getElementById('tooltipText');
+        gotItBtn  = document.getElementById('tooltipGotItBtn');
+        actionBtn = document.getElementById('tooltipActionBtn');
         // Anything that called showOnce before DOMContentLoaded queued
         // but couldn't paint; drain now that we have DOM refs.
         processQueue();

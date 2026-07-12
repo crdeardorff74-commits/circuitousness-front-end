@@ -143,17 +143,19 @@
             for (const type of MARATHON.TYPES) {
                 const quad   = type[0] === 'q';
                 const paths  = parseInt(type[1], 10) || 1;
-                // Path-count-aware min dim: 4-path needs more grid than the
-                // 1/2/3-path baseline (see MARATHON.minDimFor in config.js).
-                // Without this, starter pre-gen for s4/q4 would use the baseline
-                // 8/6 dims that the strict-mode generator in maze.js will reject
-                // for not fitting 4 paths — forcing a long retry loop right when
-                // the player is most likely to be waiting.
-                const minDim = MARATHON.minDimFor(quad, paths);
-                // dimsForLevel(1, quad, paths) returns logical {rows:minDim, cols:minDim};
+                // Path-count-aware start dims: 4-path needs more grid than
+                // the 1/2/3-path baseline, and 1-path singular Marathon
+                // starts at 5×5 (see MARATHON.startDimsFor in config.js) —
+                // the starter build must match dimsForLevel(1, ...) exactly
+                // or every s1 game-start misses this cache. Marathon
+                // variant only (no `practice` arg): Practice starts are
+                // deliberately not pre-genned (v0.60 decision — they're
+                // small enough to build near-instantly on demand).
+                const startDims = MARATHON.startDimsFor(quad, paths);
+                // dimsForLevel(1, ...) returns these logical dims;
                 // upcomingDims/startPuzzle convert ×2 for quad → PHYSICAL dims.
-                const rows = quad ? minDim * 2 : minDim;
-                const cols = rows;
+                const rows = quad ? startDims.rows * 2 : startDims.rows;
+                const cols = quad ? startDims.cols * 2 : startDims.cols;
                 out.push({
                     type:      type,
                     rows:      rows,

@@ -2980,46 +2980,50 @@ body.credits-rolling #potdSolveTransition.visible {
    Segmented row of all three modes, always visible on the menu
    (replaced the TANTЯO chip + popup — with only three modes,
    hiding two behind a popup cost more discovery than it saved
-   in space). Same glassy gradient + blue accent family as the
-   old chip so the menu's look stays consistent. */
+   in space). Styled as the SAME underline-tab strip as the
+   leaderboard's PotD/Marathon tabs (#leaderboardTabs .lbTab):
+   the pill-button first draft read too much like the game-type
+   cards below it to register as a selector. The two surfaces
+   even share the mode.* i18n labels, so matching visuals makes
+   them read as one control. */
 
 .menu-mode-tabs {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: max(0.6vh, 5px);
+    gap: 0.4rem;
     margin: 0 auto;
+    width: clamp(18rem, 50vw, 30rem);
     max-width: 95%;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     pointer-events: auto;
 }
 .menu-mode-tab {
-    padding: max(0.9vh, 8px) max(1.2vw, 12px);
-    font-size: max(1.6vh, 13px);
-    font-weight: 600;
-    font-family: inherit;
-    background: linear-gradient(180deg, #2a2a3a 0%, #1a1a2a 100%);
-    color: #c9cede;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: max(0.8vh, 6px);
+    flex: 1;
+    padding: clamp(0.18rem, 0.65vh, 0.35rem) 0.6rem;
+    background: transparent;
+    color: rgba(220, 220, 220, 0.55);
+    border: none;
+    border-bottom: 2px solid transparent;
     cursor: pointer;
-    transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: clamp(0.9rem, 1.8vw, 1.05rem);
+    letter-spacing: 0.02em;
+    /* Tabs include emoji + label — keep on one line (lbTab parity). */
     white-space: nowrap;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 /* iOS-Safari first-tap-hovers fix: hover styling only where a real
    pointer exists, so the first tap fires the click instead of a
    sticky hover state. */
 @media (hover: hover) and (pointer: fine) {
     .menu-mode-tab:hover {
-        background: linear-gradient(180deg, #3a3a4a 0%, #2a2a3a 100%);
-        border-color: rgba(110, 181, 255, 0.5);
-        color: #fff;
+        color: rgba(220, 220, 220, 0.85);
+        background: rgba(255, 255, 255, 0.03);
     }
 }
 .menu-mode-tab.selected {
-    background: linear-gradient(180deg, #2e3d5e 0%, #1e2740 100%);
-    border-color: rgba(110, 181, 255, 0.65);
-    color: #fff;
-    box-shadow: 0 0 max(1vh, 8px) rgba(110, 181, 255, 0.28);
+    color: rgba(255, 215, 0, 0.95);
+    border-bottom-color: rgba(255, 215, 0, 0.75);
 }
 
 /* Modal overlay + container */
@@ -3165,9 +3169,19 @@ body.credits-rolling #potdSolveTransition.visible {
     margin: 0 0 0.8rem 0;
     grid-column: 2;
 }
-#tooltipCard #tooltipGotItBtn {
+/* Button row: optional per-tip action button + the Got it! dismiss.
+   The row (not the buttons) owns the grid placement so one or two
+   buttons lay out the same; flex-wrap covers long localized action
+   labels on narrow cards. */
+#tooltipCard .tooltipBtnRow {
     grid-column: 2;
-    justify-self: end;     /* right-align the button within its grid cell */
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+#tooltipCard #tooltipGotItBtn,
+#tooltipCard #tooltipActionBtn {
     background: rgba(255, 215, 0, 0.15);
     color: rgba(255, 215, 0, 0.95);
     border: 1px solid rgba(255, 215, 0, 0.55);
@@ -3179,9 +3193,17 @@ body.credits-rolling #potdSolveTransition.visible {
     cursor: pointer;
     transition: background 0.12s ease, border-color 0.12s ease;
 }
-#tooltipCard #tooltipGotItBtn:hover {
+#tooltipCard #tooltipGotItBtn:hover,
+#tooltipCard #tooltipActionBtn:hover {
     background: rgba(255, 215, 0, 0.28);
     border-color: rgba(255, 215, 0, 0.85);
+}
+/* The action is the tip's CTA — filled stronger than the dismiss so the
+   eye lands on it first. No display property, so the [hidden] attribute
+   (default state; tooltip.js unhides per-tip) keeps working. */
+#tooltipCard #tooltipActionBtn {
+    background: rgba(255, 215, 0, 0.30);
+    border-color: rgba(255, 215, 0, 0.8);
 }
 @keyframes tooltipCardFadeIn {
     0%   { opacity: 0; transform: translateY(-0.6rem) scale(0.96); }
@@ -3235,16 +3257,14 @@ body.credits-rolling #potdSolveTransition.visible {
         font-size: clamp(1.3rem, 8vh, 2.2rem);
         margin-bottom: 0.2rem;
     }
-    /* Mode tabs: trim padding + font so the three-button row takes
-       ~30px instead of ~40px on a 390px-tall landscape viewport,
-       freeing room for the puzzle thumbnails below. Verbose locales
-       may still wrap the row to two lines here — flex-wrap handles
-       it and the #menu scroll fallback covers the worst case. */
-    .menu-mode-tabs { gap: 0.3rem; }
+    /* Mode tabs: trim padding + font so the underline-tab strip takes
+       ~24px instead of ~32px on a 390px-tall landscape viewport,
+       freeing room for the puzzle thumbnails below. Mirrors the
+       leaderboard's own .lbTab squeeze rules (same visual language). */
+    .menu-mode-tabs { gap: 0.2rem; }
     .menu-mode-tab {
-        padding: 0.3rem 0.6rem;
-        font-size: clamp(0.7rem, 2.2vh, 0.9rem);
-        border-radius: 0.4rem;
+        padding: 0.25rem 0.4rem;
+        font-size: clamp(0.7rem, 2.2vh, 0.85rem);
     }
     /* Legal footer: this block's tuning predates the v0.63 footer, so
        the base rule's flat 1.4rem margin-top (plus full-size links)

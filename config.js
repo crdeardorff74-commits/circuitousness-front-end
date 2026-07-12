@@ -157,12 +157,15 @@ const MARATHON = {
     MIN_DIM_QUAD:    4,
     // Practice mode starts smaller and gentler than Marathon — new players
     // land in Practice (it's the default mode), so singular puzzles start
-    // well below Marathon's flat 8×8. The floor scales with path count so
-    // more paths get more room: indexed by pathCount-1 → 1-path 4×4,
-    // 2-path 6×6, 3-path 8×8. 4-path is NOT here — it keeps the generator-
-    // mandated MIN_DIM_SINGULAR_4PATH (10×10) floor regardless of mode, so
-    // the strict 4-path generator has room for all 8 endpoints. Only the
-    // SINGULAR floor is lowered; quad already starts at 4 (MIN_DIM_QUAD).
+    // well below Marathon's baseline. The floor scales with path count so
+    // more paths get more room: indexed by pathCount-1 → 2-path 6×6,
+    // 3-path 8×8. The 1-path entry is superseded by startDimsFor's
+    // asymmetric 4×5 practice start (below) — kept only as the square
+    // fallback should that override ever be removed. 4-path is NOT here —
+    // it keeps the generator-mandated MIN_DIM_SINGULAR_4PATH (10×10) floor
+    // regardless of mode, so the strict 4-path generator has room for all
+    // 8 endpoints. Only the SINGULAR floor is lowered; quad already starts
+    // at 4 (MIN_DIM_QUAD).
     MIN_DIM_PRACTICE_SINGULAR: [4, 6, 8],
     // Per-path-count minimum-dim override. 4-path puzzles need more grid
     // space than 1/2/3-path: 8 distinct perimeter endpoints + 4 DFS paths
@@ -189,6 +192,22 @@ const MARATHON = {
         }
         if (practice && !quadMode) return this.MIN_DIM_PRACTICE_SINGULAR[pathCount - 1];
         return quadMode ? this.MIN_DIM_QUAD : this.MIN_DIM_SINGULAR;
+    },
+    // Level-1 start dims as {rows, cols} (cols = width) — the square
+    // minDimFor baseline everywhere EXCEPT 1-path singular, which starts
+    // deliberately smaller/asymmetric:
+    //   Practice: 4 tall × 5 wide (the first-visit auto-start puzzle —
+    //     one extra column of breathing room over the old 4×4).
+    //   Marathon: 5×5 (was the flat 8×8 MIN_DIM_SINGULAR) — a gentler
+    //     ramp-in; the per-solve row/col growth still climbs from there.
+    // Callers: marathon.js dimsForLevel (adds growth per level) and
+    // game.js STARTER_PLAN (pre-gen at Marathon's level-1 dims).
+    startDimsFor: function (quadMode, pathCount, practice) {
+        if (!quadMode && pathCount === 1) {
+            return practice ? { rows: 4, cols: 5 } : { rows: 5, cols: 5 };
+        }
+        const d = this.minDimFor(quadMode, pathCount, practice);
+        return { rows: d, cols: d };
     },
 
     // Leaderboard storage. Top N entries shown per game type.

@@ -571,10 +571,13 @@ const Marathon = (() => {
     // 1-path baseline — fine for 1/2/3-path puzzles, but for 4-path that means
     // an 8×8 grid the generator can't reliably fill. All callers now pass it.
     function dimsForLevel(lev, quadMode, pathCount) {
-        // isPractice (module-level) lowers the singular floor to 4×4 for
-        // Practice runs — read here so every caller (startNextPuzzle, the
-        // HUD label, upcomingDims pre-gen lookahead) gets the right size.
-        const minDim = MARATHON.minDimFor(quadMode, pathCount, isPractice);
+        // isPractice (module-level) selects the gentler Practice start —
+        // read here so every caller (startNextPuzzle, the HUD label,
+        // upcomingDims pre-gen lookahead) gets the right size. Start dims
+        // come from MARATHON.startDimsFor and may be asymmetric (1-path
+        // singular: Practice 4×5, Marathon 5×5); growth then adds one
+        // axis per solve on top of whichever base each axis got.
+        const start = MARATHON.startDimsFor(quadMode, pathCount, isPractice);
         ensureGrowthSequence(lev);
         let rowGrowth = 0, colGrowth = 0;
         for (let i = 0; i < lev - 1; i++) {
@@ -582,8 +585,8 @@ const Marathon = (() => {
             else                           colGrowth++;
         }
         return {
-            rows: minDim + rowGrowth,
-            cols: minDim + colGrowth
+            rows: start.rows + rowGrowth,
+            cols: start.cols + colGrowth
         };
     }
 
@@ -802,6 +805,25 @@ const Marathon = (() => {
         // firing on every puzzle of a run is fine; the state-PLAYING guard
         // above keeps replays (state REPLAYING) from ever reporting.
         if (typeof CgSdk !== 'undefined') CgSdk.gameplayStart();
+        // One-time PotD nudge for the first-visit auto-start run: fires as
+        // puzzle 2 appears — i.e., right after the player's FIRST solve, the
+        // moment they're demonstrably hooked. This is the retention pitch the
+        // auto-start otherwise hides (a menu-skipping first-timer never sees
+        // the Puzzle of the Day exists). The action jumps straight into
+        // today's 1-path daily — same type they're already solving: tear the
+        // Zen run down, flip the picker, start the slot. Level-2-of-first-run
+        // happens once ever; Tooltip.showOnce's seen-flag backstops even that.
+        if (isFirstRunAutoStart && level === 2
+            && typeof Tooltip !== 'undefined' && Tooltip.showOnce) {
+            Tooltip.showOnce('potdNudge', I18n.t('tooltip.potdNudge'), {
+                label: I18n.t('mode.potd.name'),
+                onClick: function () {
+                    quitToMenu();
+                    if (typeof ModePicker !== 'undefined' && ModePicker.setMode) ModePicker.setMode('potd');
+                    if (typeof Potd !== 'undefined' && Potd.startPuzzle) Potd.startPuzzle('s1');
+                }
+            });
+        }
         // Background shuffle has already fired at the START of the build
         // (in game.js startPuzzle callback) so the new image is visible
         // throughout the "Building puzzle…" wait — not after it.

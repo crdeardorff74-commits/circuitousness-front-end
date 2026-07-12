@@ -243,7 +243,7 @@
             <div class="menu-mode-tabs" id="modeTabs" role="group" data-i18n-attr="aria-label:menu.mode" aria-label="MODE">
                 <button type="button" class="menu-mode-tab" data-mode="potd" data-i18n="mode.potd.name" aria-pressed="false">📅 Puzzle of the Day</button>
                 <button type="button" class="menu-mode-tab" data-mode="marathon" data-i18n="mode.marathon.name" aria-pressed="false">🏃 Marathon</button>
-                <button type="button" class="menu-mode-tab" data-mode="practice" data-i18n="mode.practice.name" aria-pressed="false">🧩 Practice</button>
+                <button type="button" class="menu-mode-tab" data-mode="practice" data-i18n="mode.practice.name" aria-pressed="false">🧘 Zen</button>
             </div>
             <p class="menuSubtitle" data-i18n="marathon.subtitle">Solve as many puzzles as you can before time runs out</p>
             <div class="menuSection">
@@ -433,7 +433,15 @@
                  tech. -->
             <span id="tooltipIcon" aria-hidden="true">ℹ</span>
             <p id="tooltipText"></p>
-            <button id="tooltipGotItBtn" type="button" data-i18n="tooltip.gotIt">Got it!</button>
+            <!-- Button row: the optional action button (label + handler set
+                 per-tip by tooltip.js — e.g. the first-run PotD nudge's
+                 jump-to-daily) plus the always-present Got it! dismiss.
+                 tooltip.js unhides the action button only for tips that
+                 carry an action. -->
+            <div class="tooltipBtnRow">
+                <button id="tooltipActionBtn" type="button" hidden></button>
+                <button id="tooltipGotItBtn" type="button" data-i18n="tooltip.gotIt">Got it!</button>
+            </div>
         </div>
 
         <div id="settingsOverlay">
