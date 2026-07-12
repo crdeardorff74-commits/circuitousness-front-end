@@ -2,7 +2,10 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
-## 2026-07-12 — Zen rename, "Daily & More", first-solve PotD nudge (unreleased)
+## 2026-07-12 — Release v0.74
+- Ships everything in the two 2026-07-12 entries below (they carry the detail; both were "unreleased" until now): the 1-path size retune (`startDimsFor` — Zen 4×5, Marathon 5×5, PotD 1-2 path ~75% LOW tier), width-first `{c}×{r}` dims display, the lbTab-style mode selector, the Practice→Zen rename, the "📅 Daily & More" first-run button, the first-solve PotD nudge (tooltip action-button support), and Zen as the first mode tab.
+- Reminder from the retune: PotD's new LOW-tier sizes only apply at the NEXT daily seed (slots generate once/day); a dev PotD reset re-seeds today.
+- Version bumped 0.73 → 0.74. Sizing/labels traced through code; mode-tab strip + menu fit previously measured live on production via injected CSS.
 - **"Practice" renamed to "🧘 Zen"** (display only — the internal `'practice'` key is untouched everywhere: mode-picker storage, tracking funnel labels, config tables, so no migration and stats stay continuous). All 15 `mode.practice.name` strings + the static markup fallback; localized as 禅/젠/Дзен/زِن/ज़ेन where "Zen" isn't the loanword. Alternatives considered: Free Play (clearer, blander), Casual. `mode.practice.desc` still does the explaining, unchanged.
 - **First-run quit button now reads "📅 Daily & More"** (was "More Modes"): the user's concern was that auto-started first-timers never learn PotD/streaks exist — this makes the one persistent button they see advertise the daily.
 - **PotD nudge**: one-time tooltip fires as puzzle 2 of the first-visit auto-start run appears (right after the FIRST solve — pitching the daily at the moment the player is provably hooked, not at load). Its action button jumps straight into today's s1 daily via the same path a menu card click takes (quitToMenu → ModePicker.setMode('potd') → Potd.startPuzzle('s1')). tooltip.js gained generic optional-action support: `showOnce(key, msg, {label, onClick})`, new `#tooltipActionBtn` (CTA-weight gold fill) in a `.tooltipBtnRow`; click order is mark-seen → dismiss → onClick so the action can tear down game state without racing the card. Plain tips are unaffected (button stays hidden).

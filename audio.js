@@ -413,11 +413,11 @@ const Sfx = (function () {
         muted = !!b;
         if (muted) stopAllLoops();
     }
-    // True when the player CAN'T hear SFX for any reason — their own
-    // setting OR the platform mute. For "was audio audible" questions
-    // (solve-audio stats); isMuted() stays the player's-own-setting
-    // predicate.
-    function isEffectivelyMuted() { return muted || externalMuted; }
+    // True when the player CAN'T hear SFX for any reason the app can see —
+    // their own mute setting, the platform mute, or the volume slider at
+    // 0%. For "was audio audible" questions (solve-audio stats); isMuted()
+    // stays the player's-own-setting predicate.
+    function isEffectivelyMuted() { return muted || externalMuted || volume <= 0; }
     // CrazyGames container mute (see externalMuted above). Mirrors
     // setMuted's loop handling and additionally fades in-flight one-shots
     // so the mute lands immediately, not at the next cue. Loops don't

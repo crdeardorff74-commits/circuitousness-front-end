@@ -964,7 +964,13 @@ const Render = (() => {
     function notchLength() {
         // Tied to cellSize, not to the pad — the connector stroke needs room
         // BEYOND the notch endpoint. Keep notch + stroke_half < pad.
-        return Math.max(6, Math.floor(cellSize * 0.4));
+        // 0.3 (was 0.4): at 0.4 the single-path perimeter loop's top run
+        // grazed the HUD buttons on short-and-wide grids (the canvas is
+        // viewport-centered, so the loop can reach up under the HUD strip —
+        // observed on CG with the 6×4 Zen puzzle). Pulling the ring in a
+        // third clears the buttons by ~12px at that size while the notch
+        // grooves + route corners (both keyed off this) shrink in step.
+        return Math.max(6, Math.floor(cellSize * 0.3));
     }
 
     // Outer endpoint of a notch (the point in the perimeter padding that the

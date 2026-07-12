@@ -214,8 +214,8 @@
                  #hudTimer. Reuses the menu button's i18n key. -->
             <button id="hudHowToBtn" type="button" data-i18n="tutorial.menuButton" hidden>❓ How to Solve</button>
             <button id="hudHintBtn" type="button" data-i18n="hint.button">Hint</button>
-            <button id="hudSettingsBtn" type="button" data-i18n-attr="title:settings.title" title="Settings">⚙</button>
             <button id="hudQuitBtn" type="button" data-i18n="marathon.quit">Quit</button>
+            <button id="hudSettingsBtn" type="button" data-i18n-attr="title:settings.title" title="Settings">⚙</button>
         </div>
 
         <!-- Marathon main menu (game mode only) -->
@@ -979,7 +979,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.73';</script>
+    <script>var PAGE_VERSION = '0.74';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

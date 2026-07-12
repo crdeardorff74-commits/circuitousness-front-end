@@ -151,7 +151,11 @@ const Music = (function () {
     // guaranteed structurally: every point that applies volume to the audio
     // element routes through effectiveVolume(), so no in-game toggle can
     // raise the output while this is set. Off-CG nothing ever sets it.
-    let externalMuted = false;
+    // Semantics are pause/resume (see setExternalMuted): the current song
+    // freezes on mute and picks up where it left off on unmute, rather than
+    // silently burning through tracks the player never hears.
+    let externalMuted  = false;
+    let externalPaused = false;  // WE paused the element (vs the player's own ⏯ pause)
     let paused       = false;  // user-initiated pause via the now-playing ⏸ button
     let volume       = 0.6;    // 0..1, mirror of Settings.musicVolume slider
 
@@ -981,12 +985,15 @@ const Music = (function () {
     }
 
     function isMuted()        { return muted; }
-    // True when the player CAN'T hear music for any reason — their own
-    // setting OR the platform mute (CrazyGames container button). This is
-    // the getter for "was audio audible" questions (the solve-audio stats
+    // True when the player CAN'T hear music for any reason the app can
+    // see — their own mute setting, the platform mute (CrazyGames
+    // container button), or the volume slider dragged to 0%. This is the
+    // getter for "was audio audible" questions (the solve-audio stats
     // tally); isMuted() stays the player's-own-setting predicate that the
-    // Settings UI and Now Playing surfaces key off.
-    function isEffectivelyMuted() { return muted || externalMuted; }
+    // Settings UI and Now Playing surfaces key off. OS/device-level mute
+    // is invisible to web pages — this is as close to "audible" as the
+    // platform allows.
+    function isEffectivelyMuted() { return muted || externalMuted || volume <= 0; }
     function isPaused()       { return paused; }
     function isPlaying()      { return shouldPlay && !muted && !paused && !!currentSong; }
     function getCurrentSong() { return currentSong; }
@@ -1002,14 +1009,34 @@ const Music = (function () {
             try { audio.volume = effectiveVolume(); } catch (e) {}
         }
     }
-    // CrazyGames container mute (see externalMuted above). Volume-0 rather
-    // than pause: playback state machines (intro progress, scripted replay
-    // timelines, Now Playing UI) keep running untouched, and unmuting
-    // restores sound instantly mid-song.
+    // CrazyGames container mute (see externalMuted above). Mute PAUSES the
+    // current song and unmute RESUMES it where it left off — so a player
+    // who mutes for a phone call doesn't miss half the intro sequence.
+    // The effectiveVolume() floor stays as belt-and-braces: anything that
+    // starts or resumes playback WHILE muted (a scripted replay timer, a
+    // Now Playing ⏯ tap) plays silently, preserving CG's mute-wins rule.
+    // externalPaused distinguishes OUR pause from the player's own ⏯ pause:
+    // we only auto-resume what we auto-paused, and only if the player's own
+    // state (shouldPlay / Settings mute / their pause) still wants playback
+    // — they may have changed their mind mid-mute.
     function setExternalMuted(b) {
-        externalMuted = !!b;
+        const on = !!b;
+        if (on === externalMuted) return;
+        externalMuted = on;
         if (audio) {
             try { audio.volume = effectiveVolume(); } catch (e) {}
+        }
+        if (on) {
+            if (audio && !audio.paused) {
+                externalPaused = true;
+                try { audio.pause(); } catch (e) {}
+            }
+        } else if (externalPaused) {
+            externalPaused = false;
+            if (shouldPlay && !muted && !paused && audio) {
+                const p = audio.play();
+                if (p && p.catch) p.catch(function () {});
+            }
         }
     }
     function setOnSongChange(cb) { onSongChange = (typeof cb === 'function') ? cb : null; }
