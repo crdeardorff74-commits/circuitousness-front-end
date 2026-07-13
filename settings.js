@@ -24,6 +24,10 @@ const Settings = (function () {
     // is true — there's no audible difference, so we mirror that state.
     const AUDIENCE_REACTIONS_KEY = PROJECT_SLUG + '_setting_audienceReactions';
     const MUSIC_VOL_KEY   = PROJECT_SLUG + '_setting_musicVolume';
+    // Limits music picks to songs the admin flagged `instrumental` (no
+    // lyrics). music.js also bootstrap-reads this key directly (covers
+    // picks before init() runs) but Settings owns all writes to it.
+    const INSTRUMENTAL_KEY = PROJECT_SLUG + '_setting_musicInstrumentalOnly';
     const SFX_VOL_KEY     = PROJECT_SLUG + '_setting_sfxVolume';
     const BG_ENABLED_KEY  = PROJECT_SLUG + '_setting_backgroundEnabled';
     // Visual tuning — mirrors the render.js defaults. Defaults must stay
@@ -106,6 +110,7 @@ const Settings = (function () {
     // underneath. Players can adjust both via the Settings popup sliders.
     let musicVolume       = loadFloat(MUSIC_VOL_KEY,  0.88);
     let sfxVolume         = loadFloat(SFX_VOL_KEY,    0.42);
+    let instrumentalOnly  = loadBool(INSTRUMENTAL_KEY, false);
     let backgroundEnabled = loadBool(BG_ENABLED_KEY,  true);
     // Visual tuning state — read once at boot, pushed into Render in init().
     function loadHexColor(key, defaultVal) {
@@ -136,6 +141,7 @@ const Settings = (function () {
     // user expects their preference to be remembered as it was.
     function isAudienceReactionsEnabled() { return audienceReactions; }
     function isAudienceReactionsEffective() { return !sfxMuted && audienceReactions; }
+    function isInstrumentalOnly() { return instrumentalOnly; }
 
     function setMusicMode(mode) {
         if (MUSIC_MODES.indexOf(mode) === -1) return;
@@ -180,6 +186,14 @@ const Settings = (function () {
         storeBool(AUDIENCE_REACTIONS_KEY, audienceReactions);
         if (typeof Sfx !== 'undefined' && Sfx.setAudienceReactionsEnabled) {
             Sfx.setAudienceReactionsEnabled(isAudienceReactionsEffective());
+        }
+        syncToggleUI();
+    }
+    function setInstrumentalOnly(v) {
+        instrumentalOnly = !!v;
+        storeBool(INSTRUMENTAL_KEY, instrumentalOnly);
+        if (typeof Music !== 'undefined' && Music.setInstrumentalOnly) {
+            Music.setInstrumentalOnly(instrumentalOnly);
         }
         syncToggleUI();
     }
@@ -266,6 +280,7 @@ const Settings = (function () {
     // the music playlist dropdown drives playMode (none / game playlist /
     // credits / game playlist + credits).
     let musicPlaylistEl, musicMuteBtnEl, sfxMuteBtnEl, bgToggleEl, audienceToggleEl, audienceRowEl;
+    let instrumentalToggleEl;
     let musicVolEl, sfxVolEl, musicVolPctEl, sfxVolPctEl;
     let tileColorEl, tileFaceEl, pathColorEl, pathAlphaEl, pathWidthEl, bevelEl;
     let tileFacePctEl, pathAlphaPctEl, pathWidthPctEl, bevelPctEl;
@@ -296,6 +311,7 @@ const Settings = (function () {
         // bails when sfxMuted as belt-and-braces.
         if (audienceToggleEl) audienceToggleEl.setAttribute('aria-checked', audienceReactions ? 'true' : 'false');
         if (audienceRowEl) audienceRowEl.classList.toggle('disabled', sfxMuted);
+        if (instrumentalToggleEl) instrumentalToggleEl.setAttribute('aria-checked', instrumentalOnly ? 'true' : 'false');
     }
     function syncVolumeUI() {
         if (musicVolEl)    musicVolEl.value    = Math.round(musicVolume * 100);
@@ -340,6 +356,7 @@ const Settings = (function () {
         bgToggleEl       = document.getElementById('settingBackground');
         audienceToggleEl = document.getElementById('settingAudienceReactions');
         audienceRowEl    = document.getElementById('settingAudienceReactionsRow');
+        instrumentalToggleEl = document.getElementById('settingInstrumentalOnly');
         musicVolEl       = document.getElementById('settingMusicVolume');
         sfxVolEl         = document.getElementById('settingSfxVolume');
         musicVolPctEl    = document.getElementById('settingMusicVolumeDisplay');
@@ -377,6 +394,9 @@ const Settings = (function () {
             // through setMuted to keep the audio paused on boot.
             if (Music.setMode)   Music.setMode(musicMode === 'none' ? priorMode : musicMode);
             if (Music.setMuted)  Music.setMuted(musicMode === 'none');
+            // music.js bootstrap-reads the same key, so this is normally a
+            // no-op — belt-and-braces for ordering edge cases.
+            if (Music.setInstrumentalOnly) Music.setInstrumentalOnly(instrumentalOnly);
         }
         // Render reads its own initial bg-enabled flag from Settings in
         // Render.init (so the first paint matches persisted state), but
@@ -444,6 +464,9 @@ const Settings = (function () {
         if (bgToggleEl) {
             bgToggleEl.addEventListener('click', () => setBackgroundEnabled(!backgroundEnabled));
         }
+        if (instrumentalToggleEl) {
+            instrumentalToggleEl.addEventListener('click', () => setInstrumentalOnly(!instrumentalOnly));
+        }
         if (audienceToggleEl) {
             audienceToggleEl.addEventListener('click', () => {
                 // Defensive: refuse the toggle when SFX is muted. The
@@ -478,6 +501,7 @@ const Settings = (function () {
         isBackgroundEnabled:  isBackgroundEnabled,
         isAudienceReactionsEnabled:   isAudienceReactionsEnabled,
         isAudienceReactionsEffective: isAudienceReactionsEffective,
+        isInstrumentalOnly:   isInstrumentalOnly,
         getTileColor:         getTileColor,
         getTileFaceOpacity:   getTileFaceOpacity,
         getPathColor:         getPathColor,
@@ -491,6 +515,7 @@ const Settings = (function () {
         setSfxVolume:         setSfxVolume,
         setBackgroundEnabled: setBackgroundEnabled,
         setAudienceReactionsEnabled: setAudienceReactionsEnabled,
+        setInstrumentalOnly:  setInstrumentalOnly,
         setTileColor:         setTileColor,
         setTileFaceOpacity:   setTileFaceOpacity,
         setPathColor:         setPathColor,

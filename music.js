@@ -35,10 +35,11 @@ const Music = (function () {
                           ? MUSIC_CREDITS_LIST_NAME : null;
     const MENU_NAME     = (typeof MUSIC_MENU_LIST_NAME === 'string' && MUSIC_MENU_LIST_NAME)
                           ? MUSIC_MENU_LIST_NAME : null;
-    // Cache schema bumped to v5 — added the menu pool. Old v4 caches
-    // (three pools without menu) are dropped cleanly by the key change
-    // rather than mis-parsed as the new shape.
-    const CACHE_KEY          = PROJECT_SLUG + '_songLibrary_v5';
+    // Cache schema bumped to v6 — entries now carry the `instrumental`
+    // flag (feeds the Instrumental Only setting). Old v5 caches (no flag)
+    // are dropped cleanly by the key change rather than treated as
+    // all-lyrics pools.
+    const CACHE_KEY          = PROJECT_SLUG + '_songLibrary_v6';
     const INTRO_REMAIN_KEY   = PROJECT_SLUG + '_introRemaining_v1';
     const INTRO_FINGER_KEY   = PROJECT_SLUG + '_introFingerprint_v1';
     // Credits shuffle-bag persistence. Same pattern as intro warnings'
@@ -77,6 +78,20 @@ const Music = (function () {
     // next pickNext() always pulls from creditsPlaylist regardless of mode.
     let playMode      = 'game_playlist';
     let forceCredits  = false;
+
+    // Player's "Instrumental Only" setting (Settings popup toggle). When
+    // true, every pool the pickers draw from is narrowed to songs the
+    // admin flagged `instrumental` — with a graceful fallback to the full
+    // pool when a list has no instrumental tracks at all, so enabling the
+    // setting can never silence the game. The curated intro sequence is
+    // bypassed entirely while this is on (filtering a curated sequence
+    // would gut its authored order); intro progress is untouched, so it
+    // resumes where it left off if the setting is turned back off.
+    // Settings owns persistence of this key; the bootstrap read here only
+    // covers picks that could happen before Settings.init wires us up.
+    const INSTRUMENTAL_KEY = PROJECT_SLUG + '_setting_musicInstrumentalOnly';
+    let instrumentalOnly = false;
+    try { instrumentalOnly = localStorage.getItem(INSTRUMENTAL_KEY) === 'true'; } catch (e) {}
 
     // Four pools, parsed from the API. introPlaylist preserves the curated
     // position order; shufflePlaylist holds the post-intro random pool
@@ -274,11 +289,12 @@ const Music = (function () {
                         const twin = twinByKey[r.key + CENSORED_SUFFIX];
                         if (twin && !twin.explicit) {
                             out.push({
-                                key:      twin.key,
-                                label:    twin.label,
-                                filename: twin.filename,
-                                position: r.position,
-                                explicit: false
+                                key:          twin.key,
+                                label:        twin.label,
+                                filename:     twin.filename,
+                                position:     r.position,
+                                explicit:     false,
+                                instrumental: !!twin.instrumental
                             });
                         }
                         continue;
@@ -351,7 +367,8 @@ const Music = (function () {
             return (a.label || '').localeCompare(b.label || '');
         });
         return copy.map(function (r) {
-            return { id: r.key, name: r.label, url: MUSIC_BASE_URL + r.filename };
+            return { id: r.key, name: r.label, url: MUSIC_BASE_URL + r.filename,
+                     instrumental: !!r.instrumental };
         });
     }
 
@@ -510,10 +527,26 @@ const Music = (function () {
         }
         return null;
     }
+    // Instrumental Only narrowing — every picker reads its pool through
+    // this. Falls back to the unfiltered pool when it contains no
+    // instrumental tracks, so the setting degrades to "play everything"
+    // instead of silence. Because the bag fingerprints are computed over
+    // the pools these accessors return, toggling the setting changes the
+    // fingerprint and cleanly invalidates any persisted bag.
+    function eligible(pool) {
+        if (!instrumentalOnly) return pool;
+        const f = pool.filter(function (s) { return s.instrumental; });
+        return f.length > 0 ? f : pool;
+    }
+    function activeCreditsPool() { return eligible(creditsPlaylist); }
+    function activeMenuPool()    { return eligible(menuPlaylist); }
     // The shuffle pool depends on the active mode. 'game_playlist' uses
     // the gameplay pool alone; 'game_plus_credits' draws from gameplay +
     // credits combined (so credits songs sprinkle into normal play).
     function activeShufflePool() {
+        return eligible(rawShufflePool());
+    }
+    function rawShufflePool() {
         if (playMode === 'game_plus_credits' && creditsPlaylist.length > 0) {
             // Deduplicate by id in case credits === shuffle (fallback case).
             if (creditsPlaylist === shufflePlaylist) return shufflePlaylist;
@@ -617,7 +650,7 @@ const Music = (function () {
     // with a uniformly-random song, which in practice often lands on the
     // same one a couple of times in a row.
     function creditsFingerprint() {
-        return creditsPlaylist.map(function (s) { return s.id; }).join('|');
+        return activeCreditsPool().map(function (s) { return s.id; }).join('|');
     }
     function persistCreditsBag() {
         try {
@@ -637,17 +670,19 @@ const Music = (function () {
             if (!raw) return null;
             const parsed = JSON.parse(raw);
             if (!Array.isArray(parsed)) return null;
+            const pool = activeCreditsPool();
             for (let i = 0; i < parsed.length; i++) {
                 const v = parsed[i];
-                if (!Number.isInteger(v) || v < 0 || v >= creditsPlaylist.length) return null;
+                if (!Number.isInteger(v) || v < 0 || v >= pool.length) return null;
             }
             return parsed;
         } catch (e) { return null; }
     }
     function refillCreditsBag() {
-        if (creditsPlaylist.length === 0) { creditsBag = []; return; }
+        const pool = activeCreditsPool();
+        if (pool.length === 0) { creditsBag = []; return; }
         const indices = [];
-        for (let i = 0; i < creditsPlaylist.length; i++) indices.push(i);
+        for (let i = 0; i < pool.length; i++) indices.push(i);
         // Fisher-Yates shuffle in place.
         for (let i = indices.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -658,13 +693,13 @@ const Music = (function () {
         // swap with position 1 so the player doesn't hear a back-to-back
         // repeat. Skip when the pool has 0 or 1 entries (no alternative).
         if (lastCreditsPlayedId && indices.length > 1
-            && creditsPlaylist[indices[0]].id === lastCreditsPlayedId) {
+            && pool[indices[0]].id === lastCreditsPlayedId) {
             const tmp = indices[0]; indices[0] = indices[1]; indices[1] = tmp;
         }
         creditsBag = indices;
     }
     function pickCreditsSong() {
-        if (creditsPlaylist.length === 0) return null;
+        if (activeCreditsPool().length === 0) return null;
         // First access this session: try to restore the persisted bag,
         // fall back to a fresh shuffle. The persisted bag is only
         // accepted if its fingerprint still matches the current playlist
@@ -679,7 +714,7 @@ const Music = (function () {
         if (creditsBag.length === 0) refillCreditsBag();
         if (creditsBag.length === 0) return null;   // empty playlist
         const idx = creditsBag.shift();
-        const song = creditsPlaylist[idx];
+        const song = activeCreditsPool()[idx];
         if (song) {
             lastCreditsPlayedId = song.id;
             lastPlayedId = song.id;
@@ -693,7 +728,7 @@ const Music = (function () {
     // persistence pattern so a page reload during menu music doesn't
     // restart the bag's cycle.
     function menuFingerprint() {
-        return menuPlaylist.map(function (s) { return s.id; }).join(',');
+        return activeMenuPool().map(function (s) { return s.id; }).join(',');
     }
     function persistMenuBag() {
         try {
@@ -709,28 +744,30 @@ const Music = (function () {
             if (!raw) return null;
             const parsed = JSON.parse(raw);
             if (!Array.isArray(parsed)) return null;
+            const pool = activeMenuPool();
             for (let i = 0; i < parsed.length; i++) {
                 const v = parsed[i];
-                if (!Number.isInteger(v) || v < 0 || v >= menuPlaylist.length) return null;
+                if (!Number.isInteger(v) || v < 0 || v >= pool.length) return null;
             }
             return parsed;
         } catch (e) { return null; }
     }
     function refillMenuQueue() {
-        if (menuPlaylist.length === 0) { menuQueue = []; return; }
+        const pool = activeMenuPool();
+        if (pool.length === 0) { menuQueue = []; return; }
         const indices = [];
-        for (let i = 0; i < menuPlaylist.length; i++) indices.push(i);
+        for (let i = 0; i < pool.length; i++) indices.push(i);
         for (let i = indices.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             const tmp = indices[i]; indices[i] = indices[j]; indices[j] = tmp;
         }
-        if (lastMenuPlayedId && menuPlaylist.length > 1 && menuPlaylist[indices[0]].id === lastMenuPlayedId) {
+        if (lastMenuPlayedId && pool.length > 1 && pool[indices[0]].id === lastMenuPlayedId) {
             const tmp = indices[0]; indices[0] = indices[1]; indices[1] = tmp;
         }
         menuQueue = indices;
     }
     function pickMenuSong() {
-        if (menuPlaylist.length === 0) return null;
+        if (activeMenuPool().length === 0) return null;
         // First access this session: try to restore the persisted bag.
         // Same fingerprint-validated pattern as pickShuffleSong above.
         if (!menuBagLoaded) {
@@ -741,7 +778,7 @@ const Music = (function () {
         if (menuQueue.length === 0) refillMenuQueue();
         if (menuQueue.length === 0) return null;
         const idx = menuQueue.shift();
-        const song = menuPlaylist[idx];
+        const song = activeMenuPool()[idx];
         if (song) { lastMenuPlayedId = song.id; lastPlayedId = song.id; }
         persistMenuBag();
         return song;
@@ -757,9 +794,12 @@ const Music = (function () {
         // to the regular intro/shuffle pipeline if the menu pool is
         // empty, so projects without a menu_only list get the old
         // behavior unchanged.
-        if (inMenuPhase && menuPlaylist.length > 0) return pickMenuSong();
+        if (inMenuPhase && activeMenuPool().length > 0) return pickMenuSong();
         if (playMode === 'credits') return pickCreditsSong();
-        // Both 'game_playlist' and 'game_plus_credits' play the intro first.
+        // Both 'game_playlist' and 'game_plus_credits' play the intro first
+        // — unless Instrumental Only is on, which bypasses the curated
+        // intro sequence outright (see the INSTRUMENTAL_KEY comment).
+        if (instrumentalOnly) return pickShuffleSong();
         return pickIntroSong() || pickShuffleSong();
     }
     function findInList(list, id) {
@@ -949,6 +989,34 @@ const Music = (function () {
             start();
         }
     }
+
+    // Settings popup "Instrumental Only" toggle. Settings persists the
+    // localStorage key and calls this; the bootstrap read at the top of
+    // the module covers picks that happen before Settings wires us up.
+    function setInstrumentalOnly(b) {
+        b = !!b;
+        if (instrumentalOnly === b) return;
+        instrumentalOnly = b;
+        // The in-memory bags hold indices into the pre-toggle pools —
+        // clear them all. Persisted bags self-invalidate: their
+        // fingerprints are computed over the filtered pools, which just
+        // changed. Intro progress is deliberately untouched (the intro is
+        // bypassed, not consumed, while the filter is on).
+        queue = [];
+        menuQueue = [];
+        creditsBag = null;
+        shuffleBagLoaded = false;
+        menuBagLoaded = false;
+        // If a lyrics song is mid-play as the filter turns on, move to an
+        // instrumental pick right away instead of finishing the track.
+        // Never yank the audio during scripted (replay) playback — that
+        // timeline must faithfully reproduce what the original player heard.
+        if (b && currentSong && !currentSong.instrumental
+            && shouldPlay && !muted && !scriptedPlayback) {
+            advanceToNext();
+        }
+    }
+    function isInstrumentalOnly() { return instrumentalOnly; }
 
     // --- Now-playing controls -----------------------------------------
     // Both skip controls short-circuit during scripted playback —
@@ -1237,6 +1305,8 @@ const Music = (function () {
         didReplayHaveMusic:       didReplayHaveMusic,
         setMode:               setMode,
         getMode:               getMode,
+        setInstrumentalOnly:   setInstrumentalOnly,
+        isInstrumentalOnly:    isInstrumentalOnly,
         setMenuPhase:          setMenuPhase,
         isMenuSongPlaying:     isMenuSongPlaying,
         isMenuSong:            isMenuPoolSong,

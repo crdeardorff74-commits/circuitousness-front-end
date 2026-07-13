@@ -26,7 +26,12 @@
 const Tracking = (function () {
     // -1 = bot / declined; 0 = not yet initialized; positive = real visit.
     let visitId = 0;
-    let inFlightVisit = false;
+    // The in-flight POST /visit promise. Events that fire while the visit
+    // row is still being created (common on a cold Render dyno, where the
+    // first request takes 30-60s) await THIS instead of being dropped —
+    // a dropped /started is how the daily digest ended up showing more
+    // puzzles completed than started.
+    let visitPromise = null;
 
     // Local dev loads (localhost / 127.0.0.1) must NEVER reach the
     // production stats — not the visit row, not referrers, nothing. This
@@ -135,10 +140,10 @@ const Tracking = (function () {
 
     function recordVisit() {
         if (isSuppressed()) return Promise.resolve(0);
-        if (visitId !== 0 || inFlightVisit) return Promise.resolve(visitId);
+        if (visitId !== 0) return Promise.resolve(visitId);
+        if (visitPromise) return visitPromise;
         const base = apiBase();
         if (!base) return Promise.resolve(0);
-        inFlightVisit = true;
         const ctx = _loadContext();
         const payload = {
             referrer:     (typeof document !== 'undefined' && document.referrer) || null,
@@ -154,7 +159,7 @@ const Tracking = (function () {
             embedded:     ctx.embedded,
             redirected:   ctx.redirected,
         };
-        return fetch(base + '/visit', {
+        visitPromise = fetch(base + '/visit', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify(payload),
@@ -162,13 +167,12 @@ const Tracking = (function () {
             return r.ok ? r.json() : null;
         }).then(function (data) {
             visitId = (data && typeof data.visit_id === 'number') ? data.visit_id : -1;
-            inFlightVisit = false;
             return visitId;
         }).catch(function () {
             visitId = -1;
-            inFlightVisit = false;
             return -1;
         });
+        return visitPromise;
     }
 
     // Helper for the PATCH endpoints — they all need a real visitId

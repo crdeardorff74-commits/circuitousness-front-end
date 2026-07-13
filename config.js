@@ -160,13 +160,13 @@ const MARATHON = {
     // well below Marathon's baseline. The floor scales with path count so
     // more paths get more room: indexed by pathCount-1 → 2-path 6×6,
     // 3-path 8×8. The 1-path entry is superseded by startDimsFor's
-    // asymmetric 4×5 practice start (below) — kept only as the square
-    // fallback should that override ever be removed. 4-path is NOT here —
+    // 6×6 practice start (below) — kept only as the square fallback
+    // should that override ever be removed. 4-path is NOT here —
     // it keeps the generator-mandated MIN_DIM_SINGULAR_4PATH (10×10) floor
     // regardless of mode, so the strict 4-path generator has room for all
     // 8 endpoints. Only the SINGULAR floor is lowered; quad already starts
     // at 4 (MIN_DIM_QUAD).
-    MIN_DIM_PRACTICE_SINGULAR: [4, 6, 8],
+    MIN_DIM_PRACTICE_SINGULAR: [6, 6, 8],
     // Per-path-count minimum-dim override. 4-path puzzles need more grid
     // space than 1/2/3-path: 8 distinct perimeter endpoints + 4 DFS paths
     // competing for non-overlapping cells. At 8×8 (regular MIN_DIM) the
@@ -195,16 +195,15 @@ const MARATHON = {
     },
     // Level-1 start dims as {rows, cols} (cols = width) — the square
     // minDimFor baseline everywhere EXCEPT 1-path singular, which starts
-    // deliberately smaller/asymmetric:
-    //   Practice: 4 tall × 5 wide (the first-visit auto-start puzzle —
-    //     one extra column of breathing room over the old 4×4).
-    //   Marathon: 5×5 (was the flat 8×8 MIN_DIM_SINGULAR) — a gentler
-    //     ramp-in; the per-solve row/col growth still climbs from there.
+    // deliberately smaller: 6×6 in BOTH Zen/Practice and Marathon (history:
+    // Practice was 4×4 then 4 tall × 5 wide; Marathon was the flat 8×8
+    // MIN_DIM_SINGULAR then 5×5). The per-solve row/col growth still
+    // climbs from there.
     // Callers: marathon.js dimsForLevel (adds growth per level) and
     // game.js STARTER_PLAN (pre-gen at Marathon's level-1 dims).
     startDimsFor: function (quadMode, pathCount, practice) {
         if (!quadMode && pathCount === 1) {
-            return practice ? { rows: 4, cols: 5 } : { rows: 5, cols: 5 };
+            return { rows: 6, cols: 6 };
         }
         const d = this.minDimFor(quadMode, pathCount, practice);
         return { rows: d, cols: d };

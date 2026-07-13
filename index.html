@@ -475,6 +475,16 @@
                     <span id="settingMusicVolumeDisplay" class="settingsVolumePercent">60%</span>
                 </div>
 
+                <!-- Instrumental Only sub-toggle. Limits every music pool to
+                     songs the admin flagged `instrumental` (no lyrics).
+                     music.js owns the policy details: full-pool fallback when
+                     a list has no instrumental tracks, and the curated intro
+                     sequence is bypassed (not consumed) while this is on. -->
+                <div class="settingsRow">
+                    <label for="settingInstrumentalOnly" data-i18n="settings.instrumentalOnly">Instrumental only</label>
+                    <button id="settingInstrumentalOnly" class="toggleSwitch" type="button" role="switch" aria-checked="false"><span class="toggleKnob"></span></button>
+                </div>
+
                 <!-- SFX volume row: same pattern. -->
                 <div class="settingsVolumeRow">
                     <button id="settingSfxMuteBtn" class="settingsMuteBtn" type="button" title="Mute / unmute sound effects">🔊</button>
@@ -985,7 +995,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.76';</script>
+    <script>var PAGE_VERSION = '0.77';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +
