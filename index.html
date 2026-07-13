@@ -534,12 +534,19 @@
                     <span id="settingTileFaceOpacityDisplay" class="settingsVolumePercent">80%</span>
                 </div>
 
-                <div class="settingsRow">
+                <!-- Path color + Path opacity rows are HIDDEN (not removed):
+                     adding the Instrumental Only row made the popup overflow
+                     into a scrollbar at CG's embed height, and these two are
+                     the least-used visual knobs. Everything behind them stays
+                     live — persisted values still load, Render still applies
+                     them, Reset still resets them — so un-hiding is just
+                     deleting the two display:none styles. -->
+                <div class="settingsRow" style="display: none;">
                     <label for="settingPathColor" class="settingsVisualLabel" data-i18n="settings.pathColor">Path color</label>
                     <input type="color" id="settingPathColor" class="settingsColor" value="#ff2424">
                 </div>
 
-                <div class="settingsVolumeRow">
+                <div class="settingsVolumeRow" style="display: none;">
                     <span class="settingsVisualLabel" data-i18n="settings.pathOpacity">Path opacity</span>
                     <input type="range" id="settingPathOpacity" class="settingsSlider" min="0" max="100" aria-label="Path opacity">
                     <span id="settingPathOpacityDisplay" class="settingsVolumePercent">14%</span>

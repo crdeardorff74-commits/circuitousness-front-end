@@ -5,6 +5,7 @@ Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belong
 ## 2026-07-13 — Release v0.78 (Instrumental toggle placement + credits-mode graying)
 - **Settings row order**: Instrumental Only moved to SECOND position — directly under the Music mode dropdown it refines, ABOVE the MUSIC/SFX volume rows (was between them). Markup-only; all wiring is by id. Verified live: order + toggle round-trip. TANTЯO needed no change (its toggle was already second).
 - **Carries the credits-mode graying** documented in the v0.77 entry below (the "grayed out + ignored in credits-including modes" bullet) — that code landed AFTER the 0.77 bump, so if a 0.77 zip was uploaded anywhere it does NOT include it. 0.78 is the version with everything; both bumps happened this same session.
+- **Path color + Path opacity settings rows hidden** (inline `display:none`, NOT removed) — the Instrumental row pushed the popup past CG's embed height into a scrollbar. Persisted values still load/apply/reset behind the scenes; un-hiding = deleting the two inline styles. Verified at 1185×605: rows gone, popup + overlay no longer overflow.
 - Version bumped 0.77 → 0.78.
 
 ## 2026-07-13 — Release v0.77 (tracking race fix + Instrumental Only + 6×6 starts)
