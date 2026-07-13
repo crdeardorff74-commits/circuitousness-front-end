@@ -280,7 +280,7 @@ const Settings = (function () {
     // the music playlist dropdown drives playMode (none / game playlist /
     // credits / game playlist + credits).
     let musicPlaylistEl, musicMuteBtnEl, sfxMuteBtnEl, bgToggleEl, audienceToggleEl, audienceRowEl;
-    let instrumentalToggleEl;
+    let instrumentalToggleEl, instrumentalRowEl;
     let musicVolEl, sfxVolEl, musicVolPctEl, sfxVolPctEl;
     let tileColorEl, tileFaceEl, pathColorEl, pathAlphaEl, pathWidthEl, bevelEl;
     let tileFacePctEl, pathAlphaPctEl, pathWidthPctEl, bevelPctEl;
@@ -312,6 +312,15 @@ const Settings = (function () {
         if (audienceToggleEl) audienceToggleEl.setAttribute('aria-checked', audienceReactions ? 'true' : 'false');
         if (audienceRowEl) audienceRowEl.classList.toggle('disabled', sfxMuted);
         if (instrumentalToggleEl) instrumentalToggleEl.setAttribute('aria-checked', instrumentalOnly ? 'true' : 'false');
+        // Instrumental Only is moot when the selected mode includes the End
+        // Credits pool (all-lyrics): gray the row out. aria-checked keeps
+        // the raw stored preference so switching back restores the user's
+        // visible setting; music.js independently ignores the flag in
+        // credits-including modes.
+        if (instrumentalRowEl) {
+            instrumentalRowEl.classList.toggle('disabled',
+                musicMode === 'credits' || musicMode === 'game_plus_credits');
+        }
     }
     function syncVolumeUI() {
         if (musicVolEl)    musicVolEl.value    = Math.round(musicVolume * 100);
@@ -357,6 +366,7 @@ const Settings = (function () {
         audienceToggleEl = document.getElementById('settingAudienceReactions');
         audienceRowEl    = document.getElementById('settingAudienceReactionsRow');
         instrumentalToggleEl = document.getElementById('settingInstrumentalOnly');
+        instrumentalRowEl    = document.getElementById('settingInstrumentalOnlyRow');
         musicVolEl       = document.getElementById('settingMusicVolume');
         sfxVolEl         = document.getElementById('settingSfxVolume');
         musicVolPctEl    = document.getElementById('settingMusicVolumeDisplay');
@@ -465,7 +475,13 @@ const Settings = (function () {
             bgToggleEl.addEventListener('click', () => setBackgroundEnabled(!backgroundEnabled));
         }
         if (instrumentalToggleEl) {
-            instrumentalToggleEl.addEventListener('click', () => setInstrumentalOnly(!instrumentalOnly));
+            instrumentalToggleEl.addEventListener('click', () => {
+                // Defensive: refuse the toggle in credits-including modes.
+                // The .disabled CSS already blocks pointer-events but a
+                // stray keyboard activation would still get through.
+                if (musicMode === 'credits' || musicMode === 'game_plus_credits') return;
+                setInstrumentalOnly(!instrumentalOnly);
+            });
         }
         if (audienceToggleEl) {
             audienceToggleEl.addEventListener('click', () => {

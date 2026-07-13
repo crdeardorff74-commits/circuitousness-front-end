@@ -533,8 +533,18 @@ const Music = (function () {
     // instead of silence. Because the bag fingerprints are computed over
     // the pools these accessors return, toggling the setting changes the
     // fingerprint and cleanly invalidates any persisted bag.
+    // The filter is IGNORED whenever the selected mode includes the End
+    // Credits pool ('credits' / 'game_plus_credits') — that list is
+    // all-lyrics, so honoring the toggle there would contradict the
+    // player's explicit mode choice. Settings grays the toggle row out in
+    // those modes to match. The stored preference itself is untouched;
+    // it re-applies the moment the mode goes back to 'game_playlist'.
+    function instrumentalActive() {
+        return instrumentalOnly &&
+               playMode !== 'credits' && playMode !== 'game_plus_credits';
+    }
     function eligible(pool) {
-        if (!instrumentalOnly) return pool;
+        if (!instrumentalActive()) return pool;
         const f = pool.filter(function (s) { return s.instrumental; });
         return f.length > 0 ? f : pool;
     }
@@ -797,9 +807,12 @@ const Music = (function () {
         if (inMenuPhase && activeMenuPool().length > 0) return pickMenuSong();
         if (playMode === 'credits') return pickCreditsSong();
         // Both 'game_playlist' and 'game_plus_credits' play the intro first
-        // — unless Instrumental Only is on, which bypasses the curated
-        // intro sequence outright (see the INSTRUMENTAL_KEY comment).
-        if (instrumentalOnly) return pickShuffleSong();
+        // — unless Instrumental Only is in effect, which bypasses the
+        // curated intro sequence outright (see the INSTRUMENTAL_KEY
+        // comment). instrumentalActive() is false in 'game_plus_credits'
+        // (credits-including mode ignores the toggle), so the intro plays
+        // normally there.
+        if (instrumentalActive()) return pickShuffleSong();
         return pickIntroSong() || pickShuffleSong();
     }
     function findInList(list, id) {
@@ -919,6 +932,17 @@ const Music = (function () {
         // correct pool. Credits cursor preserves position — moving away
         // from credits mode and back resumes where the player left off.
         queue = [];
+        // With Instrumental Only on, a mode change can cross the credits
+        // boundary and flip instrumentalActive() — every eligible() pool
+        // changes shape, so the remaining bags' indices are stale too.
+        // Clear them like setInstrumentalOnly does; persisted copies
+        // self-invalidate via their fingerprints.
+        if (instrumentalOnly) {
+            menuQueue = [];
+            creditsBag = null;
+            shuffleBagLoaded = false;
+            menuBagLoaded = false;
+        }
     }
     function getMode() { return playMode; }
 
@@ -1009,9 +1033,11 @@ const Music = (function () {
         menuBagLoaded = false;
         // If a lyrics song is mid-play as the filter turns on, move to an
         // instrumental pick right away instead of finishing the track.
-        // Never yank the audio during scripted (replay) playback — that
-        // timeline must faithfully reproduce what the original player heard.
-        if (b && currentSong && !currentSong.instrumental
+        // instrumentalActive() (not the raw flag) so no skip happens in
+        // credits-including modes, where the toggle is ignored. Never yank
+        // the audio during scripted (replay) playback — that timeline must
+        // faithfully reproduce what the original player heard.
+        if (instrumentalActive() && currentSong && !currentSong.instrumental
             && shouldPlay && !muted && !scriptedPlayback) {
             advanceToNext();
         }

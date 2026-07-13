@@ -467,22 +467,27 @@
                     </select>
                 </div>
 
+                <!-- Instrumental Only sub-toggle (directly under the mode
+                     dropdown it refines). Limits every music pool to
+                     songs the admin flagged `instrumental` (no lyrics).
+                     music.js owns the policy details: full-pool fallback when
+                     a list has no instrumental tracks, and the curated intro
+                     sequence is bypassed (not consumed) while this is on.
+                     Row is .disabled (grayed, setting ignored) when the music
+                     mode includes End Credits — that pool is all-lyrics, so
+                     the toggle would contradict the mode choice. settings.js
+                     syncToggleUI manages the class. -->
+                <div class="settingsRow" id="settingInstrumentalOnlyRow">
+                    <label for="settingInstrumentalOnly" data-i18n="settings.instrumentalOnly">Instrumental only</label>
+                    <button id="settingInstrumentalOnly" class="toggleSwitch" type="button" role="switch" aria-checked="false"><span class="toggleKnob"></span></button>
+                </div>
+
                 <!-- MUSIC volume row: mute button + small label + slider + %. -->
                 <div class="settingsVolumeRow">
                     <button id="settingMusicMuteBtn" class="settingsMuteBtn" type="button" title="Mute / unmute music">🔊</button>
                     <span class="settingsVolumeLabel" data-i18n="settings.musicShort">MUSIC</span>
                     <input type="range" id="settingMusicVolume" class="settingsSlider" min="0" max="100" aria-label="Music volume">
                     <span id="settingMusicVolumeDisplay" class="settingsVolumePercent">60%</span>
-                </div>
-
-                <!-- Instrumental Only sub-toggle. Limits every music pool to
-                     songs the admin flagged `instrumental` (no lyrics).
-                     music.js owns the policy details: full-pool fallback when
-                     a list has no instrumental tracks, and the curated intro
-                     sequence is bypassed (not consumed) while this is on. -->
-                <div class="settingsRow">
-                    <label for="settingInstrumentalOnly" data-i18n="settings.instrumentalOnly">Instrumental only</label>
-                    <button id="settingInstrumentalOnly" class="toggleSwitch" type="button" role="switch" aria-checked="false"><span class="toggleKnob"></span></button>
                 </div>
 
                 <!-- SFX volume row: same pattern. -->
@@ -995,7 +1000,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.77';</script>
+    <script>var PAGE_VERSION = '0.78';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +
