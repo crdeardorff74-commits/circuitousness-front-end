@@ -574,7 +574,7 @@ const Marathon = (() => {
         // isPractice (module-level) selects the gentler Practice start —
         // read here so every caller (startNextPuzzle, the HUD label,
         // upcomingDims pre-gen lookahead) gets the right size. Start dims
-        // come from MARATHON.startDimsFor (1-path singular: 6×6 in both
+        // come from MARATHON.startDimsFor (1-path singular: 5×5 in both
         // Zen/Practice and Marathon) and may be asymmetric; growth then
         // adds one axis per solve on top of whichever base each axis got.
         const start = MARATHON.startDimsFor(quadMode, pathCount, isPractice);
@@ -681,7 +681,7 @@ const Marathon = (() => {
     }
 
     // One-time first-visit auto-start: skip the menu and drop a brand-new
-    // player straight into the gentlest puzzle (1-path singular Zen, 6×6
+    // player straight into the gentlest puzzle (1-path singular Zen, 5×5
     // via MARATHON.startDimsFor) so they see gameplay before ever
     // having to decode the menu's mode/type choices. Called by intro.js at
     // the two "player just cleared the intro" points (the I-agree dismiss,

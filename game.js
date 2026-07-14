@@ -145,7 +145,7 @@
                 const paths  = parseInt(type[1], 10) || 1;
                 // Path-count-aware start dims: 4-path needs more grid than
                 // the 1/2/3-path baseline, and 1-path singular Marathon
-                // starts at 6×6 (see MARATHON.startDimsFor in config.js) —
+                // starts at 5×5 (see MARATHON.startDimsFor in config.js) —
                 // the starter build must match dimsForLevel(1, ...) exactly
                 // or every s1 game-start misses this cache. Marathon
                 // variant only (no `practice` arg): Practice starts are

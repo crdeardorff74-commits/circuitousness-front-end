@@ -160,7 +160,7 @@ const MARATHON = {
     // well below Marathon's baseline. The floor scales with path count so
     // more paths get more room: indexed by pathCount-1 → 2-path 6×6,
     // 3-path 8×8. The 1-path entry is superseded by startDimsFor's
-    // 6×6 practice start (below) — kept only as the square fallback
+    // 5×5 practice start (below) — kept only as the square fallback
     // should that override ever be removed. 4-path is NOT here —
     // it keeps the generator-mandated MIN_DIM_SINGULAR_4PATH (10×10) floor
     // regardless of mode, so the strict 4-path generator has room for all
@@ -195,15 +195,15 @@ const MARATHON = {
     },
     // Level-1 start dims as {rows, cols} (cols = width) — the square
     // minDimFor baseline everywhere EXCEPT 1-path singular, which starts
-    // deliberately smaller: 6×6 in BOTH Zen/Practice and Marathon (history:
+    // deliberately smaller: 5×5 in BOTH Zen/Practice and Marathon (history:
     // Practice was 4×4 then 4 tall × 5 wide; Marathon was the flat 8×8
-    // MIN_DIM_SINGULAR then 5×5). The per-solve row/col growth still
-    // climbs from there.
+    // MIN_DIM_SINGULAR, then 5×5, then 6×6). The per-solve row/col growth
+    // still climbs from there.
     // Callers: marathon.js dimsForLevel (adds growth per level) and
     // game.js STARTER_PLAN (pre-gen at Marathon's level-1 dims).
     startDimsFor: function (quadMode, pathCount, practice) {
         if (!quadMode && pathCount === 1) {
-            return { rows: 6, cols: 6 };
+            return { rows: 5, cols: 5 };
         }
         const d = this.minDimFor(quadMode, pathCount, practice);
         return { rows: d, cols: d };
