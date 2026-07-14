@@ -593,6 +593,12 @@
         }
         function recordMove(move) {
             if (!appendMove(move)) return;
+            // First committed live action releases Marathon's deferred
+            // "started" tracking milestone (auto-start runs only — a no-op
+            // any other time). Replays can't get here (appendMove's guard).
+            if (typeof Marathon !== 'undefined' && Marathon.notifyPuzzleInteraction) {
+                Marathon.notifyPuzzleInteraction();
+            }
             // Undo: bank the state as it was BEFORE this move (undoBaseState),
             // plus the move itself (so undo can play its inverse animation),
             // then advance the base to the new current state. recordMove fires

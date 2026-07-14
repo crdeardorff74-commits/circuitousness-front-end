@@ -2,6 +2,14 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-14 — Release v0.80 (auto-start no longer counts as a "start" until the player touches the puzzle)
+- **First-visit auto-start now defers the `Tracking.recordStart` funnel milestone until the player's first committed puzzle action** (user request: a dumped-in player who never taps anything is not a "start"). `marathon.js` `startGame` parks `{mode, gameType}` in a new module-level `deferredStartTracking` slot when `isFirstRunAutoStart` is set (instead of PATCHing immediately); new public `Marathon.notifyPuzzleInteraction()` fires it one-shot; `goToMenu` nulls the slot so a no-touch bail (Quit / "📅 Daily & More") is never counted — the visit stays a reached-menu-only funnel row.
+- **Hook point**: `game.js` `recordMove` (right after the `appendMove` guard) — the single funnel for every committed action (rotate / gate / lock / hint), unreachable by replays. Opening Settings or the How-to tutorial deliberately does NOT count. Normal starts (menu cards, PotD) record immediately as before.
+- Funnel stays monotonic with no back-end change: auto-start players must interact before they can solve, so "started" still always precedes "finished".
+- **Deliberately left alone**: CG SDK `gameplayStart` still fires in `onPuzzleReady` during the auto-start run — it's CG's loading/gameplay bracket, not our stats funnel.
+- Not browser-verified (standing rule — user tests). Test recipe: fresh profile (or clear `circuitousness_firstVisitAutoStarted_v1` + `_mode` + `_lastPlayerName`), auto-start, quit untouched → admin shows reached-menu with no start; repeat with one tile rotation → start appears.
+- Version bumped 0.79 → 0.80.
+
 ## 2026-07-14 — Release v0.79 (1-path starts down to 5×5)
 - **1-path singular starts reduced 6×6 → 5×5 in BOTH Zen and Marathon** (`config.js` `startDimsFor` single return). Third retune of this knob (Zen 4×5 / Marathon 5×5 → unified 6×6 in v0.77 → now unified 5×5). s1 pre-gen follows automatically (`game.js` STARTER_PLAN reads the same function); stale 6×6 comments updated in config.js / marathon.js / game.js.
 - Only change vs v0.78 — verified by diffing every changed-timestamp file against the extracted v0.78 zip (this `/rel` ran in a fresh session with no work log to draw on).

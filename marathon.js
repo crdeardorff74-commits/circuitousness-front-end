@@ -45,6 +45,13 @@ const Marathon = (() => {
     // every subsequent startGame (3rd arg omitted → false) and by goToMenu
     // (covers the PotD path, which starts games without startGame).
     let isFirstRunAutoStart = false;
+    // Deferred "started" tracking milestone for the auto-start run. The
+    // player didn't choose to play — we dropped them in — so recordStart
+    // is held here until their first committed puzzle action (game.js
+    // recordMove → notifyPuzzleInteraction). Null everywhere else: normal
+    // starts record immediately in startGame, and goToMenu clears this so
+    // a no-touch bail never counts as a start.
+    let deferredStartTracking = null;
     // Consumed-flag key for the one-time auto-start. Deliberately its own
     // key (not _mode / _lastPlayerName) so the semantics stay "the intro
     // auto-start has fired once", independent of what else the player did.
@@ -370,6 +377,10 @@ const Marathon = (() => {
         // startNextPuzzle, so it would never re-hide a stale button.
         // Same PotD-coverage reasoning for restoring the Quit label.
         isFirstRunAutoStart = false;
+        // Auto-start run abandoned without a single puzzle interaction —
+        // the deferred "started" milestone dies here, uncounted (that's
+        // the point: a no-touch bail is not a start).
+        deferredStartTracking = null;
         if (hudHowTo) hudHowTo.hidden = true;
         if (hudQuit) {
             hudQuit.setAttribute('data-i18n', 'marathon.quit');
@@ -666,8 +677,18 @@ const Marathon = (() => {
         }
         // Engagement tracking: one start per game (not per puzzle). Practice
         // reports its own mode so the funnel can tell the two apart.
+        // EXCEPT the first-visit auto-start: the player didn't pick this
+        // game — we dropped them in — so "started" is deferred until their
+        // first committed puzzle action (notifyPuzzleInteraction, called by
+        // game.js recordMove). No interaction → no start recorded; the
+        // visit stays a reached-menu-only row in the funnel.
+        deferredStartTracking = null;
         if (typeof Tracking !== 'undefined' && Tracking.recordStart) {
-            Tracking.recordStart(isPractice ? 'practice' : 'marathon', type);
+            if (isFirstRunAutoStart) {
+                deferredStartTracking = { mode: isPractice ? 'practice' : 'marathon', gameType: type };
+            } else {
+                Tracking.recordStart(isPractice ? 'practice' : 'marathon', type);
+            }
         }
         // Fire-and-forget: ask the server for a cheat-proof timing token.
         // Game continues regardless — if the request fails (offline / cold
@@ -715,6 +736,20 @@ const Marathon = (() => {
         try { localStorage.setItem(AUTO_START_KEY, '1'); } catch (e) {}
         startGame('s1', true, true);
         return true;
+    }
+
+    // Called by game.js recordMove on every committed live puzzle action
+    // (rotate / gate / lock / hint — replays never reach recordMove). Only
+    // meaningful while startGame has a deferred auto-start "started"
+    // milestone parked; a no-op the rest of the time. One-shot: clears the
+    // slot BEFORE the PATCH so a re-entrant call can't double-record.
+    function notifyPuzzleInteraction() {
+        if (!deferredStartTracking) return;
+        const d = deferredStartTracking;
+        deferredStartTracking = null;
+        if (typeof Tracking !== 'undefined' && Tracking.recordStart) {
+            Tracking.recordStart(d.mode, d.gameType);
+        }
     }
 
     async function requestSessionToken(type) {
@@ -2065,6 +2100,7 @@ const Marathon = (() => {
 
     return { init, onSolve, onHintUsed, onPuzzleReady, advance, isPlaying, isMenuVisible, isInTransition, isReplaying, upcomingDims,
              autoStartFirstPractice,
+             notifyPuzzleInteraction,
              wipeLocalLeaderboards,
              showPotdLeaderboard,
              // Reusable iOS-standalone keyboard helpers — exposed so PotD's
