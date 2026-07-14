@@ -2,6 +2,11 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-14 — Release v0.79 (1-path starts down to 5×5)
+- **1-path singular starts reduced 6×6 → 5×5 in BOTH Zen and Marathon** (`config.js` `startDimsFor` single return). Third retune of this knob (Zen 4×5 / Marathon 5×5 → unified 6×6 in v0.77 → now unified 5×5). s1 pre-gen follows automatically (`game.js` STARTER_PLAN reads the same function); stale 6×6 comments updated in config.js / marathon.js / game.js.
+- Only change vs v0.78 — verified by diffing every changed-timestamp file against the extracted v0.78 zip (this `/rel` ran in a fresh session with no work log to draw on).
+- Version bumped 0.78 → 0.79.
+
 ## 2026-07-13 — Release v0.78 (Instrumental toggle placement + credits-mode graying)
 - **Settings row order**: Instrumental Only moved to SECOND position — directly under the Music mode dropdown it refines, ABOVE the MUSIC/SFX volume rows (was between them). Markup-only; all wiring is by id. Verified live: order + toggle round-trip. TANTЯO needed no change (its toggle was already second).
 - **Carries the credits-mode graying** documented in the v0.77 entry below (the "grayed out + ignored in credits-including modes" bullet) — that code landed AFTER the 0.77 bump, so if a 0.77 zip was uploaded anywhere it does NOT include it. 0.78 is the version with everything; both bumps happened this same session.
