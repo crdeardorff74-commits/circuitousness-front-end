@@ -386,7 +386,7 @@ const Render = (() => {
     // Only used in COMPLETE_CIRCUITS (wrap) mode — terminal-pad mode needs
     // the same fixed room per side regardless of path count, since each
     // endpoint's stub + square pad is local to its own port.
-    const TERMINAL_PAD_FRAC = 0.8;
+    const TERMINAL_PAD_FRAC = 0.75;
     function padFracFor(pathCount) {
         if (pathCount >= 4) return 1.15;
         if (pathCount === 3) return 1.0;
@@ -839,8 +839,8 @@ const Render = (() => {
     // a narrow transition and everything inside LIT_CORE_FULL is solid hi —
     // a wide white-hot core with soft dark edges.
     let LIT_GRADIENT_STEPS = 14;
-    const LIT_CORE_START = 0.50;  // t where the base → hi snap begins
-    const LIT_CORE_FULL  = 0.68;  // t from which stripes are solid hi (the hot core)
+    const LIT_CORE_START = 0.60;  // t where the base → hi snap begins
+    const LIT_CORE_FULL  = 0.80;  // t from which stripes are solid hi (the hot core)
     function setLitGradientSteps(n) { LIT_GRADIENT_STEPS = n; if (ctx) draw(); }
     function litStripes(w, rim, pathIdx) {
         const p = litPalette(pathIdx);
@@ -1016,7 +1016,7 @@ const Render = (() => {
     // padding available on that side, so smaller layouts (e.g. the tutorial
     // canvas) degrade to a shorter stub / smaller ring instead of clipping
     // at the canvas edge.
-    const TERM_RING_HALF_FRAC = 0.20;  // ring centerline half-size
+    const TERM_RING_HALF_FRAC = 0.17;  // ring centerline half-size
     const TERM_STUB_FRAC      = 0.10;  // visible stub length between grid edge and ring
     function drawTerminal(ep, w, rim, pathIdx) {
         const side  = ep.port;
@@ -1047,15 +1047,16 @@ const Render = (() => {
 
         const prevJoin = ctx.lineJoin;
         ctx.lineJoin = 'round';
-        // Stub from the grid edge to the ring's near centerline — the ring
-        // stroke overlaps the joint so the butt cap never shows.
+        // Stub (grid edge → the ring's near centerline) and the square ring
+        // as ONE path, so strokeLitLayer's stripes paint both together at
+        // each width — the stub's bright core runs unbroken into the ring's
+        // bright core at the T-junction. Stroked separately, whichever is
+        // drawn second would cap the other's core with its dark outer
+        // stripes. Round joins soften the ring corners of the wide outer
+        // stripes into the promo art's rounded-square silhouette.
         ctx.beginPath();
         ctx.moveTo(inner.x, inner.y);
         ctx.lineTo(cx - dirX * ringHalf, cy - dirY * ringHalf);
-        strokeLitLayer(w, rim, pathIdx);
-        // The square ring itself. Round joins soften the corners of the
-        // wide outer stripes into the promo art's rounded-square silhouette.
-        ctx.beginPath();
         ctx.rect(cx - ringHalf, cy - ringHalf, ringHalf * 2, ringHalf * 2);
         strokeLitLayer(w, rim, pathIdx);
         ctx.lineJoin = prevJoin;
