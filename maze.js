@@ -1078,7 +1078,7 @@ const Maze = (() => {
             // the worker used to ship bestSnapshot regardless and the
             // game accepted it because the worker's response reports the
             // REQUESTED pathCount, not the actual one. config.js's
-            // MIN_DIM_*_4PATH bump keeps the loop fast on the typical
+            // MIN_DIM_QUAD_4PATH bump keeps the loop fast on the typical
             // case; the strict loop is the safety net.
             // hurryFlag is intentionally NOT a bail trigger here — letting
             // a hurried player accept fewer paths violates the contract.
@@ -1217,8 +1217,11 @@ const Maze = (() => {
         // with the full pathCount.
         // 4-path is dramatically harder to fit (8 distinct edge endpoints +
         // 4 DFS paths competing for the same grid), so it gets a much bigger
-        // retry budget per pass. config.js's MIN_DIM_*_4PATH bump keeps the
-        // strict loop's typical case fast.
+        // retry budget per pass. buildPuzzle's backtracking placement makes
+        // even small grids (5×5 starts, 4×4 in Debug) converge — typically
+        // instantly, worst case a few seconds of failed attempts, never a
+        // hang, since 8 endpoints only need 8 distinct perimeter cells and
+        // each path just needs MIN_PATH_CELLS spanning 2 rows/cols.
         if (pathCount >= 3) {
             let bestSnapshot = null;
             let bestCount = 0;

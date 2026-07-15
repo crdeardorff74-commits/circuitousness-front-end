@@ -155,57 +155,45 @@ const MARATHON = {
     // quad mode's underlying maze is 2× per axis. No upper cap.
     MIN_DIM_SINGULAR: 8,
     MIN_DIM_QUAD:    4,
-    // Practice mode starts smaller and gentler than Marathon — new players
-    // land in Practice (it's the default mode), so singular puzzles start
-    // well below Marathon's baseline. The floor scales with path count so
-    // more paths get more room: indexed by pathCount-1 → 2-path 6×6,
-    // 3-path 8×8. The 1-path entry is superseded by startDimsFor's
-    // 5×5 practice start (below) — kept only as the square fallback
-    // should that override ever be removed. 4-path is NOT here —
-    // it keeps the generator-mandated MIN_DIM_SINGULAR_4PATH (10×10) floor
-    // regardless of mode, so the strict 4-path generator has room for all
-    // 8 endpoints. Only the SINGULAR floor is lowered; quad already starts
-    // at 4 (MIN_DIM_QUAD).
-    MIN_DIM_PRACTICE_SINGULAR: [6, 6, 8],
-    // Per-path-count minimum-dim override. 4-path puzzles need more grid
-    // space than 1/2/3-path: 8 distinct perimeter endpoints + 4 DFS paths
-    // competing for non-overlapping cells. At 8×8 (regular MIN_DIM) the
-    // generator sometimes fails to place all 4 paths even with thousands
-    // of attempts — paired with strict mode in maze.js, that would mean
-    // the worker loops a long time. 10×10 (singular) / 6×6 (quad logical
-    // = 12×12 physical) is comfortable. Used by minDimFor() below; falls
-    // back to MIN_DIM_SINGULAR / MIN_DIM_QUAD when no override is set
-    // for a given (quadMode, pathCount).
+    // Per-path-count minimum-dim override. Only the QUAD value still
+    // matters in practice: q4's 6 logical (= 12×12 physical) gives the
+    // 4-path generator room without doubling from an already-big base.
+    // SINGULAR_4PATH is a dead fallback — startDimsFor (below) pins ALL
+    // singular starts to 5×5. It was 10 because the ORIGINAL linear
+    // placement couldn't reliably fit 4 paths even at 8×8; since the
+    // backtracking `place()` search in maze.js (which undoes paths 2/3
+    // when path 4 gets boxed out), 4-path builds succeed even on 4×4 —
+    // worst case a few seconds of retries inside the strict loop, not a
+    // hang. Kept only should the startDimsFor override ever be removed.
     MIN_DIM_SINGULAR_4PATH: 10,
     MIN_DIM_QUAD_4PATH:      6,
-    // Single source of truth for "what's the min logical dim for THIS
-    // (quadMode, pathCount)?". Callers: marathon.js's dimsForLevel,
-    // game.js's STARTER_PLAN. Adding more overrides (3-path, etc.) is
-    // a matter of adding the constant above + a branch here.
-    // `practice` (optional) lowers the singular floor for Practice mode via
-    // the per-path-count MIN_DIM_PRACTICE_SINGULAR table. The 4-path bump
-    // still wins (those puzzles need the extra room regardless of mode), and
-    // quad is unaffected since it already starts at MIN_DIM_QUAD.
-    minDimFor: function (quadMode, pathCount, practice) {
+    // Min logical dim for THIS (quadMode, pathCount). Since the 5×5
+    // singular unification only the quad branch is reachable via
+    // startDimsFor, but the function is kept whole as the documented
+    // fallback. Adding overrides (3-path, etc.) is a matter of adding
+    // the constant above + a branch here.
+    minDimFor: function (quadMode, pathCount) {
         if (pathCount === 4) {
             return quadMode ? this.MIN_DIM_QUAD_4PATH : this.MIN_DIM_SINGULAR_4PATH;
         }
-        if (practice && !quadMode) return this.MIN_DIM_PRACTICE_SINGULAR[pathCount - 1];
         return quadMode ? this.MIN_DIM_QUAD : this.MIN_DIM_SINGULAR;
     },
-    // Level-1 start dims as {rows, cols} (cols = width) — the square
-    // minDimFor baseline everywhere EXCEPT 1-path singular, which starts
-    // deliberately smaller: 5×5 in BOTH Zen/Practice and Marathon (history:
-    // Practice was 4×4 then 4 tall × 5 wide; Marathon was the flat 8×8
-    // MIN_DIM_SINGULAR, then 5×5, then 6×6). The per-solve row/col growth
-    // still climbs from there.
+    // Level-1 start dims as {rows, cols} (cols = width). ALL singular
+    // puzzles start 5×5 — every path count, in BOTH Zen/Practice and
+    // Marathon (history: 1-path went 4×4 → 4×5/5×5 → 6×6 → 5×5, and
+    // 2/3/4-path sat on the 6/8/10 MIN_DIM floors until Debug-mode
+    // testing showed the backtracking 4-path generator is fine on tiny
+    // grids). Quad keeps the minDimFor floors (4, or 6 for q4): logical
+    // dims are 2× physical, so quad 4×4 is already an 8×8 maze and 5×5
+    // logical would make quad starts BIGGER, not uniform. The per-solve
+    // row/col growth climbs from here.
     // Callers: marathon.js dimsForLevel (adds growth per level) and
     // game.js STARTER_PLAN (pre-gen at Marathon's level-1 dims).
-    startDimsFor: function (quadMode, pathCount, practice) {
-        if (!quadMode && pathCount === 1) {
+    startDimsFor: function (quadMode, pathCount) {
+        if (!quadMode) {
             return { rows: 5, cols: 5 };
         }
-        const d = this.minDimFor(quadMode, pathCount, practice);
+        const d = this.minDimFor(quadMode, pathCount);
         return { rows: d, cols: d };
     },
 

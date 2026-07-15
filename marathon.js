@@ -569,26 +569,25 @@ const Marathon = (() => {
     // Logical dims for puzzle N (1-based). Returns { rows, cols }.
     // Step pattern (period 4 starting at level 2): cols, rows, rows, cols.
     // Equivalent rule for level L≥2: rows grows when L%4 ∈ {3, 0}, else cols.
-    // Same pattern for regular and quad — quad just starts smaller (6×6 vs
-    // 8×8) since each step adds 2× sub-tiles per axis. No upper cap.
+    // Same pattern for regular and quad — quad just starts smaller in
+    // logical dims (4×4 vs singular's 5×5) since each step adds 2×
+    // sub-tiles per axis. No upper cap.
     function ensureGrowthSequence(lev) {
         // Number of transitions needed = lev - 1 (transition index = level - 2).
         while (growthSequence.length < lev - 1) {
             growthSequence.push(Math.random() < 0.5 ? 'r' : 'c');
         }
     }
-    // pathCount is required for the 4-path min-dim bump (see MARATHON.minDimFor
-    // in config.js). Callers that previously omitted it would silently get the
-    // 1-path baseline — fine for 1/2/3-path puzzles, but for 4-path that means
-    // an 8×8 grid the generator can't reliably fill. All callers now pass it.
+    // pathCount is required for the quad 4-path min-dim bump (see
+    // MARATHON.minDimFor in config.js — q4 starts at 6 logical, not 4).
+    // Singular ignores it (all path counts start 5×5), but every caller
+    // passes it so the quad path stays correct.
     function dimsForLevel(lev, quadMode, pathCount) {
-        // isPractice (module-level) selects the gentler Practice start —
-        // read here so every caller (startNextPuzzle, the HUD label,
-        // upcomingDims pre-gen lookahead) gets the right size. Start dims
-        // come from MARATHON.startDimsFor (1-path singular: 5×5 in both
-        // Zen/Practice and Marathon) and may be asymmetric; growth then
-        // adds one axis per solve on top of whichever base each axis got.
-        const start = MARATHON.startDimsFor(quadMode, pathCount, isPractice);
+        // Start dims come from MARATHON.startDimsFor (singular: 5×5 for
+        // EVERY path count, in both Zen/Practice and Marathon; quad: the
+        // minDimFor floors) and may be asymmetric; growth then adds one
+        // axis per solve on top of whichever base each axis got.
+        const start = MARATHON.startDimsFor(quadMode, pathCount);
         ensureGrowthSequence(lev);
         let rowGrowth = 0, colGrowth = 0;
         for (let i = 0; i < lev - 1; i++) {

@@ -143,14 +143,13 @@
             for (const type of MARATHON.TYPES) {
                 const quad   = type[0] === 'q';
                 const paths  = parseInt(type[1], 10) || 1;
-                // Path-count-aware start dims: 4-path needs more grid than
-                // the 1/2/3-path baseline, and 1-path singular Marathon
-                // starts at 5×5 (see MARATHON.startDimsFor in config.js) —
-                // the starter build must match dimsForLevel(1, ...) exactly
-                // or every s1 game-start misses this cache. Marathon
-                // variant only (no `practice` arg): Practice starts are
-                // deliberately not pre-genned (v0.60 decision — they're
-                // small enough to build near-instantly on demand).
+                // Start dims from MARATHON.startDimsFor (singular: 5×5 for
+                // every path count; quad: minDimFor floors) — the starter
+                // build must match dimsForLevel(1, ...) exactly or every
+                // game-start misses this cache. Zen/Practice and Marathon
+                // now share identical start dims, so these starters serve
+                // both modes (pre-unification, Zen 2/3-path had its own
+                // smaller dims and deliberately skipped pre-gen).
                 const startDims = MARATHON.startDimsFor(quad, paths);
                 // dimsForLevel(1, ...) returns these logical dims;
                 // upcomingDims/startPuzzle convert ×2 for quad → PHYSICAL dims.
