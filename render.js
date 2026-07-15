@@ -884,10 +884,10 @@ const Render = (() => {
     // per-frame redraws rotation animations need.
     // Strokes the current path (like strokeLitLayer); does not disturb it.
     const GLOW_LAYERS = [
-        { scale: 1.9, alpha: 0.09 },
-        { scale: 1.6, alpha: 0.12 },
-        { scale: 1.4, alpha: 0.15 },
-        { scale: 1.2, alpha: 0.19 },
+        { scale: 1.60, alpha: 0.09 },
+        { scale: 1.40, alpha: 0.12 },
+        { scale: 1.26, alpha: 0.15 },
+        { scale: 1.13, alpha: 0.19 },
     ];
     function strokeGlowLayer(w, rim, pathIdx) {
         const p = litPalette(pathIdx);
