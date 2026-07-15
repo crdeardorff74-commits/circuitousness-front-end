@@ -33,12 +33,12 @@ const Render = (() => {
     let BEVEL_FRAC       = 0.07;   // bevel thickness as a fraction of cell
     let TILE_FACE_ALPHA  = 0.80;   // opacity of the inner tile-face fill (bevels stay opaque)
     let LOCK_FACE_COLOR  = '#ffffff'; // face color for player-locked tiles (bevels stay normal)
-    let COMPLETE_CIRCUITS = true;  // false = entry/exit just stretch to canvas edges (no perimeter wrap)
+    let COMPLETE_CIRCUITS = false; // false (default) = entry/exit stubs end in square terminal pads; true = paths wrap the grid perimeter
     function setCompleteCircuits(on) {
         COMPLETE_CIRCUITS = !!on;
-        // Canvas extent depends on this flag (when off, canvas fills the
-        // viewport so stubs can reach the screen edge), so a full resize
-        // is required, not just a redraw.
+        // Grid padding depends on this flag (wrap mode scales pad with
+        // pathCount for the fanned rings; terminal mode uses a fixed pad),
+        // so a full resize is required, not just a redraw.
         if (ctx) resize();
     }
     function setPathWidth(frac) {
@@ -383,6 +383,10 @@ const Render = (() => {
     // 1 path: 0.7 (default). 2 paths: 0.8. 3 paths: 1.0. The grid itself
     // shrinks slightly in multi-path mode but the rings have room to fan
     // out without clipping or overlapping the grid edge.
+    // Only used in COMPLETE_CIRCUITS (wrap) mode — terminal-pad mode needs
+    // the same fixed room per side regardless of path count, since each
+    // endpoint's stub + square pad is local to its own port.
+    const TERMINAL_PAD_FRAC = 0.8;
     function padFracFor(pathCount) {
         if (pathCount >= 4) return 1.15;
         if (pathCount === 3) return 1.0;
@@ -415,10 +419,12 @@ const Render = (() => {
         // grid on a landscape monitor stays height-bound. (Earlier version
         // used min(width,height) for both viewport and grid, treating both
         // as square — that wasted horizontal space on wide grids.)
-        // PAD_FRAC scales with pathCount — multi-path mode needs more
-        // perimeter room to stack 2-3 rings without clipping or overlapping
-        // the grid (grid shrinks slightly to make room).
-        const PAD_FRAC = padFracFor(Maze.pathCount);
+        // PAD_FRAC: in wrap mode it scales with pathCount — multi-path mode
+        // needs more perimeter room to stack 2-3 rings without clipping or
+        // overlapping the grid (grid shrinks slightly to make room). In
+        // terminal-pad mode every endpoint is local to its own port, so a
+        // fixed pad suffices at any path count (bigger grids in multi-path).
+        const PAD_FRAC = COMPLETE_CIRCUITS ? padFracFor(Maze.pathCount) : TERMINAL_PAD_FRAC;
         const cellByW = (availW * dpr) / (Maze.COLS + 2 * PAD_FRAC);
         const cellByH = (availH * dpr) / (Maze.ROWS + 2 * PAD_FRAC);
         cellSize = Math.floor(Math.min(cellByW, cellByH));
@@ -427,18 +433,8 @@ const Render = (() => {
         const gridH    = cellSize * Maze.ROWS;
         const pad      = Math.round(cellSize * PAD_FRAC);
 
-        // COMPLETE_CIRCUITS=false makes the canvas fill the entire viewport so
-        // the entry/exit stubs can reach the actual screen edges. The grid
-        // stays centered inside; the extra space around it is just empty
-        // padding the stubs render through.
-        let totalW, totalH;
-        if (COMPLETE_CIRCUITS) {
-            totalW = gridW + pad * 2;
-            totalH = gridH + pad * 2;
-        } else {
-            totalW = window.innerWidth  * dpr;
-            totalH = window.innerHeight * dpr;
-        }
+        const totalW = gridW + pad * 2;
+        const totalH = gridH + pad * 2;
 
         canvas.style.width  = (totalW / dpr) + 'px';
         canvas.style.height = (totalH / dpr) + 'px';
@@ -838,7 +834,13 @@ const Render = (() => {
     // channel reads as a smooth gradient instead of three discrete bands.
     // Outermost width is w + rim*2 — matches the un-lit rim band, so lit
     // channels need no separate rim layer underneath.
+    // The color ramp is deliberately non-linear (neon-tube look): the outer
+    // part of the band eases subtly lo → base, then base → hi snaps in over
+    // a narrow transition and everything inside LIT_CORE_FULL is solid hi —
+    // a wide white-hot core with soft dark edges.
     let LIT_GRADIENT_STEPS = 14;
+    const LIT_CORE_START = 0.50;  // t where the base → hi snap begins
+    const LIT_CORE_FULL  = 0.68;  // t from which stripes are solid hi (the hot core)
     function setLitGradientSteps(n) { LIT_GRADIENT_STEPS = n; if (ctx) draw(); }
     function litStripes(w, rim, pathIdx) {
         const p = litPalette(pathIdx);
@@ -847,9 +849,10 @@ const Render = (() => {
         for (let i = 0; i < LIT_GRADIENT_STEPS; i++) {
             const t = i / (LIT_GRADIENT_STEPS - 1);
             const lineWidth = Math.max(1, outerW * (1 - t) + 1 * t);
-            const color = t < 0.5
-                ? blendRGB(p.lo,   p.base, t * 2)
-                : blendRGB(p.base, p.hi,   (t - 0.5) * 2);
+            const color = t < LIT_CORE_START
+                ? blendRGB(p.lo,   p.base, t / LIT_CORE_START)
+                : blendRGB(p.base, p.hi,
+                           Math.min(1, (t - LIT_CORE_START) / (LIT_CORE_FULL - LIT_CORE_START)));
             stripes.push({ width: lineWidth, color });
         }
         return stripes;
@@ -954,12 +957,16 @@ const Render = (() => {
     }
 
     // ---- entry/exit notches + external circuit connector ----
-    // The notch is a recessed channel that extends out of the entry/exit cell
-    // into the perimeter padding. The external connector continues from the
-    // entry notch's outer endpoint around the grid perimeter to the exit
-    // notch's outer endpoint, closing the circuit. All three (notches +
-    // connector + internal cell channels) share the same rim/dark/lit
-    // layering so they read as one continuous loop.
+    // Two modes, chosen by COMPLETE_CIRCUITS:
+    //  - terminal pads (default): each entry/exit gets a short stub from
+    //    the grid edge into a glowing square ring pad (see drawTerminal).
+    //  - wrap mode: the notch is a recessed channel that extends out of the
+    //    entry/exit cell into the perimeter padding, and the external
+    //    connector continues from the entry notch's outer endpoint around
+    //    the grid perimeter to the exit notch's outer endpoint, closing the
+    //    circuit. All three (notches + connector + internal cell channels)
+    //    share the same rim/dark/lit layering so they read as one
+    //    continuous loop.
 
     function notchLength() {
         // Tied to cellSize, not to the pad — the connector stroke needs room
@@ -999,17 +1006,59 @@ const Render = (() => {
         return                      { x: px + cellSize + len,  y: py + half }; // E
     }
 
-    // Endpoint at the canvas edge directly outward from a notch — used in
-    // "complete circuits = false" mode where the path just stretches off
-    // the grid into the surrounding padding instead of wrapping around.
-    function canvasEdgePoint(side, row, col) {
-        const px = originX + col * cellSize;
-        const py = originY + row * cellSize;
-        const half = cellSize / 2;
-        if (side === Maze.N) return { x: px + half,    y: 0 };
-        if (side === Maze.S) return { x: px + half,    y: canvas.height };
-        if (side === Maze.W) return { x: 0,            y: py + half };
-        return                      { x: canvas.width, y: py + half }; // E
+    // Square terminal pad at one entry/exit (COMPLETE_CIRCUITS=false mode):
+    // a short stub from the grid edge feeds a glowing square ring — the
+    // neon "endpoint" look from the promo art. Drawn with the same
+    // strokeLitLayer stripes as the paths, so it shares the path's color
+    // (and turns gold with it on completion).
+    //
+    // Geometry is nominal (fractions of cellSize) but clamps to the actual
+    // padding available on that side, so smaller layouts (e.g. the tutorial
+    // canvas) degrade to a shorter stub / smaller ring instead of clipping
+    // at the canvas edge.
+    const TERM_RING_HALF_FRAC = 0.20;  // ring centerline half-size
+    const TERM_STUB_FRAC      = 0.10;  // visible stub length between grid edge and ring
+    function drawTerminal(ep, w, rim, pathIdx) {
+        const side  = ep.port;
+        const inner = notchInnerPoint(side, ep.row, ep.col);
+        const dirX  = side === Maze.W ? -1 : side === Maze.E ? 1 : 0;
+        const dirY  = side === Maze.N ? -1 : side === Maze.S ? 1 : 0;
+        const halfStroke = (w + rim * 2) / 2;
+        // Actual padding from the grid edge to the canvas edge on this side.
+        const gridW = cellSize * Maze.COLS;
+        const gridH = cellSize * Maze.ROWS;
+        const avail = (side === Maze.N ? originY
+                     : side === Maze.S ? canvas.height - originY - gridH
+                     : side === Maze.W ? originX
+                     :                   canvas.width  - originX - gridW) - 2;
+        let ringHalf = cellSize * TERM_RING_HALF_FRAC;
+        let stub     = cellSize * TERM_STUB_FRAC;
+        // Total outward reach = stub + ring diameter incl. stroke. Shrink
+        // the stub first, then the ring (floor: solid square, no hole).
+        if (stub + 2 * (ringHalf + halfStroke) > avail) {
+            stub = Math.max(0, avail - 2 * (ringHalf + halfStroke));
+            if (stub + 2 * (ringHalf + halfStroke) > avail) {
+                ringHalf = Math.max(halfStroke + 1, avail / 2 - halfStroke);
+            }
+        }
+        const centerD = stub + ringHalf + halfStroke;
+        const cx = inner.x + dirX * centerD;
+        const cy = inner.y + dirY * centerD;
+
+        const prevJoin = ctx.lineJoin;
+        ctx.lineJoin = 'round';
+        // Stub from the grid edge to the ring's near centerline — the ring
+        // stroke overlaps the joint so the butt cap never shows.
+        ctx.beginPath();
+        ctx.moveTo(inner.x, inner.y);
+        ctx.lineTo(cx - dirX * ringHalf, cy - dirY * ringHalf);
+        strokeLitLayer(w, rim, pathIdx);
+        // The square ring itself. Round joins soften the corners of the
+        // wide outer stripes into the promo art's rounded-square silhouette.
+        ctx.beginPath();
+        ctx.rect(cx - ringHalf, cy - ringHalf, ringHalf * 2, ringHalf * 2);
+        strokeLitLayer(w, rim, pathIdx);
+        ctx.lineJoin = prevJoin;
     }
 
     // Inner endpoint of a notch (the point ON the grid edge at the cell port).
@@ -1122,24 +1171,6 @@ const Render = (() => {
     // offset from the grid edge — paths that share a perimeter side fan
     // out by rank; paths alone on a side stay close to baseLen.
     function drawCircuitOutlinePair(w, rim, entry, exit, pathIdx, route, pathOffsets) {
-        // COMPLETE_CIRCUITS=false: skip the perimeter wrap entirely. Each
-        // entry/exit gets a single straight stub from the grid edge out to
-        // the canvas edge — visually the path enters/exits "off-screen"
-        // rather than looping back around to its partner.
-        if (!COMPLETE_CIRCUITS) {
-            const entryInner = notchInnerPoint(entry.port, entry.row, entry.col);
-            const entryEdge  = canvasEdgePoint(entry.port, entry.row, entry.col);
-            const exitInner  = notchInnerPoint(exit.port,  exit.row,  exit.col);
-            const exitEdge   = canvasEdgePoint(exit.port,  exit.row,  exit.col);
-            ctx.beginPath();
-            ctx.moveTo(entryInner.x, entryInner.y);
-            ctx.lineTo(entryEdge.x,  entryEdge.y);
-            ctx.moveTo(exitInner.x,  exitInner.y);
-            ctx.lineTo(exitEdge.x,   exitEdge.y);
-            strokeLitLayer(w, rim, pathIdx);
-            return;
-        }
-
         const gridW = cellSize * Maze.COLS;
         const gridH = cellSize * Maze.ROWS;
         // Per-path corners — each axis uses the offset of the bordering side.
@@ -1177,13 +1208,24 @@ const Render = (() => {
     // that SHARE a side fan out by rank between minR (just clear of the
     // grid) and maxR (just inside the canvas padding).
     function drawCircuitOutline(w, rim) {
-        const baseLen = notchLength();
         const pairs = [];
         if (Maze.entry  && Maze.exit)  pairs.push({ entry: Maze.entry,  exit: Maze.exit,  pathIdx: 0 });
         if (Maze.entry2 && Maze.exit2) pairs.push({ entry: Maze.entry2, exit: Maze.exit2, pathIdx: 1 });
         if (Maze.entry3 && Maze.exit3) pairs.push({ entry: Maze.entry3, exit: Maze.exit3, pathIdx: 2 });
         if (Maze.entry4 && Maze.exit4) pairs.push({ entry: Maze.entry4, exit: Maze.exit4, pathIdx: 3 });
 
+        // Terminal-pad mode: no perimeter routing at all — every entry and
+        // exit gets a stub + square pad local to its own port. Route/cluster
+        // computation below only matters for the wrap-around polylines.
+        if (!COMPLETE_CIRCUITS) {
+            for (const p of pairs) {
+                drawTerminal(p.entry, w, rim, p.pathIdx);
+                drawTerminal(p.exit,  w, rim, p.pathIdx);
+            }
+            return;
+        }
+
+        const baseLen = notchLength();
         if (pairs.length === 1) {
             const p0 = pairs[0];
             const offs = {};
@@ -2079,7 +2121,11 @@ const Render = (() => {
         // Force a fresh offscreen sized to the tutorial canvas.
         offCanvas = null;
         offCtx    = null;
-        tutPadFrac   = (padFrac != null) ? padFrac : 0.55;
+        // Terminal-pad mode needs the full pad for the stub + square rings
+        // (drawTerminal clamps to the available pad, so a tighter value
+        // would compress the pads rather than clip — but give them room).
+        tutPadFrac   = (padFrac != null) ? padFrac
+                     : (COMPLETE_CIRCUITS ? 0.55 : TERMINAL_PAD_FRAC);
         tutorialMode = true;
         layoutTutorial();
     }
