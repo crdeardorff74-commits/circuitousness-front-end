@@ -894,7 +894,10 @@ const Render = (() => {
         const outerW = w + rim * 2;
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        ctx.lineCap  = 'round';
+        // Butt caps: the glow ends flush with a dead-end lane's endpoint —
+        // no bulb of light past the open end. Round joins still soften the
+        // corners along elbows and the terminal rings.
+        ctx.lineCap  = 'butt';
         ctx.lineJoin = 'round';
         ctx.strokeStyle = p.base;
         for (const g of GLOW_LAYERS) {
@@ -2012,10 +2015,10 @@ const Render = (() => {
         // inset 1px from the band's outer edge for the same tuck.
         ctx.save();
         ctx.globalCompositeOperation = 'destination-out';
-        // BUTT caps, deliberately unlike the glow's round caps: the erase
-        // must stop flush at a dead-end lane's endpoint so the glow's round
-        // cap remains as a soft bulb of light hugging the open end. A round
-        // erase cap gouged a cap-shaped void between path end and glow.
+        // Butt caps, matching the glow strokes: both the glow and its erase
+        // stop flush at a dead-end lane's endpoint — the side glow ends in
+        // a clean square cut, with no cap bulb and no erased void beyond
+        // the open end.
         ctx.lineCap  = 'butt';
         ctx.lineJoin = 'round';
         ctx.lineWidth = Math.max(1, outerW - 2);
