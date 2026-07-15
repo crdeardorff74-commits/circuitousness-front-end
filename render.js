@@ -866,6 +866,35 @@ const Render = (() => {
         }
     }
 
+    // Neon glow — lit channels cast their color onto whatever sits beside
+    // them (tile bevels, mostly), matching the promo art. Implemented as
+    // concentric wide strokes at decreasing alpha with additive ('lighter')
+    // compositing: a stepped approximation of a soft falloff. Deliberately
+    // NOT ctx.shadowBlur — real gaussian blur is far too slow for the
+    // per-frame redraws rotation animations need.
+    // Strokes the current path (like strokeLitLayer); does not disturb it.
+    const GLOW_LAYERS = [
+        { scale: 2.8,  alpha: 0.05 },
+        { scale: 2.2,  alpha: 0.07 },
+        { scale: 1.75, alpha: 0.09 },
+        { scale: 1.4,  alpha: 0.11 },
+    ];
+    function strokeGlowLayer(w, rim, pathIdx) {
+        const p = litPalette(pathIdx);
+        const outerW = w + rim * 2;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap  = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = p.base;
+        for (const g of GLOW_LAYERS) {
+            ctx.globalAlpha = g.alpha;
+            ctx.lineWidth   = outerW * g.scale;
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
     // The cell corner shared by the two ports of an elbow lane. The path's
     // quarter-arc is centered there.
     function elbowCorner(px, py, portA, portB) {
@@ -877,11 +906,13 @@ const Render = (() => {
         return                                 { x: px,      y: py      }; // W-N
     }
 
-    function pathChannel(px, py, portA, portB) {
+    // Lane centerline geometry WITHOUT beginPath — lets callers accumulate
+    // many lanes into one combined path (the glow pass strokes a whole
+    // path-group at once so overlapping segments paint uniformly).
+    function laneGeom(px, py, portA, portB) {
         const a        = portMidpoint(px, py, portA);
         const b        = portMidpoint(px, py, portB);
         const opposite = ((portA + 2) & 3) === portB;
-        ctx.beginPath();
         if (opposite) {
             ctx.moveTo(a.x, a.y);
             ctx.lineTo(b.x, b.y);
@@ -915,6 +946,11 @@ const Render = (() => {
                 ctx.arc(corner.x, corner.y, cellSize / 2, s, e, anticlockwise);
             }
         }
+    }
+
+    function pathChannel(px, py, portA, portB) {
+        ctx.beginPath();
+        laneGeom(px, py, portA, portB);
     }
 
     function drawChannelRim(px, py, portA, portB, w, rim) {
@@ -1016,14 +1052,18 @@ const Render = (() => {
     // padding available on that side, so smaller layouts (e.g. the tutorial
     // canvas) degrade to a shorter stub / smaller ring instead of clipping
     // at the canvas edge.
-    const TERM_RING_HALF_FRAC = 0.17;  // ring centerline half-size
-    const TERM_STUB_FRAC      = 0.10;  // visible stub length between grid edge and ring
+    const TERM_RING_HALF_FRAC    = 0.145; // ring centerline half-size
+    const TERM_STUB_FRAC         = 0.10;  // visible stub length between grid edge and ring
+    const TERM_RING_STROKE_SCALE = 0.72;  // ring band width relative to the path's
     function drawTerminal(ep, w, rim, pathIdx) {
         const side  = ep.port;
         const inner = notchInnerPoint(side, ep.row, ep.col);
         const dirX  = side === Maze.W ? -1 : side === Maze.E ? 1 : 0;
         const dirY  = side === Maze.N ? -1 : side === Maze.S ? 1 : 0;
-        const halfStroke = (w + rim * 2) / 2;
+        // The ring is stroked thinner than the path so the pad stays small
+        // WITHOUT closing up its dark center hole.
+        const ringW = Math.max(3, Math.round(w * TERM_RING_STROKE_SCALE));
+        const ringHalfStroke = (ringW + rim * 2) / 2;
         // Actual padding from the grid edge to the canvas edge on this side.
         const gridW = cellSize * Maze.COLS;
         const gridH = cellSize * Maze.ROWS;
@@ -1035,30 +1075,53 @@ const Render = (() => {
         let stub     = cellSize * TERM_STUB_FRAC;
         // Total outward reach = stub + ring diameter incl. stroke. Shrink
         // the stub first, then the ring (floor: solid square, no hole).
-        if (stub + 2 * (ringHalf + halfStroke) > avail) {
-            stub = Math.max(0, avail - 2 * (ringHalf + halfStroke));
-            if (stub + 2 * (ringHalf + halfStroke) > avail) {
-                ringHalf = Math.max(halfStroke + 1, avail / 2 - halfStroke);
+        if (stub + 2 * (ringHalf + ringHalfStroke) > avail) {
+            stub = Math.max(0, avail - 2 * (ringHalf + ringHalfStroke));
+            if (stub + 2 * (ringHalf + ringHalfStroke) > avail) {
+                ringHalf = Math.max(ringHalfStroke + 1, avail / 2 - ringHalfStroke);
             }
         }
-        const centerD = stub + ringHalf + halfStroke;
+        const centerD = stub + ringHalf + ringHalfStroke;
         const cx = inner.x + dirX * centerD;
         const cy = inner.y + dirY * centerD;
 
+        const stubPath = () => {
+            ctx.beginPath();
+            ctx.moveTo(inner.x, inner.y);
+            ctx.lineTo(cx - dirX * ringHalf, cy - dirY * ringHalf);
+        };
+        const ringPath = () => {
+            ctx.beginPath();
+            ctx.rect(cx - ringHalf, cy - ringHalf, ringHalf * 2, ringHalf * 2);
+        };
+
         const prevJoin = ctx.lineJoin;
         ctx.lineJoin = 'round';
-        // Stub (grid edge → the ring's near centerline) and the square ring
-        // as ONE path, so strokeLitLayer's stripes paint both together at
-        // each width — the stub's bright core runs unbroken into the ring's
-        // bright core at the T-junction. Stroked separately, whichever is
-        // drawn second would cap the other's core with its dark outer
-        // stripes. Round joins soften the ring corners of the wide outer
-        // stripes into the promo art's rounded-square silhouette.
-        ctx.beginPath();
-        ctx.moveTo(inner.x, inner.y);
-        ctx.lineTo(cx - dirX * ringHalf, cy - dirY * ringHalf);
-        ctx.rect(cx - ringHalf, cy - ringHalf, ringHalf * 2, ringHalf * 2);
-        strokeLitLayer(w, rim, pathIdx);
+        // Glow first (both shapes), crisp stripes on top.
+        stubPath();
+        strokeGlowLayer(w, rim, pathIdx);
+        ringPath();
+        strokeGlowLayer(ringW, rim, pathIdx);
+        // Stub (grid edge → the ring's near centerline) and ring carry
+        // different stroke widths, so they can't share one path — instead
+        // their stripes INTERLEAVE, dark→bright in lockstep (stripe colors
+        // at each step are identical, only widths differ). Nothing dark is
+        // ever painted over an already-bright stripe, so the stub's hot
+        // core runs unbroken into the ring's at the T-junction. Round joins
+        // soften the ring corners of the wide outer stripes into the promo
+        // art's rounded-square silhouette.
+        const stubStripes = litStripes(w,     rim, pathIdx);
+        const ringStripes = litStripes(ringW, rim, pathIdx);
+        for (let i = 0; i < stubStripes.length; i++) {
+            stubPath();
+            ctx.strokeStyle = stubStripes[i].color;
+            ctx.lineWidth   = stubStripes[i].width;
+            ctx.stroke();
+            ringPath();
+            ctx.strokeStyle = ringStripes[i].color;
+            ctx.lineWidth   = ringStripes[i].width;
+            ctx.stroke();
+        }
         ctx.lineJoin = prevJoin;
     }
 
@@ -1198,6 +1261,9 @@ const Render = (() => {
 
         const prevJoin = ctx.lineJoin;
         ctx.lineJoin = 'round';
+        // Glow first, crisp stripes on top — the opaque stripes re-cover
+        // the band so the glow only reads OUTSIDE the path.
+        strokeGlowLayer(w, rim, pathIdx);
         strokeLitLayer(w, rim, pathIdx);
         ctx.lineJoin = prevJoin;
     }
@@ -1839,6 +1905,69 @@ const Render = (() => {
         });
     }
 
+    // Trace every lit lane belonging to path `idx` (or ALL lit lanes when
+    // idx is null) into ONE combined path. A single stroke of a multi-
+    // subpath path paints the union region uniformly — no double-bright
+    // spots where segments meet or overlap, which separate per-lane glow
+    // strokes would produce under 'lighter' compositing.
+    function traceLitGroup(litKeys, idx) {
+        ctx.beginPath();
+        const grid = Maze.grid;
+        for (let r = 0; r < Maze.ROWS; r++) {
+            for (let c = 0; c < Maze.COLS; c++) {
+                const tile = grid[r][c];
+                const px = originX + c * cellSize;
+                const py = originY + r * cellSize;
+                withTileRotation(r, c, () => {
+                    for (const [a, b] of Maze.getConnections(tile)) {
+                        const p = litPathFor(litKeys, r, c, a, b);
+                        if (idx === null ? p === -1 : p !== idx) continue;
+                        laneGeom(px, py, a, b);
+                    }
+                });
+            }
+        }
+    }
+
+    // Pass E: neon glow for the in-grid lit lanes. Runs AFTER the walls
+    // pass — the whole point is tinting the bevels next to each lit lane.
+    // Rendered to the offscreen first so the channel band itself can be
+    // erased (destination-out) before compositing: the spill lands on the
+    // walls but never re-brightens the path's own lo→hi gradient, which
+    // was already painted in Pass C. The offscreen's Pass-B content is
+    // long since composited by this point, so reusing it is safe (both
+    // drawCore and drawAnimatedFrame repaint it from scratch each frame).
+    // The external outline + terminal pads glow separately in their own
+    // draw calls (they run after the walls pass anyway).
+    function drawGlowPass(litKeys, w, rim) {
+        if (snippetMode || litKeys.size === 0) return;
+        const outerW  = w + rim * 2;
+        const present = new Set(litKeys.values());
+        const mainCtx = ctx;
+        ctx = offCtx;
+        ctx.clearRect(0, 0, offCanvas.width, offCanvas.height);
+        for (const idx of present) {
+            traceLitGroup(litKeys, idx);
+            strokeGlowLayer(w, rim, idx);
+        }
+        // Erase the band the crisp stripes occupy — slightly narrower than
+        // the stripe stroke, so the glow's innermost pixels tuck under the
+        // path's dark outer stripe instead of leaving an AA seam beside it.
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.lineCap  = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = Math.max(1, outerW - 2);
+        traceLitGroup(litKeys, null);
+        ctx.stroke();
+        ctx.restore();
+        ctx = mainCtx;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.drawImage(offCanvas, 0, 0);
+        ctx.restore();
+    }
+
     // Full-grid render. Used for any frame that isn't a pure rotation
     // animation (initial load, click landing, hint pulse, dramatic flash,
     // resize, etc.) and for the first frame after a rotation kicks off
@@ -1951,6 +2080,9 @@ const Render = (() => {
         for (let r = 0; r < Maze.ROWS; r++) {
             for (let c = 0; c < Maze.COLS; c++) renderTileWalls(r, c);
         }
+
+        // Pass E: lit lanes cast their glow onto the freshly-drawn walls.
+        drawGlowPass(litKeys, w, rim);
 
         // Full external loop (entry notch + perimeter connector + exit notch)
         // drawn as one polyline so every corner is a smooth round bend.
@@ -2360,6 +2492,13 @@ const Render = (() => {
             const [r, c] = key.split(',').map(Number);
             renderTileWalls(r, c);
         }
+
+        // Pass E: glow. Traced grid-wide (cheap — geometry only), so glow
+        // spilling into the dirty region from lanes OUTSIDE it is repainted
+        // too; the clip restricts the actual pixel writes. NOTE: this
+        // clears the offscreen wholesale, which is safe — Pass B above only
+        // relies on offscreen pixels inside regions it just redrew.
+        drawGlowPass(litKeys, w, rim);
 
         // The rotation margin (added so edge-tile rotations aren't cropped
         // at the grid boundary) extends a few px into the canvas padding.
