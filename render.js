@@ -2031,8 +2031,17 @@ const Render = (() => {
         if (terms) for (const p of terms) {
             for (const ep of [p.entry, p.exit]) {
                 const g = terminalGeom(ep, w, rim);
-                const half = g.ringHalf + g.ringHalfStroke - 1;
-                ctx.fillRect(g.cx - half, g.cy - half, half * 2, half * 2);
+                // Erase in the ring's own silhouette — fill the centerline
+                // rect (hole + inner half of the band) plus a round-joined
+                // stroke of it (outer half, corners rounded exactly like
+                // the crisp stripes'), inset 1px for the AA tuck. A plain
+                // sharp-cornered fillRect erased PAST the band's rounded
+                // corners, gouging dark notches in the glow there.
+                ctx.beginPath();
+                ctx.rect(g.cx - g.ringHalf, g.cy - g.ringHalf, g.ringHalf * 2, g.ringHalf * 2);
+                ctx.fill();
+                ctx.lineWidth = Math.max(1, g.ringHalfStroke * 2 - 2);
+                ctx.stroke();
             }
         }
         ctx.restore();
