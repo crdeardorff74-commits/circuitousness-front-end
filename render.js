@@ -835,12 +835,15 @@ const Render = (() => {
     // Outermost width is w + rim*2 — matches the un-lit rim band, so lit
     // channels need no separate rim layer underneath.
     // The color ramp is deliberately non-linear (neon-tube look): the outer
-    // part of the band eases subtly lo → base, then base → hi snaps in over
-    // a narrow transition and everything inside LIT_CORE_FULL is solid hi —
-    // a wide white-hot core with soft dark edges.
+    // part of the band eases from a LIFTED lo (not full dark) toward base,
+    // then base → hi snaps in over a narrow transition, and the thin core
+    // inside LIT_CORE_FULL pushes past hi toward white — a hot filament
+    // with soft, not-too-dark edges.
     let LIT_GRADIENT_STEPS = 14;
-    const LIT_CORE_START = 0.60;  // t where the base → hi snap begins
-    const LIT_CORE_FULL  = 0.80;  // t from which stripes are solid hi (the hot core)
+    const LIT_CORE_START = 0.70;  // t where the base → hi snap begins
+    const LIT_CORE_FULL  = 0.88;  // t from which stripes are hi+ (the hot core)
+    const LIT_CORE_HOT   = 0.55;  // how far the innermost stripe pushes past hi toward white
+    const LIT_EDGE_LIFT  = 0.30;  // outermost stripe starts this far from lo toward base
     function setLitGradientSteps(n) { LIT_GRADIENT_STEPS = n; if (ctx) draw(); }
     function litStripes(w, rim, pathIdx) {
         const p = litPalette(pathIdx);
@@ -849,10 +852,17 @@ const Render = (() => {
         for (let i = 0; i < LIT_GRADIENT_STEPS; i++) {
             const t = i / (LIT_GRADIENT_STEPS - 1);
             const lineWidth = Math.max(1, outerW * (1 - t) + 1 * t);
-            const color = t < LIT_CORE_START
-                ? blendRGB(p.lo,   p.base, t / LIT_CORE_START)
-                : blendRGB(p.base, p.hi,
-                           Math.min(1, (t - LIT_CORE_START) / (LIT_CORE_FULL - LIT_CORE_START)));
+            let color;
+            if (t < LIT_CORE_START) {
+                color = blendRGB(p.lo, p.base,
+                    LIT_EDGE_LIFT + (1 - LIT_EDGE_LIFT) * (t / LIT_CORE_START));
+            } else if (t < LIT_CORE_FULL) {
+                color = blendRGB(p.base, p.hi,
+                    (t - LIT_CORE_START) / (LIT_CORE_FULL - LIT_CORE_START));
+            } else {
+                color = blendRGB(p.hi, '#ffffff',
+                    LIT_CORE_HOT * (t - LIT_CORE_FULL) / (1 - LIT_CORE_FULL));
+            }
             stripes.push({ width: lineWidth, color });
         }
         return stripes;
@@ -874,10 +884,10 @@ const Render = (() => {
     // per-frame redraws rotation animations need.
     // Strokes the current path (like strokeLitLayer); does not disturb it.
     const GLOW_LAYERS = [
-        { scale: 2.8,  alpha: 0.05 },
-        { scale: 2.2,  alpha: 0.07 },
-        { scale: 1.75, alpha: 0.09 },
-        { scale: 1.4,  alpha: 0.11 },
+        { scale: 1.9, alpha: 0.05 },
+        { scale: 1.6, alpha: 0.07 },
+        { scale: 1.4, alpha: 0.09 },
+        { scale: 1.2, alpha: 0.11 },
     ];
     function strokeGlowLayer(w, rim, pathIdx) {
         const p = litPalette(pathIdx);
@@ -2002,7 +2012,11 @@ const Render = (() => {
         // inset 1px from the band's outer edge for the same tuck.
         ctx.save();
         ctx.globalCompositeOperation = 'destination-out';
-        ctx.lineCap  = 'round';
+        // BUTT caps, deliberately unlike the glow's round caps: the erase
+        // must stop flush at a dead-end lane's endpoint so the glow's round
+        // cap remains as a soft bulb of light hugging the open end. A round
+        // erase cap gouged a cap-shaped void between path end and glow.
+        ctx.lineCap  = 'butt';
         ctx.lineJoin = 'round';
         ctx.lineWidth = Math.max(1, outerW - 2);
         traceLitGroup(litKeys, null);
