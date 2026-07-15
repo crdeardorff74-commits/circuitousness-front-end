@@ -1055,7 +1055,10 @@ const Render = (() => {
     const TERM_RING_HALF_FRAC    = 0.145; // ring centerline half-size
     const TERM_STUB_FRAC         = 0.10;  // visible stub length between grid edge and ring
     const TERM_RING_STROKE_SCALE = 0.72;  // ring band width relative to the path's
-    function drawTerminal(ep, w, rim, pathIdx) {
+
+    // Shared terminal geometry — used by drawTerminal (crisp stripes), and
+    // by the glow pass (trace + erase), so all three always agree.
+    function terminalGeom(ep, w, rim) {
         const side  = ep.port;
         const inner = notchInnerPoint(side, ep.row, ep.col);
         const dirX  = side === Maze.W ? -1 : side === Maze.E ? 1 : 0;
@@ -1082,26 +1085,44 @@ const Render = (() => {
             }
         }
         const centerD = stub + ringHalf + ringHalfStroke;
-        const cx = inner.x + dirX * centerD;
-        const cy = inner.y + dirY * centerD;
+        return {
+            inner, dirX, dirY, ringW, ringHalf, ringHalfStroke,
+            cx: inner.x + dirX * centerD,
+            cy: inner.y + dirY * centerD,
+        };
+    }
 
+    // Add a terminal's centerline geometry to the CURRENT path (no
+    // beginPath) — glow-pass counterpart of laneGeom. includeRing=false
+    // traces just the stub (the erase pass handles rings via fillRect
+    // instead, to avoid over-erasing past the thinner ring band's edge).
+    function traceTerminalGeom(ep, w, rim, includeRing) {
+        const g = terminalGeom(ep, w, rim);
+        ctx.moveTo(g.inner.x, g.inner.y);
+        ctx.lineTo(g.cx - g.dirX * g.ringHalf, g.cy - g.dirY * g.ringHalf);
+        if (includeRing) {
+            ctx.rect(g.cx - g.ringHalf, g.cy - g.ringHalf, g.ringHalf * 2, g.ringHalf * 2);
+        }
+    }
+
+    function drawTerminal(ep, w, rim, pathIdx) {
+        const g = terminalGeom(ep, w, rim);
         const stubPath = () => {
             ctx.beginPath();
-            ctx.moveTo(inner.x, inner.y);
-            ctx.lineTo(cx - dirX * ringHalf, cy - dirY * ringHalf);
+            ctx.moveTo(g.inner.x, g.inner.y);
+            ctx.lineTo(g.cx - g.dirX * g.ringHalf, g.cy - g.dirY * g.ringHalf);
         };
         const ringPath = () => {
             ctx.beginPath();
-            ctx.rect(cx - ringHalf, cy - ringHalf, ringHalf * 2, ringHalf * 2);
+            ctx.rect(g.cx - g.ringHalf, g.cy - g.ringHalf, g.ringHalf * 2, g.ringHalf * 2);
         };
+
+        // No glow here — terminals glow in Pass E (drawGlowPass) as part of
+        // their path's union trace, so the glow can't stack additively with
+        // the stub's/lanes' and gets the same band + hole erase treatment.
 
         const prevJoin = ctx.lineJoin;
         ctx.lineJoin = 'round';
-        // Glow first (both shapes), crisp stripes on top.
-        stubPath();
-        strokeGlowLayer(w, rim, pathIdx);
-        ringPath();
-        strokeGlowLayer(ringW, rim, pathIdx);
         // Stub (grid edge → the ring's near centerline) and ring carry
         // different stroke widths, so they can't share one path — instead
         // their stripes INTERLEAVE, dark→bright in lockstep (stripe colors
@@ -1110,8 +1131,8 @@ const Render = (() => {
         // core runs unbroken into the ring's at the T-junction. Round joins
         // soften the ring corners of the wide outer stripes into the promo
         // art's rounded-square silhouette.
-        const stubStripes = litStripes(w,     rim, pathIdx);
-        const ringStripes = litStripes(ringW, rim, pathIdx);
+        const stubStripes = litStripes(w,       rim, pathIdx);
+        const ringStripes = litStripes(g.ringW, rim, pathIdx);
         for (let i = 0; i < stubStripes.length; i++) {
             stubPath();
             ctx.strokeStyle = stubStripes[i].color;
@@ -1274,12 +1295,19 @@ const Render = (() => {
     // mean paths alone on a perimeter side stay close to baseLen; paths
     // that SHARE a side fan out by rank between minR (just clear of the
     // grid) and maxR (just inside the canvas padding).
-    function drawCircuitOutline(w, rim) {
+    // All active entry/exit pairs with their path indices — shared by the
+    // outline/terminal draw and the glow pass.
+    function collectPairs() {
         const pairs = [];
         if (Maze.entry  && Maze.exit)  pairs.push({ entry: Maze.entry,  exit: Maze.exit,  pathIdx: 0 });
         if (Maze.entry2 && Maze.exit2) pairs.push({ entry: Maze.entry2, exit: Maze.exit2, pathIdx: 1 });
         if (Maze.entry3 && Maze.exit3) pairs.push({ entry: Maze.entry3, exit: Maze.exit3, pathIdx: 2 });
         if (Maze.entry4 && Maze.exit4) pairs.push({ entry: Maze.entry4, exit: Maze.exit4, pathIdx: 3 });
+        return pairs;
+    }
+
+    function drawCircuitOutline(w, rim) {
+        const pairs = collectPairs();
 
         // Terminal-pad mode: no perimeter routing at all — every entry and
         // exit gets a stub + square pad local to its own port. Route/cluster
@@ -1929,37 +1957,67 @@ const Render = (() => {
         }
     }
 
-    // Pass E: neon glow for the in-grid lit lanes. Runs AFTER the walls
-    // pass — the whole point is tinting the bevels next to each lit lane.
-    // Rendered to the offscreen first so the channel band itself can be
-    // erased (destination-out) before compositing: the spill lands on the
-    // walls but never re-brightens the path's own lo→hi gradient, which
-    // was already painted in Pass C. The offscreen's Pass-B content is
-    // long since composited by this point, so reusing it is safe (both
-    // drawCore and drawAnimatedFrame repaint it from scratch each frame).
-    // The external outline + terminal pads glow separately in their own
-    // draw calls (they run after the walls pass anyway).
+    // Pass E: neon glow for the lit lanes AND (in terminal-pad mode) the
+    // entry/exit stubs + rings. Runs AFTER the walls pass — the whole point
+    // is tinting the bevels next to each lit lane. Rendered to the offscreen
+    // first, for two reasons:
+    //  - each path color's lanes + stub + ring trace as ONE union path, so
+    //    a single stroke per glow layer can't stack additively where the
+    //    shapes meet (separate strokes made the terminals glow 2-3× as
+    //    bright as the paths, with a visible jump at the grid edge);
+    //  - the crisp bands and the rings' interiors (band + dark hole) are
+    //    erased (destination-out) before compositing, so the spill lands on
+    //    the walls but never re-brightens the path's own lo→hi gradient
+    //    (painted back in Pass C) or floods the terminal hole. Terminal
+    //    stripes repaint AFTER this pass, so their square erase is safe.
+    // The offscreen's Pass-B content is long since composited by this
+    // point, so reusing it is safe (both drawCore and drawAnimatedFrame
+    // repaint it from scratch each frame). In wrap mode the perimeter
+    // polyline still glows inline in drawCircuitOutlinePair (one stroke per
+    // pair — nothing to stack against).
     function drawGlowPass(litKeys, w, rim) {
-        if (snippetMode || litKeys.size === 0) return;
-        const outerW  = w + rim * 2;
+        if (snippetMode) return;
+        const outerW = w + rim * 2;
+        const terms  = COMPLETE_CIRCUITS ? null : collectPairs();
         const present = new Set(litKeys.values());
+        if (terms) for (const p of terms) present.add(p.pathIdx);
+        if (present.size === 0) return;
+
         const mainCtx = ctx;
         ctx = offCtx;
         ctx.clearRect(0, 0, offCanvas.width, offCanvas.height);
         for (const idx of present) {
-            traceLitGroup(litKeys, idx);
+            traceLitGroup(litKeys, idx);   // beginPath + all lanes of idx
+            if (terms) for (const p of terms) {
+                if (p.pathIdx !== idx) continue;
+                traceTerminalGeom(p.entry, w, rim, true);
+                traceTerminalGeom(p.exit,  w, rim, true);
+            }
             strokeGlowLayer(w, rim, idx);
         }
-        // Erase the band the crisp stripes occupy — slightly narrower than
-        // the stripe stroke, so the glow's innermost pixels tuck under the
-        // path's dark outer stripe instead of leaving an AA seam beside it.
+        // Erase where the crisp rendering lives. Lanes + stubs: a stroke
+        // slightly narrower than the stripe band, so the glow's innermost
+        // pixels tuck under the path's dark outer stripe instead of leaving
+        // an AA seam beside it. Ring squares: one fill each (band + hole),
+        // inset 1px from the band's outer edge for the same tuck.
         ctx.save();
         ctx.globalCompositeOperation = 'destination-out';
         ctx.lineCap  = 'round';
         ctx.lineJoin = 'round';
         ctx.lineWidth = Math.max(1, outerW - 2);
         traceLitGroup(litKeys, null);
+        if (terms) for (const p of terms) {
+            traceTerminalGeom(p.entry, w, rim, false);
+            traceTerminalGeom(p.exit,  w, rim, false);
+        }
         ctx.stroke();
+        if (terms) for (const p of terms) {
+            for (const ep of [p.entry, p.exit]) {
+                const g = terminalGeom(ep, w, rim);
+                const half = g.ringHalf + g.ringHalfStroke - 1;
+                ctx.fillRect(g.cx - half, g.cy - half, half * 2, half * 2);
+            }
+        }
         ctx.restore();
         ctx = mainCtx;
         ctx.save();
