@@ -624,16 +624,23 @@ const Marathon = (() => {
 
     // Per-puzzle fresh allotment under the difficulty-ramp model: starts at
     // MARATHON.START_TIME_*[pathCount-1] and shaves TIME_DECREASE_PER_SOLVE
-    // seconds for every prior solve, floored at TIME_FLOOR. Independent of
-    // grid size — puzzle time is purely a function of mode + path count +
-    // solvedCount. Banking is unlimited; the caller just adds the result
-    // to timeRemaining with no cap.
-    function timeForPuzzle(quadMode, pathCount, solvedCount) {
+    // seconds for every prior solve, floored at TIME_FLOOR. Singular is
+    // additionally capped by TIME_PER_TILE_SINGULAR × logical tile count,
+    // so the small 5×5 starts grant proportionally small time instead of
+    // the full schedule value (which was tuned for 8×8-10×10 starts and
+    // let players bank 20 minutes in a few levels). The cap stops binding
+    // once grid growth crosses the declining schedule; quad starts never
+    // shrank, so quad skips the cap. Banking is unlimited; the caller
+    // just adds the result to timeRemaining with no cap.
+    function timeForPuzzle(quadMode, pathCount, solvedCount, logicalDims) {
         const starts = quadMode ? MARATHON.START_TIME_QUAD : MARATHON.START_TIME_SINGULAR;
         const idx    = Math.max(0, Math.min(starts.length - 1, (pathCount | 0) - 1));
-        const start  = starts[idx];
-        const fresh  = Math.max(MARATHON.TIME_FLOOR, start - solvedCount * MARATHON.TIME_DECREASE_PER_SOLVE);
-        return fresh * 1000;
+        let fresh    = starts[idx] - solvedCount * MARATHON.TIME_DECREASE_PER_SOLVE;
+        if (!quadMode && logicalDims) {
+            const cap = MARATHON.TIME_PER_TILE_SINGULAR[idx] * logicalDims.rows * logicalDims.cols;
+            if (cap < fresh) fresh = cap;
+        }
+        return Math.max(MARATHON.TIME_FLOOR, Math.round(fresh)) * 1000;
     }
 
     function startGame(type, practice, firstRunAutoStart) {
@@ -789,9 +796,10 @@ const Marathon = (() => {
         const physCols  = decoded.quadMode ? logical.cols * 2 : logical.cols;
 
         // Carry-over + fresh allotment. solvedCount = (level - 1) here
-        // (incremented in onSolve before the player advances). No cap —
-        // unlimited banking, so the running total just grows.
-        const fresh = timeForPuzzle(decoded.quadMode, decoded.pathCount, solvedCount);
+        // (incremented in onSolve before the player advances). No cap on
+        // banking — the running total just grows. `logical` feeds the
+        // singular size cap on fresh time.
+        const fresh = timeForPuzzle(decoded.quadMode, decoded.pathCount, solvedCount, logical);
         timeRemaining = timeRemaining + fresh;
 
         state = STATE.PLAYING;
@@ -1037,9 +1045,14 @@ const Marathon = (() => {
         // Project the next puzzle's starting clock for the transition popup.
         // solvedCount was just incremented above, so it already reflects
         // the "puzzles solved BEFORE the next one starts" count that
-        // timeForPuzzle wants. No cap on banking — all of leftover carries.
-        const decoded   = decodeType(activeType);
-        const fresh     = timeForPuzzle(decoded.quadMode, decoded.pathCount, solvedCount);
+        // timeForPuzzle wants. The next puzzle's dims (level + 1 — level
+        // itself increments in startNextPuzzle) feed the singular size
+        // cap; dimsForLevel is deterministic, so this projection matches
+        // what startNextPuzzle will grant. No cap on banking — all of
+        // leftover carries.
+        const decoded     = decodeType(activeType);
+        const nextLogical = dimsForLevel(level + 1, decoded.quadMode, decoded.pathCount);
+        const fresh       = timeForPuzzle(decoded.quadMode, decoded.pathCount, solvedCount, nextLogical);
         const nextStart = timeRemaining + fresh;
         const bankedMs  = timeRemaining;
 

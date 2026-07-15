@@ -137,15 +137,29 @@ const MARATHON = {
     // TIME_DECREASE_PER_SOLVE seconds from the NEXT puzzle's fresh time,
     // floored at TIME_FLOOR. Banking is UNLIMITED — leftover time rolls
     // forward without a cap. Final formula at runtime:
-    //   fresh_ms = max(TIME_FLOOR,
-    //                  START_TIME_*[pathCount-1]
-    //                  - solvedCount × TIME_DECREASE_PER_SOLVE) × 1000
+    //   schedule = START_TIME_*[pathCount-1]
+    //              - solvedCount × TIME_DECREASE_PER_SOLVE
+    //   sizeCap  = TIME_PER_TILE_SINGULAR[pathCount-1] × rows × cols
+    //              (singular only — quad skips the cap)
+    //   fresh_ms = max(TIME_FLOOR, min(schedule, sizeCap)) × 1000
     //   timeRemaining += fresh_ms   (no cap on the running total)
     // Arrays indexed by pathCount-1 → entries for 1, 2, 3, 4 paths.
     START_TIME_SINGULAR:     [120, 160, 200, 240],
     START_TIME_QUAD:         [180, 240, 320, 380],
     TIME_DECREASE_PER_SOLVE: 10,
     TIME_FLOOR:              30,
+    // Size cap on fresh time (seconds per tile, singular only). The flat
+    // START_TIME schedule was tuned when singular Marathon started at
+    // 8×8-10×10; with the 5×5 unified starts a level-1 puzzle solvable in
+    // ~20s still granted 120s+, and players banked 20 minutes within a
+    // few levels. The cap makes early fresh time proportional to the
+    // grid: rates are calibrated to the old baseline (START_TIME/64, the
+    // 8×8 tile count, with 4-path continuing the +0.625 progression), so
+    // a 5×5 grants 47/63/78/94s and the cap stops binding once growth
+    // crosses the declining schedule (~level 5-6) — mid/late game is
+    // exactly the pre-cap model. Quad starts never shrank, so quad stays
+    // on the pure schedule.
+    TIME_PER_TILE_SINGULAR:  [1.875, 2.5, 3.125, 3.75],
 
     // Puzzle progression. Each solve grows EITHER rows or cols by one
     // (never both) with a 50/50 random pick per puzzle. The sequence is
