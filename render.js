@@ -840,10 +840,10 @@ const Render = (() => {
     // inside LIT_CORE_FULL pushes past hi toward white — a hot filament
     // with soft, not-too-dark edges.
     let LIT_GRADIENT_STEPS = 14;
-    const LIT_CORE_START = 0.55;  // t where the base → hi ramp begins
-    const LIT_CORE_FULL  = 0.88;  // t from which stripes are hi+ (the hot core)
+    const LIT_CORE_START = 0.48;  // t where the base → hi ramp begins
+    const LIT_CORE_FULL  = 0.84;  // t from which stripes are hi+ (the hot core)
     const LIT_CORE_HOT   = 0.80;  // how far the innermost stripe pushes past hi toward white
-    const LIT_EDGE_LIFT  = 0.70;  // outermost stripe starts this far from lo toward base
+    const LIT_EDGE_LIFT  = 0.78;  // outermost stripe starts this far from lo toward base
     function setLitGradientSteps(n) { LIT_GRADIENT_STEPS = n; if (ctx) draw(); }
     function litStripes(w, rim, pathIdx) {
         const p = litPalette(pathIdx);
