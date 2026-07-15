@@ -889,9 +889,21 @@ const Render = (() => {
         { scale: 1.26, alpha: 0.15 },
         { scale: 1.13, alpha: 0.19 },
     ];
+    // Won (gold) paths breathe their glow — a celebratory pulse, slower and
+    // gentler than the joined-red alarm (whose palette itself flickers via
+    // litPalette; its glow inherits that color modulation for free).
+    const GOLD_GLOW_PULSE_PERIOD_MS = 1500;
+    const GOLD_GLOW_PULSE_AMP      = 0.45;
     function strokeGlowLayer(w, rim, pathIdx) {
         const p = litPalette(pathIdx);
         const outerW = w + rim * 2;
+        const idx = pathIdx | 0;
+        const pathsWon = Maze.pathsWon || [Maze.won, true, true, true];
+        let boost = 1;
+        if (idx >= 0 && pathsWon[idx]) {
+            const phase = (Date.now() / GOLD_GLOW_PULSE_PERIOD_MS) * 2 * Math.PI;
+            boost = 1 + GOLD_GLOW_PULSE_AMP * Math.sin(phase);
+        }
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         // Butt caps: the glow ends flush with a dead-end lane's endpoint —
@@ -901,7 +913,7 @@ const Render = (() => {
         ctx.lineJoin = 'round';
         ctx.strokeStyle = p.base;
         for (const g of GLOW_LAYERS) {
-            ctx.globalAlpha = g.alpha;
+            ctx.globalAlpha = Math.min(1, g.alpha * boost);
             ctx.lineWidth   = outerW * g.scale;
             ctx.stroke();
         }
@@ -1682,8 +1694,17 @@ const Render = (() => {
             }
         }
         if (hasJoinedLanes()) return true;
+        if (anyPathWon()) return true;   // gold glow breathes until the puzzle is torn down
         if (fadingLanes.length > 0) return true;
         return false;
+    }
+    // True when any EXISTING path is currently gold. Can't just scan
+    // Maze.pathsWon — non-existent paths read `true` there (so the overall
+    // `won` AND works), which would keep the pulse loop running forever.
+    function anyPathWon() {
+        const pw = Maze.pathsWon;
+        if (!pw) return !!Maze.won;
+        return collectPairs().some((p) => pw[p.pathIdx]);
     }
     // Conflict scan over Maze.highlighted: two entries on the same (cell, lane)
     // with different path indexes means the player has joined two colored paths,
@@ -2624,12 +2645,17 @@ const Render = (() => {
 
         const joinedActive = hasJoinedLanes();
         const fadingActive = fadingLanes.length > 0;
+        // Gold-glow pulse modulates the glow brightness globally each frame
+        // — a partial redraw would leave stale-brightness glow outside the
+        // dirty clip, so it forces full draws like the other pulses.
+        const goldActive = anyPathWon();
         // Gates aren't tile-keyed so the partial-redraw clip doesn't include
         // them — force a full draw whenever a gate is mid-rotation so the
         // animation actually paints.
         const canPartial = rotationAnims.length > 0
             && gateAnims.length === 0
-            && !dramaticActive && !hintActive && !joinedActive && !fadingActive && !needsFullDraw;
+            && !dramaticActive && !hintActive && !joinedActive && !goldActive
+            && !fadingActive && !needsFullDraw;
 
         if (canPartial) {
             drawAnimatedFrame();
