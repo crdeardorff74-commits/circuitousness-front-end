@@ -2008,11 +2008,11 @@ const Render = (() => {
             }
             strokeGlowLayer(w, rim, idx);
         }
-        // Erase where the crisp rendering lives. Lanes + stubs: a stroke
-        // slightly narrower than the stripe band, so the glow's innermost
-        // pixels tuck under the path's dark outer stripe instead of leaving
-        // an AA seam beside it. Ring squares: one fill each (band + hole),
-        // inset 1px from the band's outer edge for the same tuck.
+        // Erase where the crisp rendering lives, at EXACTLY the band width —
+        // the erase's AA edge lands on the same pixels as the stripes' AA
+        // edge, blending band into glow. (An earlier 2px-narrower "tuck"
+        // left a 1px sliver of glow ON the band's dark outer stripe, which
+        // read as a bright rim once the glow alphas went up.)
         ctx.save();
         ctx.globalCompositeOperation = 'destination-out';
         // Butt caps, matching the glow strokes: both the glow and its erase
@@ -2021,7 +2021,7 @@ const Render = (() => {
         // the open end.
         ctx.lineCap  = 'butt';
         ctx.lineJoin = 'round';
-        ctx.lineWidth = Math.max(1, outerW - 2);
+        ctx.lineWidth = outerW;
         traceLitGroup(litKeys, null);
         if (terms) for (const p of terms) {
             traceTerminalGeom(p.entry, w, rim, false);
@@ -2033,14 +2033,14 @@ const Render = (() => {
                 const g = terminalGeom(ep, w, rim);
                 // Erase in the ring's own silhouette — fill the centerline
                 // rect (hole + inner half of the band) plus a round-joined
-                // stroke of it (outer half, corners rounded exactly like
-                // the crisp stripes'), inset 1px for the AA tuck. A plain
+                // stroke of it at the band's exact width (outer half, with
+                // corners rounded exactly like the crisp stripes'). A plain
                 // sharp-cornered fillRect erased PAST the band's rounded
                 // corners, gouging dark notches in the glow there.
                 ctx.beginPath();
                 ctx.rect(g.cx - g.ringHalf, g.cy - g.ringHalf, g.ringHalf * 2, g.ringHalf * 2);
                 ctx.fill();
-                ctx.lineWidth = Math.max(1, g.ringHalfStroke * 2 - 2);
+                ctx.lineWidth = g.ringHalfStroke * 2;
                 ctx.stroke();
             }
         }
