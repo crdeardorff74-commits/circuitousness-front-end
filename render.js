@@ -920,12 +920,19 @@ const Render = (() => {
     // then base → hi snaps in over a narrow transition, and the thin core
     // inside LIT_CORE_FULL pushes past hi toward white — a hot filament
     // with soft, not-too-dark edges.
-    let LIT_GRADIENT_STEPS = 14;
+    // Each segment's local t runs through smoothstep before blending: with
+    // plain linear segments the slope jumps at CORE_START/CORE_FULL, and the
+    // eye amplifies those slope breaks into visible seams (Mach bands) — the
+    // tube read as three flat bands instead of one continuous gradient.
+    // Smoothstep flattens the slope to zero at both ends of every segment,
+    // so the assembled ramp has a continuous derivative end to end.
+    let LIT_GRADIENT_STEPS = 20;
     const LIT_CORE_START = 0.48;  // t where the base → hi ramp begins
     const LIT_CORE_FULL  = 0.84;  // t from which stripes are hi+ (the hot core)
     const LIT_CORE_HOT   = 0.80;  // how far the innermost stripe pushes past hi toward white
     const LIT_EDGE_LIFT  = 0.78;  // outermost stripe starts this far from lo toward base
     function setLitGradientSteps(n) { LIT_GRADIENT_STEPS = n; if (ctx) draw(); }
+    function smoothstep(t) { return t * t * (3 - 2 * t); }
     function litStripes(w, rim, pathIdx) {
         const p = litPalette(pathIdx);
         const outerW = w + rim * 2;
@@ -936,13 +943,13 @@ const Render = (() => {
             let color;
             if (t < LIT_CORE_START) {
                 color = blendRGB(p.lo, p.base,
-                    LIT_EDGE_LIFT + (1 - LIT_EDGE_LIFT) * (t / LIT_CORE_START));
+                    LIT_EDGE_LIFT + (1 - LIT_EDGE_LIFT) * smoothstep(t / LIT_CORE_START));
             } else if (t < LIT_CORE_FULL) {
                 color = blendRGB(p.base, p.hi,
-                    (t - LIT_CORE_START) / (LIT_CORE_FULL - LIT_CORE_START));
+                    smoothstep((t - LIT_CORE_START) / (LIT_CORE_FULL - LIT_CORE_START)));
             } else {
                 color = blendRGB(p.hi, '#ffffff',
-                    LIT_CORE_HOT * (t - LIT_CORE_FULL) / (1 - LIT_CORE_FULL));
+                    LIT_CORE_HOT * smoothstep((t - LIT_CORE_FULL) / (1 - LIT_CORE_FULL)));
             }
             stripes.push({ width: lineWidth, color });
         }
