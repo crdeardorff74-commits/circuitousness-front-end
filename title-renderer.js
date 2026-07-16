@@ -122,7 +122,16 @@ const TitleRenderer = (() => {
             litColor:  '#a02020',
             litHi:     '#cc4040',
             litLo:     '#4a0000',
-            litPulse:  true
+            litPulse:  true,
+            // Ramp-shape overrides (render.js litStripes) — the in-game
+            // defaults assume near-white hi stops; with this dark red
+            // palette they produced a thin, stark white filament. Tuned
+            // via title-o-tuner.html: no edge lift, wider/earlier bright
+            // zone, gentler white push.
+            edgeLift:  0.00,
+            coreStart: 0.36,
+            coreFull:  0.60,
+            coreHot:   0.43
         };
         Render.renderSnippet(canvas, sizeCss, litOpts);
 

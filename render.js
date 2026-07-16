@@ -935,21 +935,29 @@ const Render = (() => {
     function smoothstep(t) { return t * t * (3 - 2 * t); }
     function litStripes(w, rim, pathIdx) {
         const p = litPalette(pathIdx);
+        // Snippet renders (title-O) may override the ramp SHAPE, not just
+        // the colors — the in-game constants assume near-white hi stops,
+        // and with a saturated hi the fixed white push reads as a stark
+        // thin filament that no color choice can soften.
+        const coreStart = (snippetMode && snippetCoreStart != null) ? snippetCoreStart : LIT_CORE_START;
+        const coreFull  = (snippetMode && snippetCoreFull  != null) ? snippetCoreFull  : LIT_CORE_FULL;
+        const coreHot   = (snippetMode && snippetCoreHot   != null) ? snippetCoreHot   : LIT_CORE_HOT;
+        const edgeLift  = (snippetMode && snippetEdgeLift  != null) ? snippetEdgeLift  : LIT_EDGE_LIFT;
         const outerW = w + rim * 2;
         const stripes = [];
         for (let i = 0; i < LIT_GRADIENT_STEPS; i++) {
             const t = i / (LIT_GRADIENT_STEPS - 1);
             const lineWidth = Math.max(1, outerW * (1 - t) + 1 * t);
             let color;
-            if (t < LIT_CORE_START) {
+            if (t < coreStart) {
                 color = blendRGB(p.lo, p.base,
-                    LIT_EDGE_LIFT + (1 - LIT_EDGE_LIFT) * smoothstep(t / LIT_CORE_START));
-            } else if (t < LIT_CORE_FULL) {
+                    edgeLift + (1 - edgeLift) * smoothstep(t / coreStart));
+            } else if (t < coreFull) {
                 color = blendRGB(p.base, p.hi,
-                    smoothstep((t - LIT_CORE_START) / (LIT_CORE_FULL - LIT_CORE_START)));
+                    smoothstep((t - coreStart) / (coreFull - coreStart)));
             } else {
                 color = blendRGB(p.hi, '#ffffff',
-                    LIT_CORE_HOT * smoothstep((t - LIT_CORE_FULL) / (1 - LIT_CORE_FULL)));
+                    coreHot * smoothstep((t - coreFull) / (1 - coreFull)));
             }
             stripes.push({ width: lineWidth, color });
         }
@@ -2349,6 +2357,11 @@ const Render = (() => {
     let snippetLitHi     = null;
     let snippetLitLo     = null;
     let snippetLitPulse  = false;
+    // Ramp-shape overrides (see litStripes) — null = use the LIT_* constants.
+    let snippetCoreStart = null;
+    let snippetCoreFull  = null;
+    let snippetCoreHot   = null;
+    let snippetEdgeLift  = null;
     function effectiveGrooveRim() {
         return (snippetMode && snippetColor) ? snippetColor : GROOVE_RIM;
     }
@@ -2397,6 +2410,10 @@ const Render = (() => {
         snippetLitHi     = (opts && opts.litHi) || null;
         snippetLitLo     = (opts && opts.litLo) || null;
         snippetLitPulse  = !!(opts && opts.litPulse);
+        snippetCoreStart = (opts && opts.coreStart != null) ? opts.coreStart : null;
+        snippetCoreFull  = (opts && opts.coreFull  != null) ? opts.coreFull  : null;
+        snippetCoreHot   = (opts && opts.coreHot   != null) ? opts.coreHot   : null;
+        snippetEdgeLift  = (opts && opts.edgeLift  != null) ? opts.edgeLift  : null;
         try {
             drawCore();
         } finally {
@@ -2408,6 +2425,10 @@ const Render = (() => {
             snippetLitHi     = null;
             snippetLitLo     = null;
             snippetLitPulse  = false;
+            snippetCoreStart = null;
+            snippetCoreFull  = null;
+            snippetCoreHot   = null;
+            snippetEdgeLift  = null;
         }
 
         canvas    = sCanvas;
@@ -2536,21 +2557,33 @@ const Render = (() => {
             lh:  snippetLitHi,
             ll:  snippetLitLo,
             lp:  snippetLitPulse,
+            cs:  snippetCoreStart,
+            cf:  snippetCoreFull,
+            ch:  snippetCoreHot,
+            el:  snippetEdgeLift,
         };
-        snippetMode     = true;
-        snippetLitColor = (opts && opts.litColor) || null;
-        snippetLitHi    = (opts && opts.litHi)    || null;
-        snippetLitLo    = (opts && opts.litLo)    || null;
-        snippetLitPulse = !!(opts && opts.litPulse);
+        snippetMode      = true;
+        snippetLitColor  = (opts && opts.litColor) || null;
+        snippetLitHi     = (opts && opts.litHi)    || null;
+        snippetLitLo     = (opts && opts.litLo)    || null;
+        snippetLitPulse  = !!(opts && opts.litPulse);
+        snippetCoreStart = (opts && opts.coreStart != null) ? opts.coreStart : null;
+        snippetCoreFull  = (opts && opts.coreFull  != null) ? opts.coreFull  : null;
+        snippetCoreHot   = (opts && opts.coreHot   != null) ? opts.coreHot   : null;
+        snippetEdgeLift  = (opts && opts.edgeLift  != null) ? opts.edgeLift  : null;
         let stripes;
         try {
             stripes = litStripes(w, rim, 0);
         } finally {
-            snippetMode     = prev.sm;
-            snippetLitColor = prev.lc;
-            snippetLitHi    = prev.lh;
-            snippetLitLo    = prev.ll;
-            snippetLitPulse = prev.lp;
+            snippetMode      = prev.sm;
+            snippetLitColor  = prev.lc;
+            snippetLitHi     = prev.lh;
+            snippetLitLo     = prev.ll;
+            snippetLitPulse  = prev.lp;
+            snippetCoreStart = prev.cs;
+            snippetCoreFull  = prev.cf;
+            snippetCoreHot   = prev.ch;
+            snippetEdgeLift  = prev.el;
         }
         tctx.save();
         tctx.setTransform(dprLocal, 0, 0, dprLocal, 0, 0);

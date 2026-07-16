@@ -33,12 +33,17 @@ const Settings = (function () {
     // Visual tuning — mirrors the render.js defaults. Defaults must stay
     // in sync with render.js / index.html debug-slider defaults so the
     // first-paint visuals match the persisted state on fresh installs.
-    const TILE_COLOR_KEY  = PROJECT_SLUG + '_setting_tileColor';
-    const TILE_FACE_KEY   = PROJECT_SLUG + '_setting_tileFaceOpacity';
-    const PATH_COLOR_KEY  = PROJECT_SLUG + '_setting_pathColor';
-    const PATH_ALPHA_KEY  = PROJECT_SLUG + '_setting_pathOpacity';
-    const PATH_WIDTH_KEY  = PROJECT_SLUG + '_setting_pathWidth';
-    const BEVEL_KEY       = PROJECT_SLUG + '_setting_bevelThickness';
+    // _v2 suffix: the 2026-07-16 promo-look retune changed every visual
+    // default (tile/path colors, opacities, width, lit palettes). Values
+    // players persisted before the retune were tuned against the OLD look,
+    // so the keys are versioned to orphan them — every existing player
+    // boots into the new defaults; re-tweaks persist under the v2 keys.
+    const TILE_COLOR_KEY  = PROJECT_SLUG + '_setting_tileColor_v2';
+    const TILE_FACE_KEY   = PROJECT_SLUG + '_setting_tileFaceOpacity_v2';
+    const PATH_COLOR_KEY  = PROJECT_SLUG + '_setting_pathColor_v2';
+    const PATH_ALPHA_KEY  = PROJECT_SLUG + '_setting_pathOpacity_v2';
+    const PATH_WIDTH_KEY  = PROJECT_SLUG + '_setting_pathWidth_v2';
+    const BEVEL_KEY       = PROJECT_SLUG + '_setting_bevelThickness_v2';
     const DEF_TILE_COLOR  = '#204169';
     const DEF_TILE_FACE   = 0.74;
     const DEF_PATH_COLOR  = '#ff0000';
@@ -120,6 +125,13 @@ const Settings = (function () {
         } catch (e) {}
         return defaultVal;
     }
+    // Purge the pre-retune (un-versioned) visual keys — nothing reads them
+    // anymore, this just keeps stale entries out of players' localStorage.
+    try {
+        ['tileColor', 'tileFaceOpacity', 'pathColor',
+         'pathOpacity', 'pathWidth', 'bevelThickness']
+            .forEach((s) => localStorage.removeItem(PROJECT_SLUG + '_setting_' + s));
+    } catch (e) {}
     let tileColor        = loadHexColor(TILE_COLOR_KEY, DEF_TILE_COLOR);
     let tileFaceOpacity  = loadFloat(TILE_FACE_KEY,  DEF_TILE_FACE);
     let pathColor        = loadHexColor(PATH_COLOR_KEY, DEF_PATH_COLOR);

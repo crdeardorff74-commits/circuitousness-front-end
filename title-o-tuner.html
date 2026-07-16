@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<!--
+  Circuitousness — title-O tuner (one-off dev page, not shipped).
+
+  Live-tunes the litOpts object that title-renderer.js passes to
+  Render.renderSnippet / paintSnippetRingMask when painting the menu
+  title's maze-O. Uses the game's REAL renderer (config.js + maze.js +
+  gates.js + render.js) and the same synthetic 2×2 elbow snapshot as
+  TitleRenderer.buildSnippetSnapshot, so what you see here is exactly
+  what the menu will show.
+
+  Tune the sliders/pickers, then copy the generated litOpts block into
+  title-renderer.js (replacing the `const litOpts = {...}` inside draw()).
+
+  Excluded from the release zip alongside heart-art.html / cover-art.html.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Circuitousness — Title-O Tuner</title>
+
+<script>
+  // Stub Settings so render.js never tries to fetch a level background —
+  // this page provides its own backdrop (same trick as heart-art.html).
+  var Settings = { isBackgroundEnabled: function () { return false; } };
+</script>
+
+<!-- config.js → maze.js → gates.js → render.js (dependency order). -->
+<script src="config.js"></script>
+<script src="maze.js"></script>
+<script src="gates.js"></script>
+<script src="render.js"></script>
+
+<style>
+  html, body { margin: 0; padding: 0; background: #06070d; color: #e8e8f0;
+    font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100%; }
+  .stage { display: flex; gap: 1.5rem; align-items: flex-start; justify-content: center;
+    padding: 1.5rem; flex-wrap: wrap; }
+
+  /* ---- previews ---- */
+  .previews { display: flex; flex-direction: column; gap: 1.5rem; align-items: center; }
+  .previewBox { background: var(--backdrop, #06070d); border: 1px solid rgba(120,120,180,0.25);
+    border-radius: 0.75rem; padding: 1.5rem 2rem; display: flex; align-items: center;
+    justify-content: center; }
+  #bigO { display: block; }
+
+  /* ---- in-context title, cloned from styles.css #menuTitle rules ---- */
+  .titleMock { font-size: 3.2rem; line-height: 1; position: relative; left: -0.07em;
+    font-family: 'Helvetica Neue', 'Arial Black', Impact, sans-serif;
+    font-weight: 900; font-stretch: condensed; letter-spacing: 0.02em;
+    color: #ffffff; text-shadow: 0 0.15rem 0.6rem rgba(0, 0, 0, 0.55);
+    display: flex; align-items: center; justify-content: center; white-space: nowrap; }
+  .titleMock .titleInitial { font-size: 1.18em; line-height: 1; display: inline-block;
+    transform: scaleX(0.78); transform-origin: center; }
+  .titleMock .titleWord { display: inline-block; transform: scaleX(0.78);
+    transform-origin: center; margin: 0 -0.58em; }
+  .titleMock .titleMazeO { display: inline-flex; align-items: center; justify-content: center;
+    width: 1.14em; height: 1.14em; margin: 0 0.09em; vertical-align: middle;
+    position: relative; top: 0.015em; left: 0.045em; }
+  .titleMock .titleMazeO canvas { width: 100%; height: 100%; display: block;
+    filter: drop-shadow(0 0.05em 0.2em rgba(0, 0, 0, 0.55)); }
+
+  /* ---- control panel (heart-art.html styling) ---- */
+  .panel { width: 280px; background: rgba(20,20,34,0.85); border: 1px solid rgba(120,120,180,0.25);
+    border-radius: 0.75rem; padding: 1rem 1.1rem 1.25rem; font-size: 0.8rem; }
+  .panel h2 { font-size: 0.95rem; margin: 0 0 0.75rem; font-weight: 600; }
+  .row { margin: 0.6rem 0; }
+  .row label { display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 0.2rem; color: #b9b9d6; }
+  .row input[type=range] { width: 100%; }
+  .row input[type=color] { width: 100%; height: 1.6rem; padding: 0; border-radius: 0.3rem;
+    border: 1px solid #44446a; background: transparent; cursor: pointer; }
+  .row.check { display: flex; align-items: center; gap: 0.4rem; color: #b9b9d6; }
+  .row.check input { margin: 0; }
+  .sep { border: none; border-top: 1px solid rgba(120,120,180,0.25); margin: 0.9rem 0; }
+  pre#code { background: #101020; border: 1px solid #33335a; border-radius: 0.4rem;
+    padding: 0.6rem 0.7rem; font-size: 0.68rem; line-height: 1.5; overflow-x: auto;
+    user-select: text; -webkit-user-select: text; }
+  .btns { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+  button { flex: 1; padding: 0.5rem; cursor: pointer; background: #2a2a45; color: #e8e8f0;
+    border: 1px solid #44446a; border-radius: 0.4rem; font-size: 0.8rem; }
+  button:hover { background: #353560; }
+  button.primary { background: #6a2a5a; border-color: #a23f88; }
+  button.primary:hover { background: #843070; }
+  .hint { color: #8c8caa; font-size: 0.7rem; margin-top: 0.6rem; line-height: 1.35; }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="previews">
+      <div class="previewBox"><canvas id="bigO"></canvas></div>
+      <div class="previewBox">
+        <h1 class="titleMock">
+          <span class="titleInitial" style="position: relative; left: 0.12em;">C</span><span class="titleWord" style="position: relative; left: 0.12em; z-index: 99;">IRCUIT</span><span class="titleMazeO" style="position: relative; top: 0.04em;" aria-label="O"><canvas id="ctxO" width="160" height="160"></canvas></span><span class="titleWord" style="position: relative; left: -0.12em; z-index: 99;">USNESS</span>
+        </h1>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Title-O litOpts</h2>
+      <div class="row"><label>Path width frac <span id="widthFracVal"></span></label>
+        <input id="widthFrac" type="range" min="10" max="45" value="28"></div>
+      <div class="row"><label>Dim alpha <span id="alphaVal"></span></label>
+        <input id="alpha" type="range" min="0" max="100" value="66"></div>
+      <div class="row"><label>Dim color <span id="colorVal"></span></label>
+        <input id="color" type="color" value="#ff2424"></div>
+      <div class="row"><label>Lit base <span id="litColorVal"></span></label>
+        <input id="litColor" type="color" value="#a02020"></div>
+      <div class="row"><label>Lit inner (hi) <span id="litHiVal"></span></label>
+        <input id="litHi" type="color" value="#cc4040"></div>
+      <div class="row"><label>Lit outer (lo) <span id="litLoVal"></span></label>
+        <input id="litLo" type="color" value="#4a0000"></div>
+      <div class="row check"><input id="litPulse" type="checkbox" checked>
+        <span>Pulse (JOINED-style sine flicker)</span></div>
+      <hr class="sep">
+      <div class="row"><label>Edge lift <span id="edgeLiftVal"></span></label>
+        <input id="edgeLift" type="range" min="0" max="100" value="0"></div>
+      <div class="row"><label>Core start <span id="coreStartVal"></span></label>
+        <input id="coreStart" type="range" min="2" max="80" value="36"></div>
+      <div class="row"><label>Core full <span id="coreFullVal"></span></label>
+        <input id="coreFull" type="range" min="50" max="98" value="60"></div>
+      <div class="row"><label>White push (core hot) <span id="coreHotVal"></span></label>
+        <input id="coreHot" type="range" min="0" max="100" value="43"></div>
+      <hr class="sep">
+      <div class="row"><label>Preview size <span id="sizeVal"></span></label>
+        <input id="size" type="range" min="24" max="480" value="240"></div>
+      <div class="row"><label>Backdrop</label>
+        <input id="backdrop" type="color" value="#06070d"></div>
+      <hr class="sep">
+      <pre id="code"></pre>
+      <div class="btns">
+        <button id="reset">Reset</button>
+        <button id="copy" class="primary">Copy litOpts</button>
+      </div>
+      <div class="hint">
+        Both previews are the game's real renderer painting the same synthetic
+        2×2 elbow snapshot the menu uses. Paste the block above over the
+        <code>const litOpts = {...}</code> in title-renderer.js's draw().
+        The small preview is the actual in-title size; use the big one for
+        gradient detail. Tile colors come from the game's current defaults.
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  var DEFAULTS = {
+    widthFrac: 0.28,
+    alpha:     0.66,
+    color:     '#ff2424',
+    litColor:  '#a02020',
+    litHi:     '#cc4040',
+    litLo:     '#4a0000',
+    litPulse:  true,
+    // Ramp shape — mirrors the litOpts shipped in title-renderer.js
+    // (custom values; the render.js LIT_* constants are 0.78/0.48/0.84/0.80).
+    edgeLift:  0.00,
+    coreStart: 0.36,
+    coreFull:  0.60,
+    coreHot:   0.43
+  };
+
+  // ---- synthetic 2×2 elbow snapshot — mirror of TitleRenderer.buildSnippetSnapshot ----
+  var T_ELBOW = Maze.T_ELBOW;
+  Maze.loadSnapshot({
+    rows: 2, cols: 2,
+    grid: [[
+      { type: T_ELBOW, rotation: 1 },
+      { type: T_ELBOW, rotation: 2 }
+    ], [
+      { type: T_ELBOW, rotation: 0 },
+      { type: T_ELBOW, rotation: 3 }
+    ]],
+    entry: { row: 0, col: 0, port: Maze.N },
+    exit:  { row: 1, col: 1, port: Maze.S },
+    entry2: null, exit2: null,
+    entry3: null, exit3: null,
+    entry4: null, exit4: null,
+    quadScramble: null
+  });
+  // Seed the 4 lit lanes by hand (the closed loop is unreachable from the
+  // dummy entry) — mirror of TitleRenderer.draw's highlighted push.
+  Maze.highlighted.length = 0;
+  Maze.highlighted.push(
+    { row: 0, col: 0, inPort: Maze.E, outPort: Maze.S, path: 0 },
+    { row: 0, col: 1, inPort: Maze.S, outPort: Maze.W, path: 0 },
+    { row: 1, col: 1, inPort: Maze.W, outPort: Maze.N, path: 0 },
+    { row: 1, col: 0, inPort: Maze.N, outPort: Maze.E, path: 0 }
+  );
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function currentOpts() {
+    return {
+      widthFrac: $('widthFrac').value / 100,
+      alpha:     $('alpha').value / 100,
+      color:     $('color').value,
+      litColor:  $('litColor').value,
+      litHi:     $('litHi').value,
+      litLo:     $('litLo').value,
+      litPulse:  $('litPulse').checked,
+      edgeLift:  $('edgeLift').value / 100,
+      coreStart: $('coreStart').value / 100,
+      coreFull:  $('coreFull').value / 100,
+      coreHot:   $('coreHot').value / 100
+    };
+  }
+
+  function updateReadouts() {
+    var o = currentOpts();
+    $('widthFracVal').textContent = o.widthFrac.toFixed(2);
+    $('alphaVal').textContent     = o.alpha.toFixed(2);
+    $('colorVal').textContent     = o.color;
+    $('litColorVal').textContent  = o.litColor;
+    $('litHiVal').textContent     = o.litHi;
+    $('litLoVal').textContent     = o.litLo;
+    $('edgeLiftVal').textContent  = o.edgeLift.toFixed(2);
+    $('coreStartVal').textContent = o.coreStart.toFixed(2);
+    $('coreFullVal').textContent  = o.coreFull.toFixed(2);
+    $('coreHotVal').textContent   = o.coreHot.toFixed(2);
+    $('sizeVal').textContent      = $('size').value + 'px';
+    $('code').textContent =
+      "const litOpts = {\n" +
+      "    widthFrac: " + o.widthFrac.toFixed(2) + ",\n" +
+      "    alpha:     " + o.alpha.toFixed(2) + ",\n" +
+      "    color:     '" + o.color + "',\n" +
+      "    litColor:  '" + o.litColor + "',\n" +
+      "    litHi:     '" + o.litHi + "',\n" +
+      "    litLo:     '" + o.litLo + "',\n" +
+      "    litPulse:  " + o.litPulse + ",\n" +
+      "    edgeLift:  " + o.edgeLift.toFixed(2) + ",\n" +
+      "    coreStart: " + o.coreStart.toFixed(2) + ",\n" +
+      "    coreFull:  " + o.coreFull.toFixed(2) + ",\n" +
+      "    coreHot:   " + o.coreHot.toFixed(2) + "\n" +
+      "};";
+    document.documentElement.style.setProperty('--backdrop', $('backdrop').value);
+  }
+
+  function drawO(canvas, sizeCss, opts) {
+    Render.renderSnippet(canvas, sizeCss, opts);
+    if (Render.paintSnippetRingMask) Render.paintSnippetRingMask(canvas, sizeCss, opts);
+  }
+
+  // Continuous redraw drives the pulse (and makes every control live).
+  function tick() {
+    var opts = currentOpts();
+    var size = parseInt($('size').value, 10);
+    var big  = $('bigO');
+    big.style.width  = size + 'px';
+    big.style.height = size + 'px';
+    drawO(big, size, opts);
+    var small = $('ctxO');
+    var rect = small.getBoundingClientRect();
+    if (rect.width > 0) drawO(small, Math.max(24, Math.min(rect.width, rect.height)), opts);
+    requestAnimationFrame(tick);
+  }
+
+  document.querySelectorAll('input').forEach(function (el) {
+    el.addEventListener('input', updateReadouts);
+  });
+
+  $('reset').addEventListener('click', function () {
+    $('widthFrac').value = DEFAULTS.widthFrac * 100;
+    $('alpha').value     = DEFAULTS.alpha * 100;
+    $('color').value     = DEFAULTS.color;
+    $('litColor').value  = DEFAULTS.litColor;
+    $('litHi').value     = DEFAULTS.litHi;
+    $('litLo').value     = DEFAULTS.litLo;
+    $('litPulse').checked = DEFAULTS.litPulse;
+    $('edgeLift').value  = DEFAULTS.edgeLift * 100;
+    $('coreStart').value = DEFAULTS.coreStart * 100;
+    $('coreFull').value  = DEFAULTS.coreFull * 100;
+    $('coreHot').value   = DEFAULTS.coreHot * 100;
+    updateReadouts();
+  });
+
+  $('copy').addEventListener('click', function () {
+    var text = $('code').textContent;
+    function done() {
+      $('copy').textContent = 'Copied!';
+      setTimeout(function () { $('copy').textContent = 'Copy litOpts'; }, 1200);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done);
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy');
+      document.body.removeChild(ta); done();
+    }
+  });
+
+  updateReadouts();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
