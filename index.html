@@ -525,7 +525,7 @@
                      reserve a fixed-width slot — sliders line up vertically. -->
                 <div class="settingsRow">
                     <label for="settingTileColor" class="settingsVisualLabel" data-i18n="settings.tileColor">Tile color</label>
-                    <input type="color" id="settingTileColor" class="settingsColor" value="#153050">
+                    <input type="color" id="settingTileColor" class="settingsColor" value="#204169">
                 </div>
 
                 <div class="settingsVolumeRow">
@@ -543,7 +543,7 @@
                      deleting the two display:none styles. -->
                 <div class="settingsRow" style="display: none;">
                     <label for="settingPathColor" class="settingsVisualLabel" data-i18n="settings.pathColor">Path color</label>
-                    <input type="color" id="settingPathColor" class="settingsColor" value="#ff2424">
+                    <input type="color" id="settingPathColor" class="settingsColor" value="#ff0000">
                 </div>
 
                 <div class="settingsVolumeRow" style="display: none;">
@@ -938,27 +938,27 @@
     <div id="debugSliders">
         <strong>Debug</strong>
         <div class="dbgRow">
-            <label>Tile color (<span id="tileColorVal">#153050</span>)
-                <input type="color" id="tileColorPicker" value="#153050">
+            <label>Tile color (<span id="tileColorVal">#204169</span>)
+                <input type="color" id="tileColorPicker" value="#204169">
             </label>
-            <label>Path color (<span id="pathColorVal">#ff2424</span>)
-                <input type="color" id="pathColorPicker" value="#ff2424">
+            <label>Path color (<span id="pathColorVal">#ff0000</span>)
+                <input type="color" id="pathColorPicker" value="#ff0000">
             </label>
         </div>
         <label>Path opacity (<span id="opacityVal">0.14</span>)
             <input type="range" id="opacitySlider" min="0" max="100" value="14">
         </label>
-        <label>Path width (<span id="widthVal">0.18</span>)
-            <input type="range" id="widthSlider" min="5" max="45" value="18">
+        <label>Path width (<span id="widthVal">0.17</span>)
+            <input type="range" id="widthSlider" min="5" max="45" value="17">
         </label>
         <label>Bevel thickness (<span id="bevelVal">0.07</span>)
             <input type="range" id="bevelSlider" min="1" max="20" value="7">
         </label>
-        <label>Tile face opacity (<span id="faceAlphaVal">0.80</span>)
-            <input type="range" id="faceAlphaSlider" min="0" max="100" value="80">
+        <label>Tile face opacity (<span id="faceAlphaVal">0.74</span>)
+            <input type="range" id="faceAlphaSlider" min="0" max="100" value="74">
         </label>
-        <label>Face texture (<span id="faceTexVal">0.50</span>)
-            <input type="range" id="faceTexSlider" min="0" max="100" value="50">
+        <label>Face texture (<span id="faceTexVal">0.66</span>)
+            <input type="range" id="faceTexSlider" min="0" max="100" value="66">
         </label>
         <!-- Lit-path palettes — one row per path color (plus gold = the won
              state), three gradient stops per row. Hex readouts live under
@@ -966,25 +966,25 @@
         <div class="dbgLitGrid">
             <span class="hdr">Lit</span><span class="hdr">Base</span><span class="hdr">Outer</span><span class="hdr">Inner</span>
             <span class="name">Green</span>
-            <label><input type="color" id="litGreenBasePicker" value="#7ee07e"><span class="hex" id="litGreenBaseVal">#7ee07e</span></label>
-            <label><input type="color" id="litGreenLoPicker" value="#2d672d"><span class="hex" id="litGreenLoVal">#2d672d</span></label>
-            <label><input type="color" id="litGreenHiPicker" value="#c8fec8"><span class="hex" id="litGreenHiVal">#c8fec8</span></label>
+            <label><input type="color" id="litGreenBasePicker" value="#2aec18"><span class="hex" id="litGreenBaseVal">#2aec18</span></label>
+            <label><input type="color" id="litGreenLoPicker" value="#0e2c0c"><span class="hex" id="litGreenLoVal">#0e2c0c</span></label>
+            <label><input type="color" id="litGreenHiPicker" value="#b8ffb3"><span class="hex" id="litGreenHiVal">#b8ffb3</span></label>
             <span class="name">Blue</span>
-            <label><input type="color" id="litBlueBasePicker" value="#7ea6ff"><span class="hex" id="litBlueBaseVal">#7ea6ff</span></label>
-            <label><input type="color" id="litBlueLoPicker" value="#1f3d80"><span class="hex" id="litBlueLoVal">#1f3d80</span></label>
-            <label><input type="color" id="litBlueHiPicker" value="#c8d8ff"><span class="hex" id="litBlueHiVal">#c8d8ff</span></label>
+            <label><input type="color" id="litBlueBasePicker" value="#00e1ff"><span class="hex" id="litBlueBaseVal">#00e1ff</span></label>
+            <label><input type="color" id="litBlueLoPicker" value="#032b30"><span class="hex" id="litBlueLoVal">#032b30</span></label>
+            <label><input type="color" id="litBlueHiPicker" value="#c2f8ff"><span class="hex" id="litBlueHiVal">#c2f8ff</span></label>
             <span class="name">Pink</span>
-            <label><input type="color" id="litPinkBasePicker" value="#ff7ec8"><span class="hex" id="litPinkBaseVal">#ff7ec8</span></label>
-            <label><input type="color" id="litPinkLoPicker" value="#80204f"><span class="hex" id="litPinkLoVal">#80204f</span></label>
-            <label><input type="color" id="litPinkHiPicker" value="#ffd0e8"><span class="hex" id="litPinkHiVal">#ffd0e8</span></label>
+            <label><input type="color" id="litPinkBasePicker" value="#fe71f7"><span class="hex" id="litPinkBaseVal">#fe71f7</span></label>
+            <label><input type="color" id="litPinkLoPicker" value="#2d102d"><span class="hex" id="litPinkLoVal">#2d102d</span></label>
+            <label><input type="color" id="litPinkHiPicker" value="#ffdbff"><span class="hex" id="litPinkHiVal">#ffdbff</span></label>
             <span class="name">Orange</span>
-            <label><input type="color" id="litOrangeBasePicker" value="#ffa040"><span class="hex" id="litOrangeBaseVal">#ffa040</span></label>
-            <label><input type="color" id="litOrangeLoPicker" value="#7a3a05"><span class="hex" id="litOrangeLoVal">#7a3a05</span></label>
-            <label><input type="color" id="litOrangeHiPicker" value="#ffd6a8"><span class="hex" id="litOrangeHiVal">#ffd6a8</span></label>
+            <label><input type="color" id="litOrangeBasePicker" value="#ff8247"><span class="hex" id="litOrangeBaseVal">#ff8247</span></label>
+            <label><input type="color" id="litOrangeLoPicker" value="#341a0f"><span class="hex" id="litOrangeLoVal">#341a0f</span></label>
+            <label><input type="color" id="litOrangeHiPicker" value="#ffdccc"><span class="hex" id="litOrangeHiVal">#ffdccc</span></label>
             <span class="name">Gold</span>
-            <label><input type="color" id="litGoldBasePicker" value="#ffd700"><span class="hex" id="litGoldBaseVal">#ffd700</span></label>
-            <label><input type="color" id="litGoldLoPicker" value="#7b5b0a"><span class="hex" id="litGoldLoVal">#7b5b0a</span></label>
-            <label><input type="color" id="litGoldHiPicker" value="#feee9f"><span class="hex" id="litGoldHiVal">#feee9f</span></label>
+            <label><input type="color" id="litGoldBasePicker" value="#fff500"><span class="hex" id="litGoldBaseVal">#fff500</span></label>
+            <label><input type="color" id="litGoldLoPicker" value="#2d2c01"><span class="hex" id="litGoldLoVal">#2d2c01</span></label>
+            <label><input type="color" id="litGoldHiPicker" value="#fefcc8"><span class="hex" id="litGoldHiVal">#fefcc8</span></label>
         </div>
         <label>Grid width (<span id="gridWVal">4</span>)
             <input type="range" id="gridWSlider" min="4" max="15" value="4">

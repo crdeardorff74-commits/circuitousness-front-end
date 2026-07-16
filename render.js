@@ -29,9 +29,9 @@ const Render = (() => {
     const SEAM_OVERLAP    = 0.5;   // px — close canvas AA gaps between adjacent bevel polygons
 
     // --- DEBUG: live-tunable via debug-panel sliders in index.html ---
-    let GROOVE_FRAC      = 0.18;   // groove width as a fraction of cell
+    let GROOVE_FRAC      = 0.17;   // groove width as a fraction of cell
     let BEVEL_FRAC       = 0.07;   // bevel thickness as a fraction of cell
-    let TILE_FACE_ALPHA  = 0.80;   // opacity of the inner tile-face fill (bevels stay opaque)
+    let TILE_FACE_ALPHA  = 0.74;   // opacity of the inner tile-face fill (bevels stay opaque)
     let LOCK_FACE_COLOR  = '#ffffff'; // face color for player-locked tiles (bevels stay normal)
     let COMPLETE_CIRCUITS = false; // false (default) = entry/exit stubs end in square terminal pads; true = paths wrap the grid perimeter
     function setCompleteCircuits(on) {
@@ -57,7 +57,7 @@ const Render = (() => {
         LOCK_FACE_COLOR = c;
         if (ctx) draw();
     }
-    let FACE_TEXTURE_ALPHA = 0.50; // brushed-metal grain strength on tile faces (0 = off)
+    let FACE_TEXTURE_ALPHA = 0.66; // brushed-metal grain strength on tile faces (0 = off)
     function setFaceTexture(a) {
         FACE_TEXTURE_ALPHA = a;
         if (ctx) draw();
@@ -78,7 +78,7 @@ const Render = (() => {
         bot:   [-22,  -24,  -29],
         right: [-13,  -14,  -17]
     };
-    let TILE_BASE_COLOR = '#153050';
+    let TILE_BASE_COLOR = '#204169';
     const TILE_PALETTE = { face: '', top: '', left: '', bot: '', right: '' };
     function recomputeTilePalette() {
         const base = parseColor(TILE_BASE_COLOR);
@@ -149,7 +149,7 @@ const Render = (() => {
     }
 
     // --- DEBUG: live-tunable via color picker in index.html (Render.setPathColor) ---
-    let GROOVE_RIM = '#ff2424';      // un-lit channel band color (composited at DIM_ALPHA over the body bg)
+    let GROOVE_RIM = '#ff0000';      // un-lit channel band color (composited at DIM_ALPHA over the body bg)
     function setPathColor(hex) {
         GROOVE_RIM = hex;
         if (ctx) draw();
@@ -160,28 +160,28 @@ const Render = (() => {
     // for both — litStripes interpolates between them in LIT_GRADIENT_STEPS
     // sub-stops for a smooth outer-dark to inner-bright fade.
     // --- DEBUG: live-tunable via debug panel in index.html ---
-    let LIT_GOLD     = '#FFD700';
-    let LIT_GOLD_HI  = '#feee9f';
-    let LIT_GOLD_LO  = '#7b5b0a';
+    let LIT_GOLD     = '#fff500';
+    let LIT_GOLD_HI  = '#fefcc8';
+    let LIT_GOLD_LO  = '#2d2c01';
 
-    let LIT_GREEN     = '#7EE07E';
-    let LIT_GREEN_HI  = '#c8fec8';
-    let LIT_GREEN_LO  = '#2d672d';
+    let LIT_GREEN     = '#2aec18';
+    let LIT_GREEN_HI  = '#b8ffb3';
+    let LIT_GREEN_LO  = '#0e2c0c';
 
     // Path-2 palette (only used in Maze's two-path+ mode).
-    let LIT_BLUE     = '#7EA6FF';
-    let LIT_BLUE_HI  = '#c8d8ff';
-    let LIT_BLUE_LO  = '#1f3d80';
+    let LIT_BLUE     = '#00e1ff';
+    let LIT_BLUE_HI  = '#c2f8ff';
+    let LIT_BLUE_LO  = '#032b30';
 
     // Path-3 palette (only used in three-path mode).
-    let LIT_PINK     = '#FF7EC8';
-    let LIT_PINK_HI  = '#ffd0e8';
-    let LIT_PINK_LO  = '#80204f';
+    let LIT_PINK     = '#fe71f7';
+    let LIT_PINK_HI  = '#ffdbff';
+    let LIT_PINK_LO  = '#2d102d';
 
     // Path-4 palette (only used in four-path mode).
-    let LIT_ORANGE     = '#FFA040';
-    let LIT_ORANGE_HI  = '#ffd6a8';
-    let LIT_ORANGE_LO  = '#7a3a05';
+    let LIT_ORANGE     = '#ff8247';
+    let LIT_ORANGE_HI  = '#ffdccc';
+    let LIT_ORANGE_LO  = '#341a0f';
 
     // Joined-paths palette — when two different-color paths share a lane, the
     // overlap lane flashes dark red to flag the conflict instead of being

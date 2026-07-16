@@ -39,11 +39,11 @@ const Settings = (function () {
     const PATH_ALPHA_KEY  = PROJECT_SLUG + '_setting_pathOpacity';
     const PATH_WIDTH_KEY  = PROJECT_SLUG + '_setting_pathWidth';
     const BEVEL_KEY       = PROJECT_SLUG + '_setting_bevelThickness';
-    const DEF_TILE_COLOR  = '#153050';
-    const DEF_TILE_FACE   = 0.80;
-    const DEF_PATH_COLOR  = '#ff2424';
-    const DEF_PATH_ALPHA  = 0.11;
-    const DEF_PATH_WIDTH  = 0.18;
+    const DEF_TILE_COLOR  = '#204169';
+    const DEF_TILE_FACE   = 0.74;
+    const DEF_PATH_COLOR  = '#ff0000';
+    const DEF_PATH_ALPHA  = 0.14;
+    const DEF_PATH_WIDTH  = 0.17;
     const DEF_BEVEL       = 0.07;
 
     // Valid music modes (mirrors the dropdown options + Music.setMode).
