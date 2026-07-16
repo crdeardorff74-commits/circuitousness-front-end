@@ -194,8 +194,9 @@ const Render = (() => {
     let LIT_JOINED_HI   = '#cc4040';
     let LIT_JOINED_LO   = '#4a0000';
 
-    function setLitGreenLo(hex) { LIT_GREEN_LO = hex; if (ctx) draw(); }
-    function setLitGreenHi(hex) { LIT_GREEN_HI = hex; if (ctx) draw(); }
+    function setLitGreenLo(hex)   { LIT_GREEN_LO = hex; if (ctx) draw(); }
+    function setLitGreenHi(hex)   { LIT_GREEN_HI = hex; if (ctx) draw(); }
+    function setLitGreenBase(hex) { LIT_GREEN    = hex; if (ctx) draw(); }
     function setLitGoldLo(hex)  { LIT_GOLD_LO  = hex; if (ctx) draw(); }
     function setLitGoldHi(hex)  { LIT_GOLD_HI  = hex; if (ctx) draw(); }
 
@@ -2753,7 +2754,7 @@ const Render = (() => {
     return { init, draw, cellAt, gateAt, animateGateRotation,
              setTileColor, setPathColor, setPathOpacity,
              setPathWidth, setBevelThickness, setTileFaceAlpha, setFaceTexture,
-             setLitGreenLo, setLitGreenHi, setLitGoldLo, setLitGoldHi,
+             setLitGreenLo, setLitGreenHi, setLitGreenBase, setLitGoldLo, setLitGoldHi,
              setLockFaceColor, setCompleteCircuits, setGridSize,
              flashTwinPair, renderSnippet, paintSnippetRingMask,
              beginTutorial, endTutorial, tutorialMetrics,

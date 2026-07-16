@@ -958,6 +958,9 @@
         <label>Face texture (<span id="faceTexVal">0.50</span>)
             <input type="range" id="faceTexSlider" min="0" max="100" value="50">
         </label>
+        <label>Lit green base (<span id="litGreenBaseVal">#7ee07e</span>)
+            <input type="color" id="litGreenBasePicker" value="#7ee07e">
+        </label>
         <label>Lit green outer (<span id="litGreenLoVal">#2d672d</span>)
             <input type="color" id="litGreenLoPicker" value="#2d672d">
         </label>
@@ -1094,6 +1097,7 @@
             syncDebugSlider('bevelSlider',     'bevelVal',     Settings.getBevelThickness);
             syncDebugSlider('faceAlphaSlider', 'faceAlphaVal', Settings.getTileFaceOpacity);
         }
+        bindPicker('litGreenBasePicker', 'litGreenBaseVal', Render.setLitGreenBase);
         bindPicker('litGreenLoPicker', 'litGreenLoVal', Render.setLitGreenLo);
         bindPicker('litGreenHiPicker', 'litGreenHiVal', Render.setLitGreenHi);
         bindPicker('litGoldLoPicker',  'litGoldLoVal',  Render.setLitGoldLo);
