@@ -193,6 +193,13 @@ const Render = (() => {
     let LIT_JOINED      = '#a02020';
     let LIT_JOINED_HI   = '#cc4040';
     let LIT_JOINED_LO   = '#4a0000';
+    // Ramp-shape overrides for the joined flash (litStripes reads these off
+    // the palette). The global LIT_EDGE_LIFT/CORE_* constants assume
+    // near-white hi stops; on this dark red palette they produce a thin
+    // stark white filament. These values MUST stay in sync with the litOpts
+    // in title-renderer.js — the title-O deliberately mimics the joined
+    // flash, and both were tuned together via title-o-tuner.html.
+    const JOINED_RAMP = { edgeLift: 0.00, coreStart: 0.36, coreFull: 0.60, coreHot: 0.43 };
 
     function setLitGreenBase(hex)  { LIT_GREEN     = hex; if (ctx) draw(); }
     function setLitGreenLo(hex)    { LIT_GREEN_LO  = hex; if (ctx) draw(); }
@@ -250,6 +257,10 @@ const Render = (() => {
                 base: scaleColor(LIT_JOINED,    factor),
                 hi:   scaleColor(LIT_JOINED_HI, factor),
                 lo:   scaleColor(LIT_JOINED_LO, factor),
+                edgeLift:  JOINED_RAMP.edgeLift,
+                coreStart: JOINED_RAMP.coreStart,
+                coreFull:  JOINED_RAMP.coreFull,
+                coreHot:   JOINED_RAMP.coreHot,
             };
         }
         const pathsWon = Maze.pathsWon || [Maze.won, true, true, true];
@@ -935,14 +946,22 @@ const Render = (() => {
     function smoothstep(t) { return t * t * (3 - 2 * t); }
     function litStripes(w, rim, pathIdx) {
         const p = litPalette(pathIdx);
-        // Snippet renders (title-O) may override the ramp SHAPE, not just
-        // the colors — the in-game constants assume near-white hi stops,
-        // and with a saturated hi the fixed white push reads as a stark
-        // thin filament that no color choice can soften.
-        const coreStart = (snippetMode && snippetCoreStart != null) ? snippetCoreStart : LIT_CORE_START;
-        const coreFull  = (snippetMode && snippetCoreFull  != null) ? snippetCoreFull  : LIT_CORE_FULL;
-        const coreHot   = (snippetMode && snippetCoreHot   != null) ? snippetCoreHot   : LIT_CORE_HOT;
-        const edgeLift  = (snippetMode && snippetEdgeLift  != null) ? snippetEdgeLift  : LIT_EDGE_LIFT;
+        // The ramp SHAPE (not just the colors) can be overridden two ways —
+        // the in-game constants assume near-white hi stops, and with a
+        // saturated hi the fixed white push reads as a stark thin filament
+        // that no color choice can soften:
+        //   1. Palette-carried (litPalette's JOINED branch): the joined-red
+        //      flash ships its own ramp so it matches the title-O exactly.
+        //   2. Snippet opts (renderSnippet / paintSnippetRingMask): the
+        //      title-O's litOpts. Palette wins when both are present.
+        const coreStart = (p.coreStart != null) ? p.coreStart
+                        : (snippetMode && snippetCoreStart != null) ? snippetCoreStart : LIT_CORE_START;
+        const coreFull  = (p.coreFull  != null) ? p.coreFull
+                        : (snippetMode && snippetCoreFull  != null) ? snippetCoreFull  : LIT_CORE_FULL;
+        const coreHot   = (p.coreHot   != null) ? p.coreHot
+                        : (snippetMode && snippetCoreHot   != null) ? snippetCoreHot   : LIT_CORE_HOT;
+        const edgeLift  = (p.edgeLift  != null) ? p.edgeLift
+                        : (snippetMode && snippetEdgeLift  != null) ? snippetEdgeLift  : LIT_EDGE_LIFT;
         const outerW = w + rim * 2;
         const stripes = [];
         for (let i = 0; i < LIT_GRADIENT_STEPS; i++) {

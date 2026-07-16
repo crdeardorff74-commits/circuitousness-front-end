@@ -1101,6 +1101,7 @@ const Maze = (() => {
             assignQuadTwins();   // assign before scramble so the scramble can keep twins in lockstep
             scrambleQuads();
             updateHighlighted();
+            breakPreWonPaths();
             return true;
         }
 
@@ -1209,6 +1210,7 @@ const Maze = (() => {
             locked = new Set();
             assignTwins();
             updateHighlighted();
+            breakPreWonPaths();
             return true;
         }
 
@@ -1254,6 +1256,7 @@ const Maze = (() => {
             locked = new Set();
             assignTwins();
             updateHighlighted();
+            breakPreWonPaths();
             return true;
         }
 
@@ -1317,6 +1320,7 @@ const Maze = (() => {
         locked = new Set();  // wipe locks from any previous puzzle
         assignTwins();
         updateHighlighted();
+        breakPreWonPaths();
         return true;
     }
 
@@ -1640,6 +1644,84 @@ const Maze = (() => {
         won = won1 && won2 && won3 && won4;
         pathsWon = [won1, won2, won3, won4];
         highlighted = tag(fwd1.result, 0).concat(tag(bwd1.result, 0), extra2, extra3, extra4);
+    }
+
+    // A freshly scrambled puzzle can land with a path ALREADY complete:
+    // scrambleQuads gives every quad a 1-in-4 chance of 0 turns (and
+    // rotation-symmetric quad contents survive non-zero turns), and the
+    // non-quad rerolls randomize each tile independently — a short path
+    // lines up by pure chance. Nothing re-checked pathsWon before shipping,
+    // so players could start a puzzle with paths pre-won (field report:
+    // a quad start with a path already gold). Called at the end of every
+    // newPuzzle branch, after updateHighlighted: while any real path is
+    // won, re-rotate one of its tiles (or its quad) and re-check.
+    // Trade-off (deliberate): in non-quad mode the nudge happens AFTER the
+    // canonical-difficulty checks, so the shipped puzzle can be marginally
+    // off-canonical — acceptable for a case this rare vs. re-running the
+    // whole search.
+    function breakPreWonPaths() {
+        const exists = [true, !!(entry2 && exit2), !!(entry3 && exit3), !!(entry4 && exit4)];
+        for (let guard = 0; guard < 40; guard++) {
+            let wonIdx = -1;
+            for (let i = 0; i < 4; i++) {
+                // pathsWon reports true for NON-existent paths (so the
+                // overall-won AND works) — the exists[] filter is required.
+                if (exists[i] && pathsWon[i]) { wonIdx = i; break; }
+            }
+            if (wonIdx === -1) return;
+            // Candidate cells = the won path's lit lanes. Non-quad mode
+            // excludes entry/exit cells (their rotation exposes the terminal
+            // notch) and crosses (4-fold symmetric — re-rotating one can't
+            // break connectivity). Quad mode excludes nothing: endpoint
+            // quads scramble like any other, and turning a quad permutes
+            // sub-tile positions, which crosses don't survive either.
+            const endpoints = new Set();
+            for (const ep of [entry, exit, entry2, exit2, entry3, exit3, entry4, exit4]) {
+                if (ep) endpoints.add(ep.row + ',' + ep.col);
+            }
+            const cells = [];
+            const seen = new Set();
+            for (const lane of highlighted) {
+                if (lane.path !== wonIdx) continue;
+                const key = lane.row + ',' + lane.col;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                if (!quadMode && endpoints.has(key)) continue;
+                if (!quadMode && grid[lane.row][lane.col].type === T_CROSS) continue;
+                cells.push({ row: lane.row, col: lane.col });
+            }
+            if (cells.length === 0) return; // nothing safe to touch — ship as-is
+            const cell = cells[Math.floor(Math.random() * cells.length)];
+            if (quadMode && quadScramble) {
+                // 1-3 extra turns on the quad containing the cell, twin
+                // partner in lockstep (mirrors scrambleQuads).
+                const qr = Math.floor(cell.row / 2), qc = Math.floor(cell.col / 2);
+                const turns = 1 + Math.floor(Math.random() * 3);
+                quadScramble[qr][qc] = (quadScramble[qr][qc] + turns) & 3;
+                for (let i = 0; i < turns; i++) rotateQuad(qr * 2, qc * 2, false);
+                const tile = grid[qr * 2][qc * 2];
+                if (tile && tile._twin) {
+                    const [pr, pc] = tile._twin.partner.split(',').map(Number);
+                    quadScramble[pr / 2][pc / 2] = (quadScramble[pr / 2][pc / 2] + turns) & 3;
+                    for (let i = 0; i < turns; i++) rotateQuad(pr, pc, false);
+                }
+            } else {
+                const t = grid[cell.row][cell.col];
+                // Straights are 2-fold symmetric — +2 would be a no-op.
+                const turns = (t.type === T_STRAIGHT) ? (Math.random() < 0.5 ? 1 : 3)
+                                                      : 1 + Math.floor(Math.random() * 3);
+                t.rotation = (t.rotation + turns) & 3;
+                // Non-quad twins rotate in lockstep for the player; keep the
+                // scrambled state consistent with that. The partner is always
+                // a filler (assignTwins pairs path+filler), so its new
+                // orientation is solve-irrelevant.
+                if (t._twin) {
+                    const [pr, pc] = t._twin.partner.split(',').map(Number);
+                    grid[pr][pc].rotation = (grid[pr][pc].rotation + turns) & 3;
+                }
+            }
+            updateHighlighted();
+        }
     }
 
     // Rotate the 2×2 quad whose top-left sub-tile is at (qr0, qc0). CW (ccw=false):

@@ -128,6 +128,9 @@ const TitleRenderer = (() => {
             // palette they produced a thin, stark white filament. Tuned
             // via title-o-tuner.html: no edge lift, wider/earlier bright
             // zone, gentler white push.
+            // MUST stay in sync with render.js's JOINED_RAMP — the in-game
+            // joined-red flash uses these same values so the two effects
+            // look identical (the O deliberately mimics that flash).
             edgeLift:  0.00,
             coreStart: 0.36,
             coreFull:  0.60,
