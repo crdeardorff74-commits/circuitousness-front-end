@@ -43,10 +43,12 @@ const Gates = (() => {
     // Sizing as fractions of cellSize. Total reach from vertex center to tip
     // (= BASE_FRAC/2 + SHAFT_LENGTH_FRAC + TIP_LENGTH_FRAC) equals 1.0 so
     // the tip lands exactly on the adjacent vertex — gate spans one full edge.
+    // TIP_LENGTH_FRAC must equal SHAFT_WIDTH_FRAC/2: the tip edges then run
+    // at exactly 45°, matching the tile bevels' miter angle.
     const BASE_FRAC         = 0.22;
-    const SHAFT_LENGTH_FRAC = 0.755;
+    const SHAFT_LENGTH_FRAC = 0.83;
     const SHAFT_WIDTH_FRAC  = 0.12;
-    const TIP_LENGTH_FRAC   = 0.135;
+    const TIP_LENGTH_FRAC   = 0.06;
 
     // Buffer zone past the gate's bounding box for hit-testing — clicks
     // within this margin still count as gate clicks. 0.07 = ~7% of
