@@ -575,7 +575,16 @@ const Marathon = (() => {
     function ensureGrowthSequence(lev) {
         // Number of transitions needed = lev - 1 (transition index = level - 2).
         while (growthSequence.length < lev - 1) {
-            growthSequence.push(Math.random() < 0.5 ? 'r' : 'c');
+            // Random growth axis with a WIDER-FIRST invariant: cols must
+            // never fall behind rows (all start dims are square, so equal
+            // growth counts = square grid). At square, always widen; once
+            // wider, 50/50 — the grid meanders between square and wide but
+            // can never be taller than it is wide. Replaced the plain
+            // 50/50 (2026-07-16): half of all runs used to start by
+            // growing taller, which read wrong to the user.
+            const rGrown = growthSequence.reduce((n, g) => n + (g === 'r' ? 1 : 0), 0);
+            const cGrown = growthSequence.length - rGrown;
+            growthSequence.push(cGrown > rGrown && Math.random() < 0.5 ? 'r' : 'c');
         }
     }
     // pathCount is threaded through to MARATHON.minDimFor in config.js.

@@ -162,11 +162,14 @@ const MARATHON = {
     TIME_PER_TILE_SINGULAR:  [1.875, 2.5, 3.125, 3.75],
 
     // Puzzle progression. Each solve grows EITHER rows or cols by one
-    // (never both) with a 50/50 random pick per puzzle. The sequence is
-    // rolled fresh at startGame and lazily extended by `dimsForLevel`,
-    // so pre-gen's lookahead pins the upcoming choices and any later
-    // call for the same level returns the same dims. Logical dims —
-    // quad mode's underlying maze is 2× per axis. No upper cap.
+    // (never both), randomly BUT wider-first: cols never fall behind rows
+    // (at square the growth is always cols; once wider, 50/50), so grids
+    // meander between square and wide and are never taller than wide.
+    // The sequence is rolled fresh at startGame and lazily extended by
+    // `dimsForLevel`, so pre-gen's lookahead pins the upcoming choices
+    // and any later call for the same level returns the same dims.
+    // Logical dims — quad mode's underlying maze is 2× per axis. No
+    // upper cap.
     MIN_DIM_SINGULAR: 8,
     MIN_DIM_QUAD:    4,
     // Per-path-count minimum-dim override. Both are now effectively dead
