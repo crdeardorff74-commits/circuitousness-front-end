@@ -958,7 +958,9 @@ html.is-safari #introTitle .titleMazeO + .titleWord {
     filter: drop-shadow(0 0.05em 0.2em rgba(0, 0, 0, 0.55));
 }
 #menu .menuSubtitle {
-    color: rgba(220, 230, 250, 0.75);
+    /* Matches .menu-mode-tab.selected — the description reads as belonging
+       to the highlighted tab. Keep the two colors in sync. */
+    color: rgba(255, 215, 0, 0.95);
     font-size: clamp(0.95rem, 2vw, 1.1rem);
     text-align: center;
     /* Vertical breathing room around the mode-description label so it doesn't
