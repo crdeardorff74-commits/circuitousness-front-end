@@ -955,6 +955,9 @@
         <label>Tile face opacity (<span id="faceAlphaVal">0.80</span>)
             <input type="range" id="faceAlphaSlider" min="0" max="100" value="80">
         </label>
+        <label>Face texture (<span id="faceTexVal">0.50</span>)
+            <input type="range" id="faceTexSlider" min="0" max="100" value="50">
+        </label>
         <label>Lit green outer (<span id="litGreenLoVal">#2d672d</span>)
             <input type="color" id="litGreenLoPicker" value="#2d672d">
         </label>
@@ -1056,6 +1059,8 @@
                    function(v) { Render.setBevelThickness(v / 100); });
         bindSlider('faceAlphaSlider', 'faceAlphaVal', function(v) { return (v / 100).toFixed(2); },
                    function(v) { Render.setTileFaceAlpha(v / 100); });
+        bindSlider('faceTexSlider',   'faceTexVal',  function(v) { return (v / 100).toFixed(2); },
+                   function(v) { Render.setFaceTexture(v / 100); });
 
         // Sync the debug controls to the LIVE Settings values instead of the
         // hardcoded HTML defaults. Settings owns these six visual settings

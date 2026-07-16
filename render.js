@@ -57,6 +57,11 @@ const Render = (() => {
         LOCK_FACE_COLOR = c;
         if (ctx) draw();
     }
+    let FACE_TEXTURE_ALPHA = 0.50; // brushed-metal grain strength on tile faces (0 = off)
+    function setFaceTexture(a) {
+        FACE_TEXTURE_ALPHA = a;
+        if (ctx) draw();
+    }
 
     // Colors — slate tile face for normal tiles, crimson for hint-locked tiles.
     // Twin tiles get a per-pair palette derived from their pastel base color
@@ -574,6 +579,58 @@ const Render = (() => {
         return         { x: cx + dy, y: cy - dx };
     }
 
+    // ---- brushed-metal face texture ----
+    //
+    // A seamlessly-tiling grayscale streak pattern overlaid on every tile
+    // face with 'overlay' blending, so it lightens/darkens whatever face
+    // color is underneath (slate, twin pastels, hint gold, lock white)
+    // without shifting its hue. Two streak scales — short fine grain plus
+    // long soft strokes — approximate real brushed metal. Built once,
+    // lazily, on an offscreen canvas; drawn in screen space so the grain
+    // runs horizontal everywhere and flows unbroken across quad-merged
+    // faces (it rotates with a tile only during its spin animation, which
+    // reads as the physical tile turning).
+    const TEX_SIZE   = 256;      // pattern tile, device px (wraps on both axes)
+    const TEX_LAYERS = [         // radius: horizontal blur px; amp: gray-level std
+        { radius: 3,  amp: 11 }, // fine grain
+        { radius: 28, amp: 14 }  // long streaks
+    ];
+    let faceTexPattern = null;
+    function buildFaceTexPattern() {
+        const tex = document.createElement('canvas');
+        tex.width = tex.height = TEX_SIZE;
+        const tctx = tex.getContext('2d');
+        const img  = tctx.createImageData(TEX_SIZE, TEX_SIZE);
+        const gray = new Float32Array(TEX_SIZE * TEX_SIZE).fill(128);
+        for (const { radius, amp } of TEX_LAYERS) {
+            const n = 2 * radius + 1;
+            // Box-blurring uniform noise leaves std ≈ 0.2887/√n; rescale so
+            // the layer deviates from neutral by `amp` gray levels (std).
+            const scale = amp * Math.sqrt(n) / 0.2887;
+            const noise = new Float32Array(TEX_SIZE);
+            for (let y = 0; y < TEX_SIZE; y++) {
+                const row = y * TEX_SIZE;
+                for (let x = 0; x < TEX_SIZE; x++) noise[x] = Math.random() - 0.5;
+                // Sliding-window box blur with wrap-around so the pattern
+                // tiles seamlessly along the streak direction.
+                let sum = 0;
+                for (let k = -radius; k <= radius; k++) sum += noise[(k + TEX_SIZE) % TEX_SIZE];
+                for (let x = 0; x < TEX_SIZE; x++) {
+                    gray[row + x] += (sum / n) * scale;
+                    sum -= noise[(x - radius + TEX_SIZE) % TEX_SIZE];
+                    sum += noise[(x + radius + 1) % TEX_SIZE];
+                }
+            }
+        }
+        for (let i = 0; i < gray.length; i++) {
+            const g = Math.max(0, Math.min(255, Math.round(gray[i])));
+            img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = g;
+            img.data[i * 4 + 3] = 255;
+        }
+        tctx.putImageData(img, 0, 0);
+        return tctx.createPattern(tex, 'repeat');
+    }
+
     function drawBeveledPolygon(verts, palette, skipEdges, arcEdges, bevelOverride) {
         // BEVEL_FRAC is a fraction of cellSize, but in quad mode the visible
         // tile is 2× cellSize on each side — so double the bevel to keep its
@@ -593,13 +650,26 @@ const Render = (() => {
         // shows through the tile centers. Bevels stay opaque so the
         // beveled edge silhouette remains crisp.
         // palette.faceAlpha overrides for player-locked tiles (opaque).
+        const faceAlpha = (palette.faceAlpha !== undefined) ? palette.faceAlpha : TILE_FACE_ALPHA;
         ctx.fillStyle = palette.face;
-        ctx.globalAlpha = (palette.faceAlpha !== undefined) ? palette.faceAlpha : TILE_FACE_ALPHA;
+        ctx.globalAlpha = faceAlpha;
         ctx.beginPath();
         ctx.moveTo(inner[0].x, inner[0].y);
         for (let i = 1; i < n; i++) ctx.lineTo(inner[i].x, inner[i].y);
         ctx.closePath();
         ctx.fill();
+        // Brushed-metal grain over the face (the path is still current —
+        // fill() doesn't clear it). Strength scales with the face's own
+        // opacity so translucent faces get proportionally subtler grain:
+        // the background peeking through shouldn't pick up full streaks.
+        if (FACE_TEXTURE_ALPHA > 0) {
+            if (!faceTexPattern) faceTexPattern = buildFaceTexPattern();
+            ctx.fillStyle = faceTexPattern;
+            ctx.globalAlpha = faceAlpha * FACE_TEXTURE_ALPHA;
+            ctx.globalCompositeOperation = 'overlay';
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+        }
         ctx.globalAlpha = 1;
 
         // One trapezoid bevel per edge. Each end is extended SEAM_OVERLAP past
@@ -2682,7 +2752,7 @@ const Render = (() => {
 
     return { init, draw, cellAt, gateAt, animateGateRotation,
              setTileColor, setPathColor, setPathOpacity,
-             setPathWidth, setBevelThickness, setTileFaceAlpha,
+             setPathWidth, setBevelThickness, setTileFaceAlpha, setFaceTexture,
              setLitGreenLo, setLitGreenHi, setLitGoldLo, setLitGoldHi,
              setLockFaceColor, setCompleteCircuits, setGridSize,
              flashTwinPair, renderSnippet, paintSnippetRingMask,
