@@ -429,20 +429,22 @@ const Render = (() => {
         if (tutorialMode) { layoutTutorial(); return; }
         // Make canvas fill the viewport, but leave a small margin
         const margin = Math.min(window.innerWidth, window.innerHeight) * 0.03;
-        // Reserve the HUD strip. #hud is an absolutely-positioned overlay,
-        // so the flex-centered canvas otherwise slides its top pad — where
-        // terminal endpoint pads render — underneath the UNDO/HINT buttons
-        // on short viewports. Measuring the live element (0 when hidden,
-        // e.g. menu or debug mode) and pairing the reduced height with a
-        // matching margin-top makes the canvas center in the strip BELOW
-        // the HUD: when height-bound it spans exactly from HUD-bottom +
-        // margin to viewport-bottom - margin.
-        let hudH = 0;
+        // Reserve HALF the HUD strip. #hud is an absolutely-positioned
+        // overlay, so the flex-centered canvas otherwise slides its top pad
+        // — where terminal endpoint pads render — underneath the UNDO/HINT
+        // buttons on short viewports. Measuring the live element (0 when
+        // hidden, e.g. menu or debug mode) and pairing the reduced height
+        // with a matching margin-top centers the canvas lower, clearing the
+        // buttons. Half the HUD height is enough because the canvas's own
+        // pad region means terminals never touch the canvas's very edge —
+        // a full-height reserve (tried first) pushed the grid down more
+        // than the overlap warranted.
+        let hudReserve = 0;
         const hudEl = document.getElementById('hud');
-        if (hudEl) hudH = hudEl.getBoundingClientRect().height;
-        canvas.style.marginTop = hudH + 'px';
+        if (hudEl) hudReserve = hudEl.getBoundingClientRect().height / 2;
+        canvas.style.marginTop = hudReserve + 'px';
         const availW = window.innerWidth  - margin * 2;
-        const availH = window.innerHeight - margin * 2 - hudH;
+        const availH = window.innerHeight - margin * 2 - hudReserve;
 
         dpr = window.devicePixelRatio || 1;
 
