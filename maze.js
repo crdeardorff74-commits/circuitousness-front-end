@@ -1077,9 +1077,10 @@ const Maze = (() => {
             // target is met (or abortFlag fires on quit). Without this,
             // the worker used to ship bestSnapshot regardless and the
             // game accepted it because the worker's response reports the
-            // REQUESTED pathCount, not the actual one. config.js's
-            // MIN_DIM_QUAD_4PATH bump keeps the loop fast on the typical
-            // case; the strict loop is the safety net.
+            // REQUESTED pathCount, not the actual one. q4 starts at 4×4
+            // logical (8×8 physical, same floor as every quad count since
+            // 2026-07-16) — the backtracking place() converges fine there;
+            // the strict loop is the safety net.
             // hurryFlag is intentionally NOT a bail trigger here — letting
             // a hurried player accept fewer paths violates the contract.
             const ATTEMPTS_PER_PASS = pathCount === 4 ? 10000 : (pathCount === 3 ? 400 : (pathCount === 2 ? 20 : 8));

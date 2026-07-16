@@ -169,18 +169,19 @@ const MARATHON = {
     // quad mode's underlying maze is 2× per axis. No upper cap.
     MIN_DIM_SINGULAR: 8,
     MIN_DIM_QUAD:    4,
-    // Per-path-count minimum-dim override. Only the QUAD value still
-    // matters in practice: q4's 6 logical (= 12×12 physical) gives the
-    // 4-path generator room without doubling from an already-big base.
-    // SINGULAR_4PATH is a dead fallback — startDimsFor (below) pins ALL
-    // singular starts to 5×5. It was 10 because the ORIGINAL linear
-    // placement couldn't reliably fit 4 paths even at 8×8; since the
-    // backtracking `place()` search in maze.js (which undoes paths 2/3
-    // when path 4 gets boxed out), 4-path builds succeed even on 4×4 —
-    // worst case a few seconds of retries inside the strict loop, not a
-    // hang. Kept only should the startDimsFor override ever be removed.
+    // Per-path-count minimum-dim override. Both are now effectively dead
+    // knobs kept as documented fallbacks: startDimsFor (below) pins ALL
+    // singular starts to 5×5, and QUAD_4PATH now equals the plain quad
+    // floor — q4 starts 4×4 logical like every other quad count
+    // (2026-07-16; was 8, then 6). Rationale: 4×4 logical is ALREADY an
+    // 8×8 physical maze — more room than the 5×5 the singular 4-path
+    // generator handles fine. SINGULAR_4PATH's 10 dates from the ORIGINAL
+    // linear placement that couldn't reliably fit 4 paths even at 8×8;
+    // the backtracking `place()` search in maze.js (which undoes paths
+    // 2/3 when path 4 gets boxed out) made 4-path builds succeed even on
+    // tiny grids — worst case a few seconds of retries in the strict loop.
     MIN_DIM_SINGULAR_4PATH: 10,
-    MIN_DIM_QUAD_4PATH:      6,
+    MIN_DIM_QUAD_4PATH:      4,
     // Min logical dim for THIS (quadMode, pathCount). Since the 5×5
     // singular unification only the quad branch is reachable via
     // startDimsFor, but the function is kept whole as the documented
@@ -197,7 +198,7 @@ const MARATHON = {
     // Marathon (history: 1-path went 4×4 → 4×5/5×5 → 6×6 → 5×5, and
     // 2/3/4-path sat on the 6/8/10 MIN_DIM floors until Debug-mode
     // testing showed the backtracking 4-path generator is fine on tiny
-    // grids). Quad keeps the minDimFor floors (4, or 6 for q4): logical
+    // grids). Quad keeps the minDimFor floors (4 for every count): logical
     // dims are 2× physical, so quad 4×4 is already an 8×8 maze and 5×5
     // logical would make quad starts BIGGER, not uniform. The per-solve
     // row/col growth climbs from here.

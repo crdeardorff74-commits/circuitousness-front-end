@@ -578,10 +578,10 @@ const Marathon = (() => {
             growthSequence.push(Math.random() < 0.5 ? 'r' : 'c');
         }
     }
-    // pathCount is required for the quad 4-path min-dim bump (see
-    // MARATHON.minDimFor in config.js — q4 starts at 6 logical, not 4).
-    // Singular ignores it (all path counts start 5×5), but every caller
-    // passes it so the quad path stays correct.
+    // pathCount is threaded through to MARATHON.minDimFor in config.js.
+    // Currently a no-op both ways (all quad counts start 4×4 logical, all
+    // singular starts are 5×5) but every caller passes it so any future
+    // per-path-count floor works without touching call sites.
     function dimsForLevel(lev, quadMode, pathCount) {
         // Start dims come from MARATHON.startDimsFor (singular: 5×5 for
         // EVERY path count, in both Zen/Practice and Marathon; quad: the
