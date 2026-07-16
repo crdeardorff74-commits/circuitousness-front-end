@@ -2970,6 +2970,52 @@ body.credits-rolling #potdSolveTransition.visible {
     border-radius: 0.25rem;
     cursor: pointer;
 }
+/* Side-by-side picker pairs (e.g. Tile color | Path color) — the panel
+   outgrew the viewport once every lit path color got its own pickers. */
+#debugSliders .dbgRow {
+    display: flex;
+    gap: 0.8rem;
+    margin-bottom: 0.5rem;
+}
+#debugSliders .dbgRow label {
+    flex: 1;
+    margin-bottom: 0;
+}
+#debugSliders .dbgRow input[type="color"] {
+    width: 100%;
+}
+/* Lit-path palette grid: one row per path color, Base/Outer/Inner columns,
+   tiny hex readout under each swatch (bindPicker keeps it current). */
+#debugSliders .dbgLitGrid {
+    display: grid;
+    grid-template-columns: auto repeat(3, 1fr);
+    gap: 0.2rem 0.5rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+#debugSliders .dbgLitGrid .hdr,
+#debugSliders .dbgLitGrid .name {
+    font-size: 0.72rem;
+    opacity: 0.7;
+}
+#debugSliders .dbgLitGrid .hdr {
+    text-align: center;
+}
+#debugSliders .dbgLitGrid label {
+    margin-bottom: 0;
+}
+#debugSliders .dbgLitGrid input[type="color"] {
+    width: 100%;
+    height: 1.4rem;
+    margin-top: 0;
+}
+#debugSliders .dbgLitGrid .hex {
+    display: block;
+    font-size: 0.6rem;
+    font-family: monospace;
+    opacity: 0.7;
+    text-align: center;
+}
 #debugSliders #replayBtn {
     display: block;
     width: 100%;

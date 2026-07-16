@@ -194,11 +194,21 @@ const Render = (() => {
     let LIT_JOINED_HI   = '#cc4040';
     let LIT_JOINED_LO   = '#4a0000';
 
-    function setLitGreenLo(hex)   { LIT_GREEN_LO = hex; if (ctx) draw(); }
-    function setLitGreenHi(hex)   { LIT_GREEN_HI = hex; if (ctx) draw(); }
-    function setLitGreenBase(hex) { LIT_GREEN    = hex; if (ctx) draw(); }
-    function setLitGoldLo(hex)  { LIT_GOLD_LO  = hex; if (ctx) draw(); }
-    function setLitGoldHi(hex)  { LIT_GOLD_HI  = hex; if (ctx) draw(); }
+    function setLitGreenBase(hex)  { LIT_GREEN     = hex; if (ctx) draw(); }
+    function setLitGreenLo(hex)    { LIT_GREEN_LO  = hex; if (ctx) draw(); }
+    function setLitGreenHi(hex)    { LIT_GREEN_HI  = hex; if (ctx) draw(); }
+    function setLitBlueBase(hex)   { LIT_BLUE      = hex; if (ctx) draw(); }
+    function setLitBlueLo(hex)     { LIT_BLUE_LO   = hex; if (ctx) draw(); }
+    function setLitBlueHi(hex)     { LIT_BLUE_HI   = hex; if (ctx) draw(); }
+    function setLitPinkBase(hex)   { LIT_PINK      = hex; if (ctx) draw(); }
+    function setLitPinkLo(hex)     { LIT_PINK_LO   = hex; if (ctx) draw(); }
+    function setLitPinkHi(hex)     { LIT_PINK_HI   = hex; if (ctx) draw(); }
+    function setLitOrangeBase(hex) { LIT_ORANGE    = hex; if (ctx) draw(); }
+    function setLitOrangeLo(hex)   { LIT_ORANGE_LO = hex; if (ctx) draw(); }
+    function setLitOrangeHi(hex)   { LIT_ORANGE_HI = hex; if (ctx) draw(); }
+    function setLitGoldBase(hex)   { LIT_GOLD      = hex; if (ctx) draw(); }
+    function setLitGoldLo(hex)     { LIT_GOLD_LO   = hex; if (ctx) draw(); }
+    function setLitGoldHi(hex)     { LIT_GOLD_HI   = hex; if (ctx) draw(); }
 
     // Each path picks up gold when ITS walk reaches the exit, independent of
     // the others. Path 0 = green, path 1 = blue, path 2 = pink, path 3 = orange.
@@ -2754,7 +2764,11 @@ const Render = (() => {
     return { init, draw, cellAt, gateAt, animateGateRotation,
              setTileColor, setPathColor, setPathOpacity,
              setPathWidth, setBevelThickness, setTileFaceAlpha, setFaceTexture,
-             setLitGreenLo, setLitGreenHi, setLitGreenBase, setLitGoldLo, setLitGoldHi,
+             setLitGreenBase, setLitGreenLo, setLitGreenHi,
+             setLitBlueBase, setLitBlueLo, setLitBlueHi,
+             setLitPinkBase, setLitPinkLo, setLitPinkHi,
+             setLitOrangeBase, setLitOrangeLo, setLitOrangeHi,
+             setLitGoldBase, setLitGoldLo, setLitGoldHi,
              setLockFaceColor, setCompleteCircuits, setGridSize,
              flashTwinPair, renderSnippet, paintSnippetRingMask,
              beginTutorial, endTutorial, tutorialMetrics,

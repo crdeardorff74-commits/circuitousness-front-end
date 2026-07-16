@@ -937,12 +937,14 @@
          CSS in styles.css, and the wiring <script> below when done. -->
     <div id="debugSliders">
         <strong>Debug</strong>
-        <label>Tile color (<span id="tileColorVal">#153050</span>)
-            <input type="color" id="tileColorPicker" value="#153050">
-        </label>
-        <label>Path color (<span id="pathColorVal">#ff2424</span>)
-            <input type="color" id="pathColorPicker" value="#ff2424">
-        </label>
+        <div class="dbgRow">
+            <label>Tile color (<span id="tileColorVal">#153050</span>)
+                <input type="color" id="tileColorPicker" value="#153050">
+            </label>
+            <label>Path color (<span id="pathColorVal">#ff2424</span>)
+                <input type="color" id="pathColorPicker" value="#ff2424">
+            </label>
+        </div>
         <label>Path opacity (<span id="opacityVal">0.14</span>)
             <input type="range" id="opacitySlider" min="0" max="100" value="14">
         </label>
@@ -958,24 +960,32 @@
         <label>Face texture (<span id="faceTexVal">0.50</span>)
             <input type="range" id="faceTexSlider" min="0" max="100" value="50">
         </label>
-        <label>Lit green base (<span id="litGreenBaseVal">#7ee07e</span>)
-            <input type="color" id="litGreenBasePicker" value="#7ee07e">
-        </label>
-        <label>Lit green outer (<span id="litGreenLoVal">#2d672d</span>)
-            <input type="color" id="litGreenLoPicker" value="#2d672d">
-        </label>
-        <label>Lit green inner (<span id="litGreenHiVal">#c8fec8</span>)
-            <input type="color" id="litGreenHiPicker" value="#c8fec8">
-        </label>
-        <label>Lit gold outer (<span id="litGoldLoVal">#7b5b0a</span>)
-            <input type="color" id="litGoldLoPicker" value="#7b5b0a">
-        </label>
-        <label>Lit gold inner (<span id="litGoldHiVal">#feee9f</span>)
-            <input type="color" id="litGoldHiPicker" value="#feee9f">
-        </label>
-        <label>Lock face color (<span id="lockFaceVal">#ffffff</span>)
-            <input type="color" id="lockFacePicker" value="#ffffff">
-        </label>
+        <!-- Lit-path palettes — one row per path color (plus gold = the won
+             state), three gradient stops per row. Hex readouts live under
+             each swatch so tuned values can still be copied out. -->
+        <div class="dbgLitGrid">
+            <span class="hdr">Lit</span><span class="hdr">Base</span><span class="hdr">Outer</span><span class="hdr">Inner</span>
+            <span class="name">Green</span>
+            <label><input type="color" id="litGreenBasePicker" value="#7ee07e"><span class="hex" id="litGreenBaseVal">#7ee07e</span></label>
+            <label><input type="color" id="litGreenLoPicker" value="#2d672d"><span class="hex" id="litGreenLoVal">#2d672d</span></label>
+            <label><input type="color" id="litGreenHiPicker" value="#c8fec8"><span class="hex" id="litGreenHiVal">#c8fec8</span></label>
+            <span class="name">Blue</span>
+            <label><input type="color" id="litBlueBasePicker" value="#7ea6ff"><span class="hex" id="litBlueBaseVal">#7ea6ff</span></label>
+            <label><input type="color" id="litBlueLoPicker" value="#1f3d80"><span class="hex" id="litBlueLoVal">#1f3d80</span></label>
+            <label><input type="color" id="litBlueHiPicker" value="#c8d8ff"><span class="hex" id="litBlueHiVal">#c8d8ff</span></label>
+            <span class="name">Pink</span>
+            <label><input type="color" id="litPinkBasePicker" value="#ff7ec8"><span class="hex" id="litPinkBaseVal">#ff7ec8</span></label>
+            <label><input type="color" id="litPinkLoPicker" value="#80204f"><span class="hex" id="litPinkLoVal">#80204f</span></label>
+            <label><input type="color" id="litPinkHiPicker" value="#ffd0e8"><span class="hex" id="litPinkHiVal">#ffd0e8</span></label>
+            <span class="name">Orange</span>
+            <label><input type="color" id="litOrangeBasePicker" value="#ffa040"><span class="hex" id="litOrangeBaseVal">#ffa040</span></label>
+            <label><input type="color" id="litOrangeLoPicker" value="#7a3a05"><span class="hex" id="litOrangeLoVal">#7a3a05</span></label>
+            <label><input type="color" id="litOrangeHiPicker" value="#ffd6a8"><span class="hex" id="litOrangeHiVal">#ffd6a8</span></label>
+            <span class="name">Gold</span>
+            <label><input type="color" id="litGoldBasePicker" value="#ffd700"><span class="hex" id="litGoldBaseVal">#ffd700</span></label>
+            <label><input type="color" id="litGoldLoPicker" value="#7b5b0a"><span class="hex" id="litGoldLoVal">#7b5b0a</span></label>
+            <label><input type="color" id="litGoldHiPicker" value="#feee9f"><span class="hex" id="litGoldHiVal">#feee9f</span></label>
+        </div>
         <label>Grid width (<span id="gridWVal">4</span>)
             <input type="range" id="gridWSlider" min="4" max="15" value="4">
         </label>
@@ -1097,12 +1107,21 @@
             syncDebugSlider('bevelSlider',     'bevelVal',     Settings.getBevelThickness);
             syncDebugSlider('faceAlphaSlider', 'faceAlphaVal', Settings.getTileFaceOpacity);
         }
-        bindPicker('litGreenBasePicker', 'litGreenBaseVal', Render.setLitGreenBase);
-        bindPicker('litGreenLoPicker', 'litGreenLoVal', Render.setLitGreenLo);
-        bindPicker('litGreenHiPicker', 'litGreenHiVal', Render.setLitGreenHi);
-        bindPicker('litGoldLoPicker',  'litGoldLoVal',  Render.setLitGoldLo);
-        bindPicker('litGoldHiPicker',  'litGoldHiVal',  Render.setLitGoldHi);
-        bindPicker('lockFacePicker',   'lockFaceVal',   Render.setLockFaceColor);
+        bindPicker('litGreenBasePicker',  'litGreenBaseVal',  Render.setLitGreenBase);
+        bindPicker('litGreenLoPicker',    'litGreenLoVal',    Render.setLitGreenLo);
+        bindPicker('litGreenHiPicker',    'litGreenHiVal',    Render.setLitGreenHi);
+        bindPicker('litBlueBasePicker',   'litBlueBaseVal',   Render.setLitBlueBase);
+        bindPicker('litBlueLoPicker',     'litBlueLoVal',     Render.setLitBlueLo);
+        bindPicker('litBlueHiPicker',     'litBlueHiVal',     Render.setLitBlueHi);
+        bindPicker('litPinkBasePicker',   'litPinkBaseVal',   Render.setLitPinkBase);
+        bindPicker('litPinkLoPicker',     'litPinkLoVal',     Render.setLitPinkLo);
+        bindPicker('litPinkHiPicker',     'litPinkHiVal',     Render.setLitPinkHi);
+        bindPicker('litOrangeBasePicker', 'litOrangeBaseVal', Render.setLitOrangeBase);
+        bindPicker('litOrangeLoPicker',   'litOrangeLoVal',   Render.setLitOrangeLo);
+        bindPicker('litOrangeHiPicker',   'litOrangeHiVal',   Render.setLitOrangeHi);
+        bindPicker('litGoldBasePicker',   'litGoldBaseVal',   Render.setLitGoldBase);
+        bindPicker('litGoldLoPicker',     'litGoldLoVal',     Render.setLitGoldLo);
+        bindPicker('litGoldHiPicker',     'litGoldHiVal',     Render.setLitGoldHi);
 
         // Grid dimensions — both sliders route through Game.newPuzzle so
         // they share the building-banner pipeline AND the pre-gen worker
