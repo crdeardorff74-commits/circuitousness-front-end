@@ -2017,6 +2017,14 @@ html.mode-debug #settingsOverlay { display: none !important; }
     /* Tighter label bubbles so the far-left "Puzzle N · C×R" readout
        clears the centered timer at ~390px. */
     #hud > div { padding: 0.3rem 0.45rem; }
+    /* Now Playing chip: the Hint button now owns the bottom-right
+       corner, so lift the chip clear of it (button ≈ 2.9rem incl. its
+       offset). 3.5rem also exceeds any iOS safe-area inset, so the
+       base rule's max(..., env()) isn't needed here. The one-time
+       tooltip strip (bottom: 4.75rem at ≤600px) may overlap the
+       chip's UPPER half while visible — accepted: the tooltip is
+       transient and renders on top (z-100 vs 24). */
+    #nowPlaying { bottom: 3.5rem; }
 }
 
 /* ----- Game over screen ----- */

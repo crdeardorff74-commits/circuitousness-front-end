@@ -442,9 +442,28 @@ const Render = (() => {
         let hudReserve = 0;
         const hudEl = document.getElementById('hud');
         if (hudEl) hudReserve = hudEl.getBoundingClientRect().height / 2;
-        canvas.style.marginTop = hudReserve + 'px';
+        // Narrow-HUD layout (styles.css `@media (max-width: 700px)` moves
+        // Undo/Hint to FIXED BOTTOM corners): mirror the top treatment by
+        // reserving half the bottom control band as well, and shift the
+        // canvas by the DIFFERENCE of the two reserves so the grid centers
+        // in the space between the bands — with only the top reserve it
+        // sat visibly low on portrait phones. Half-height reserve for the
+        // same reason as the HUD's (the canvas's own pad region covers the
+        // rest). The breakpoint MUST match the styles.css narrow-HUD
+        // block. Buttons hidden along with the HUD (menu/debug) measure
+        // 0, so both reserves vanish together.
+        let bottomReserve = 0;
+        if (window.matchMedia('(max-width: 700px)').matches) {
+            const hintEl = document.getElementById('hudHintBtn');
+            if (hintEl) {
+                const btnH = hintEl.getBoundingClientRect().height;
+                // + 12px ≈ the buttons' 0.75rem fixed bottom offset.
+                if (btnH > 0) bottomReserve = (btnH + 12) / 2;
+            }
+        }
+        canvas.style.marginTop = (hudReserve - bottomReserve) + 'px';
         const availW = window.innerWidth  - margin * 2;
-        const availH = window.innerHeight - margin * 2 - hudReserve;
+        const availH = window.innerHeight - margin * 2 - hudReserve - bottomReserve;
 
         dpr = window.devicePixelRatio || 1;
 
