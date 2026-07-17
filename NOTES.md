@@ -2,7 +2,11 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
-## 2026-07-17 — Release v0.88 (portrait polish round 2 + two real music bugs)
+## 2026-07-17 — Release v0.89 (audio moved to the shared music host)
+- **All audio now loads from `https://music.official-intelligence.art`** (the new `oi-music/` Netlify project at the umbrella root — see its CLAUDE.md/NOTES.md). WHY: Render workspace bandwidth hit 23.99/25 GB with ~10 days left in the month; the culprit was iOS music + all-platform SFX streaming through the back-end `/api/music/` proxy. Netlify Pro's credit pool absorbs the load ~5×.
+- config.js: new `MUSIC_HOST` const; `MUSIC_BASE_URL` is unconditional now (the `IS_IOS_AUDIO` URL split is gone — the host serves direct 200s + CORS on every platform). `IS_IOS_AUDIO` itself stays: music.js still needs it for the gesture-blessing workaround. audio.js SFX base → `MUSIC_HOST + '/SFX/' + PROJECT_SLUG + '/'`.
+- **Back-end `/api/music/` proxy left alive but idle on purpose** — old cached PWA clients keep calling it until they self-update. Retire it in a later session once Render's bandwidth graph shows that traffic dead.
+- `You Heard About Pluto_.mp3` was broken in the songs DB (space-name, no matching release asset — never played in-game); user fixed the filename in the admin songs tool during the migration.
 - Same-day follow-up to v0.87 (below), driven by the user's phone-screenshot testing. All v0.87 deploy TODOs still stand (CG portal portrait flag; PotD sizes at next seed).
 - **iOS bless bug — REAL-DEVICE BUG, not just emulation** (music.js `blessOnGesture`): gesture #1's bless ran before any src existed (play() rejected → `blessed` reset for retry) while the same gesture's bubble-phase kick started a real song; gesture #2's retry then ran the silent play()/pause() dance on the PLAYING element and its `.then()` pause KILLED the music. Fix: `!a.paused` early-out (already playing ⇒ already blessed). Symptom was "music starts on first tap, dies on the next"; may have depressed iOS solve-audio stats.
 - **⏮ resurfaced the menu-only track in-game** (music.js): prev-history was global across phases. `setMenuPhase` now clears `history` on actual phase FLIPS only (guarded — repeated same-phase goToMenu calls must not wipe within-phase history), mirroring startCreditsSequence's precedent. Carried-over song still plays through; ⏮ on it restarts it. stop()'s "history preserved" comment cross-references this so they don't read as contradictory.
