@@ -31,11 +31,12 @@
  * the pair is rejection-sampled so the average (W+H)/2 lands within a
  * [AVG_MIN, AVG_MAX] window — a FLOOR (no tiny/easy puzzles) AND a
  * ceiling (stays approachable as a daily exercise). 3-4 path slots —
- * singular: axes [8,12], avg [9,12]; quad: even sub-tile axes [12,18]
- * (= 6–9 quad-tiles), avg [14,18] sub-tiles (= 7–9 quad-tiles). 1-2
- * path slots run a ~75% LOW tier of those ranges (see the SIZE_*_LOW
- * constants). Quad rounds to even because each player-facing quad-tile
- * is a 2×2 group of sub-tiles.
+ * singular: axes [6,9], avg [7,9]; quad: even sub-tile axes [10,14]
+ * (= 5–7 quad-tiles), avg [11,14] sub-tiles. 1-2 path slots run a ~75%
+ * LOW tier of those ranges (see the SIZE_*_LOW constants). Quad rounds
+ * to even because each player-facing quad-tile is a 2×2 group of
+ * sub-tiles. Sizes apply at the NEXT daily seed — slots generate
+ * once/day server-side (a dev PotD reset re-seeds today).
  *
  * No time cap by design — PotD is the "take your time, solve it cleanly"
  * mode. The server's MAX_SESSION_MS (6h) bounds the token; longer than
@@ -62,33 +63,37 @@ const Potd = (() => {
     // — and even — values because each player-facing quad-tile is a 2×2
     // group of sub-tiles.
     //
-    // Singular: axes [8,12], average [9,12] → grids 8×10 / 9×9 at the
-    // small end up to 12×12. (3-4 path slots only — see the LOW tier.)
-    const SIZE_MIN          = 8;
-    const SIZE_MAX          = 12;
-    const SIZE_AVG_MIN      = 9;
-    const SIZE_AVG_MAX      = 12;
-    // Quad: even sub-tile axes [12,18] (= 6–9 quad-tiles per axis),
-    // average [14,18] sub-tiles (= 7–9 quad-tiles). Scaled up alongside
+    // All tiers scaled ×0.75 on 2026-07-17 (user sizing pass alongside
+    // portrait support) — the full tier landed exactly on the old LOW
+    // tier's numbers, so the whole ladder shifted down one step.
+    //
+    // Singular: axes [6,9], average [7,9] → grids 6×8 / 7×7 at the
+    // small end up to 9×9. (3-4 path slots only — see the LOW tier.)
+    const SIZE_MIN          = 6;
+    const SIZE_MAX          = 9;
+    const SIZE_AVG_MIN      = 7;
+    const SIZE_AVG_MAX      = 9;
+    // Quad: even sub-tile axes [10,14] (= 5–7 quad-tiles per axis),
+    // average [11,14] sub-tiles (floor rejects only 10×10). Still above
     // singular so quad stays the meatier of the two modes.
-    const SIZE_MIN_QUAD     = 12;
-    const SIZE_MAX_QUAD     = 18;
-    const SIZE_AVG_MIN_QUAD = 14;
-    const SIZE_AVG_MAX_QUAD = 18;
+    const SIZE_MIN_QUAD     = 10;
+    const SIZE_MAX_QUAD     = 14;
+    const SIZE_AVG_MIN_QUAD = 11;
+    const SIZE_AVG_MAX_QUAD = 14;
     // LOW tier: 1-path and 2-path slots run ~75% of the ranges above —
     // fewer paths mean less signal per cell, so full-size grids dragged.
-    // Singular: axes [6,9], avg [7,9] (floor rejects only 6×6/6×7-ish
+    // Singular: axes [5,7], avg [6,7] (floor rejects only the 5×5/5×6
     // rolls, mirroring the full tier's no-tiny-puzzles rule). Quad: even
-    // axes [10,14], avg [11,14] (floor rejects only 10×10). The avg
-    // ceilings keep max×max legal, same as the full tier.
-    const SIZE_MIN_LOW          = 6;
-    const SIZE_MAX_LOW          = 9;
-    const SIZE_AVG_MIN_LOW      = 7;
-    const SIZE_AVG_MAX_LOW      = 9;
-    const SIZE_MIN_QUAD_LOW     = 10;
-    const SIZE_MAX_QUAD_LOW     = 14;
-    const SIZE_AVG_MIN_QUAD_LOW = 11;
-    const SIZE_AVG_MAX_QUAD_LOW = 14;
+    // axes [8,10], avg [9,10] (floor rejects only 8×8). The avg ceilings
+    // keep max×max legal, same as the full tier.
+    const SIZE_MIN_LOW          = 5;
+    const SIZE_MAX_LOW          = 7;
+    const SIZE_AVG_MIN_LOW      = 6;
+    const SIZE_AVG_MAX_LOW      = 7;
+    const SIZE_MIN_QUAD_LOW     = 8;
+    const SIZE_MAX_QUAD_LOW     = 10;
+    const SIZE_AVG_MIN_QUAD_LOW = 9;
+    const SIZE_AVG_MAX_QUAD_LOW = 10;
 
     // ── DOM refs (populated in init) ──
     let menuEl, hudEl, buildBannerEl, hudType, hudLevel, hudTimerVal, hudHintBtn;
