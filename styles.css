@@ -676,14 +676,13 @@ html.mode-debug #introOverlay { display: none !important; }
     }
 }
 
-/* Portrait orientation overlay (mobile only). Hidden by default;
-   the media query at the bottom of this block flips it on when a
-   coarse-pointer device under 1024px wide is held in portrait. The
-   PWA manifest already requests landscape, but a non-installed
-   mobile-browser page (or a desktop browser resized small with
-   touch emulation) can still land in portrait — this is the safety
-   net so the player never tries to play a wide-canvas circuit puzzle
-   on a tall thin viewport. Mirrors TANTЯO's pattern + styling. */
+/* Portrait orientation overlay — RETIRED 2026-07-17. Portrait is now a
+   supported orientation (the CrazyGames mobile funnel died on this
+   wall: most phone players hold portrait). The overlay markup, these
+   styles, and the rotate.* i18n keys are kept so a single media query
+   could re-enable it, but nothing flips it visible anymore — the
+   @media (orientation: portrait) block that used to sit at the end of
+   this section was removed along with the manifest's landscape lock. */
 #portraitOverlay {
     display: none;
     position: fixed;
@@ -723,11 +722,6 @@ html.mode-debug #introOverlay { display: none !important; }
     font-size: max(1.8vh, 14px);
     color: #888;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-}
-@media (orientation: portrait) and (max-width: 1024px) and (pointer: coarse) {
-    #portraitOverlay {
-        display: flex;
-    }
 }
 
 /* ----- CrazyGames-only adjustments -----
@@ -1968,6 +1962,49 @@ html.mode-debug #settingsOverlay { display: none !important; }
     border-color: rgba(220, 200, 230, 0.6);
 }
 
+/* Narrow-viewport HUD (portrait phones). The symmetric inner cluster
+   anchors Undo/Hint ±10rem from center, which hangs both off the screen
+   edges below ~700px. Move them to the bottom corners: thumb-reachable,
+   and the space beside a width-bound grid's lower half is empty in
+   portrait. position: fixed anchors to the viewport (no transformed/
+   filtered ancestors above #hud) and keeps them out of #hud's measured
+   height, so render.js's hudReserve is unaffected — same as before,
+   since they were already out of the flex flow. The first-run
+   How-to-Solve button takes the bottom-center slot for the same reason
+   (its center-top slot collides with the Quit + ⚙ cluster at this
+   width). Known accepted overlap: on tall late-run grids a bottom-edge
+   terminal pad can render near a corner button — visual only, pads
+   aren't interactive. Placement matters: this block must stay AFTER
+   every base #hud* rule (equal specificity → source order wins). */
+@media (max-width: 700px) {
+    #hudUndoBtn {
+        position: fixed;
+        left: max(0.75rem, env(safe-area-inset-left));
+        right: auto;
+        top: auto;
+        bottom: max(0.75rem, env(safe-area-inset-bottom));
+        transform: none;
+    }
+    #hudHintBtn {
+        position: fixed;
+        right: max(0.75rem, env(safe-area-inset-right));
+        left: auto;
+        top: auto;
+        bottom: max(0.75rem, env(safe-area-inset-bottom));
+        transform: none;
+    }
+    #hudHowToBtn {
+        position: fixed;
+        left: 50%;
+        top: auto;
+        bottom: max(0.75rem, env(safe-area-inset-bottom));
+        transform: translateX(-50%);
+    }
+    /* Tighter label bubbles so the far-left "Puzzle N · C×R" readout
+       clears the centered timer at ~390px. */
+    #hud > div { padding: 0.3rem 0.45rem; }
+}
+
 /* ----- Game over screen ----- */
 #gameOver {
     position: absolute;
@@ -3089,6 +3126,22 @@ body.credits-rolling #potdSolveTransition.visible {
     color: rgba(255, 215, 0, 0.95);
     border-bottom-color: rgba(255, 215, 0, 0.75);
 }
+/* Narrow viewports (portrait phones): the tabs are white-space: nowrap
+   and share the strip equally (flex: 1), so the widest label
+   ("📅 Puzzle of the Day") dictates 3× its own width and the strip
+   clips below ~540px. Let each tab size to its label (flex-basis auto;
+   grow still splits any leftover) and shrink type/padding — the
+   underline-strip look reads fine with unequal tab widths (same
+   precedent as the leaderboard's .lbTab rows). */
+@media (max-width: 600px) {
+    .menu-mode-tabs { width: 100%; gap: 0.2rem; }
+    .menu-mode-tab {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 0.25rem 0.3rem;
+        font-size: 0.8rem;
+    }
+}
 
 /* Modal overlay + container */
 .combo-modal-overlay {
@@ -3275,13 +3328,17 @@ body.credits-rolling #potdSolveTransition.visible {
 }
 /* Narrow viewport (phones / tablets in portrait): shift the tip to
    bottom-center where it has more room and doesn't compete with the
-   HUD's top-right Quit button. */
+   HUD's top-right Quit button. The 4.75rem bottom offset clears the
+   bottom strip's occupants — the ≤700px corner Undo/Hint buttons
+   (~3.5rem incl. their offset) and the bottom-right Now Playing chip
+   (~4.4rem: chip height + its own bottom offset) — instead of the old
+   1rem, which rendered the card over both. */
 @media (max-width: 600px) {
     #tooltipCard {
         top: auto;
         left: 0.6rem;
         right: 0.6rem;
-        bottom: 1rem;
+        bottom: 4.75rem;
         max-width: none;
     }
 }

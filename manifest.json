@@ -4,7 +4,7 @@
     "description": "A circuit-routing puzzle game — rotate the tiles to connect every path before the clock runs out, with daily puzzles, an endless Marathon mode, and global leaderboards.",
     "start_url": "/",
     "display": "fullscreen",
-    "orientation": "landscape",
+    "orientation": "any",
     "background_color": "#0a0a2e",
     "theme_color": "#0a0a2e",
     "categories": ["games", "entertainment"],

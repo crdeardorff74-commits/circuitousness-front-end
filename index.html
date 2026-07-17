@@ -84,15 +84,12 @@
     })();
     </script>
 
-    <!-- Portrait orientation overlay (mobile only). Pure CSS-driven —
-         visibility is governed by a media query in styles.css
-         (@media (orientation: portrait) and (max-width: 1024px) and
-         (pointer: coarse)), so it only ever appears on touch phones
-         held in portrait. The PWA manifest already requests
-         orientation: landscape, but a non-installed mobile-browser
-         page (or a desktop browser resized small + emulating touch)
-         can still land in portrait — this overlay is the safety net.
-         Mirrors TANTЯO's exact markup. -->
+    <!-- Portrait orientation overlay — RETIRED 2026-07-17. Portrait is
+         now a supported orientation (it was blocking the CrazyGames
+         mobile funnel). The markup + rotate.* i18n keys stay so the
+         overlay can be re-enabled with a single styles.css media query,
+         but no rule flips it visible anymore; base CSS keeps it
+         display: none. -->
     <div id="portraitOverlay">
         <div class="portrait-overlay-content">
             <div class="rotate-icon">📱</div>

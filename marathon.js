@@ -566,25 +566,35 @@ const Marathon = (() => {
         return { quadMode: t[0] === 'q', pathCount: parseInt(t[1], 10) };
     }
 
-    // Logical dims for puzzle N (1-based). Returns { rows, cols }.
-    // Step pattern (period 4 starting at level 2): cols, rows, rows, cols.
-    // Equivalent rule for level L≥2: rows grows when L%4 ∈ {3, 0}, else cols.
-    // Same pattern for regular and quad — quad just starts smaller in
-    // logical dims (4×4 vs singular's 5×5) since each step adds 2×
+    // Rolls the random per-transition growth axes ('r'/'c') up to level
+    // `lev`. Same behavior for regular and quad — quad just starts smaller
+    // in logical dims (4×4 vs singular's 5×5) since each step adds 2×
     // sub-tiles per axis. No upper cap.
     function ensureGrowthSequence(lev) {
         // Number of transitions needed = lev - 1 (transition index = level - 2).
         while (growthSequence.length < lev - 1) {
-            // Random growth axis with a WIDER-FIRST invariant: cols must
-            // never fall behind rows (all start dims are square, so equal
-            // growth counts = square grid). At square, always widen; once
-            // wider, 50/50 — the grid meanders between square and wide but
-            // can never be taller than it is wide. Replaced the plain
-            // 50/50 (2026-07-16): half of all runs used to start by
-            // growing taller, which read wrong to the user.
+            // Random growth axis with a LONG-AXIS-FIRST invariant keyed to
+            // the viewport: on landscape screens cols never fall behind
+            // rows (grid meanders between square and WIDE), on portrait
+            // screens rows never fall behind cols (square ↔ TALL) — growth
+            // favors the axis the screen has room for, so cells shrink as
+            // slowly as possible. At square, always grow the long axis;
+            // once ahead, 50/50. History: plain 50/50 → wider-first
+            // (2026-07-16, half of all runs started by growing taller,
+            // which read wrong on landscape) → viewport-keyed (2026-07-17,
+            // portrait support: unconditional wider-first shrank cells
+            // fastest on a portrait phone's scarce axis). Orientation is
+            // sampled per roll, so rotating mid-run steers only FUTURE
+            // growth — already-rolled entries stay pinned (pre-gen's
+            // lookahead depends on that).
             const rGrown = growthSequence.reduce((n, g) => n + (g === 'r' ? 1 : 0), 0);
             const cGrown = growthSequence.length - rGrown;
-            growthSequence.push(cGrown > rGrown && Math.random() < 0.5 ? 'r' : 'c');
+            const portrait   = window.innerHeight > window.innerWidth;
+            const longAxis   = portrait ? 'r' : 'c';
+            const shortAxis  = portrait ? 'c' : 'r';
+            const longGrown  = portrait ? rGrown : cGrown;
+            const shortGrown = portrait ? cGrown : rGrown;
+            growthSequence.push(longGrown > shortGrown && Math.random() < 0.5 ? shortAxis : longAxis);
         }
     }
     // pathCount is threaded through to MARATHON.minDimFor in config.js.
