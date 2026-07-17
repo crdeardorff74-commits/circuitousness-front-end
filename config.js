@@ -77,13 +77,10 @@ if (IS_CRAZYGAMES && typeof document !== 'undefined') {
     document.documentElement.classList.add('is-crazygames');
 }
 
-// iPad / iPhone Safari can't follow GitHub's 302 redirects in <audio>
-// elements (error code 4) and `fetch()` for SFX decoding can't read
-// GitHub's responses (no CORS headers). On iOS we route music through
-// the back-end's /api/music/<tag>/<filename> proxy, which fetches from
-// GitHub server-side and streams the response with proper headers.
-// (SFX always uses the proxy regardless of platform — fetch+decode
-// needs CORS even on desktop. That URL is set in audio.js.)
+// iOS Safari detection — used by music.js for the gesture-blessing
+// workaround (iPad Safari only lets <audio>.play() succeed on elements
+// first played inside a user-gesture handler). No longer affects URLs:
+// audio now comes from the shared music host on every platform.
 // The iPad-disguised-as-Mac case (iPadOS 13+ Safari) reports platform =
 // 'MacIntel' with maxTouchPoints > 1; catch that too.
 const IS_IOS_AUDIO = (typeof navigator !== 'undefined') && (
@@ -92,16 +89,21 @@ const IS_IOS_AUDIO = (typeof navigator !== 'undefined') && (
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 );
 
+// Shared static audio host for ALL Official Intelligence games (the
+// `oi-music` Netlify site — see oi-music/CLAUDE.md at the umbrella root).
+// Serves direct 200s with CORS + immutable caching, which retired both
+// old workarounds at once: no more GitHub-releases origin (Safari can't
+// follow its 302s in <audio>, and fetch+decode got no CORS headers) and
+// no more per-platform routing through the Render back-end proxy (which
+// was burning the Render bandwidth allowance). Same base on every
+// platform; audio.js derives its SFX URL from this host too.
+const MUSIC_HOST = 'https://music.official-intelligence.art';
+
 // Gameplay music. music.js fetches the per-game playlist from the umbrella
 // API (AUTH_API/api/songs?game=<slug>) and resolves each row's filename
-// against this base URL. Points at TANTЯO's music release so reused songs
-// don't have to be duplicated into a Circuitousness-only releases repo —
-// the admin tool already maps song memberships per-game, the underlying
-// MP3s can live in one shared repo. On iOS, swaps the GitHub URL for the
-// back-end proxy so Safari's redirect-unfollow issue doesn't kill it.
-const MUSIC_BASE_URL = IS_IOS_AUDIO
-    ? AppConfig.GAME_API + '/music/Music/'
-    : 'https://github.com/crdeardorff74-commits/blockchainstorm-frontend/releases/download/Music/';
+// against this base URL. The pool is shared across games — the admin
+// tool's song memberships decide what plays where, not file location.
+const MUSIC_BASE_URL = MUSIC_HOST + '/Music/';
 
 // Music playback follows the intro-then-shuffle paradigm (universal rule
 // 7b). Two list knobs from the admin API's `lists.*`:

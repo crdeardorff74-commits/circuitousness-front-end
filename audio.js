@@ -26,15 +26,14 @@
 // bypasses the gesture restriction entirely once the AudioContext is
 // resumed (which we do on first interaction).
 //
-// MP3 URL: always proxied through the back-end (AppConfig.GAME_API +
-// /music/SFX/). Two reasons it's always the proxy, not just on iOS:
-//   1. fetch() needs CORS headers to read response bytes for decode;
-//      GitHub doesn't set them.
-//   2. iOS Safari can't follow GitHub's 302 redirects in audio fetches.
-// SFX files are small (a few KB each) so proxy load is negligible.
+// MP3 URL: served from the shared music host (MUSIC_HOST in config.js),
+// namespaced per game under /SFX/<slug>/. The host sends CORS headers
+// and direct 200s, so the old back-end proxy (which existed because
+// GitHub releases sent no CORS and 302-redirected, breaking iOS) is no
+// longer in the path on any platform.
 
 const Sfx = (function () {
-    const BASE_URL = AppConfig.GAME_API + '/music/SFX/';
+    const BASE_URL = MUSIC_HOST + '/SFX/' + PROJECT_SLUG + '/';
 
     // Variant counts per type. Filename pattern: <type>_<1..count>.mp3.
     const POOLS = {
