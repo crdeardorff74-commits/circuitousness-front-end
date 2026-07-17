@@ -1446,10 +1446,17 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
 /* Music playlist dropdown — lifted from TANTЯO's musicSelect style.
    max-width bumped from 16rem → 22rem so the open dropdown panel is wide
    enough for "🎲🎤 Game Playlist + End Credits by Claude" without
-   overflowing the (now-wider) popup. flex:1 still lets it shrink on
-   narrow viewports where the popup itself is constrained by 90vw. */
+   overflowing the (now-wider) popup.
+   min-width: 0 is what actually lets it shrink on narrow viewports —
+   flex:1 alone does NOT (a flex item's default min-width:auto floors it
+   at its intrinsic width, and a select's intrinsic width is its WIDEST
+   OPTION, ~280px here; on a 90vw phone popup that overflowed the row
+   and put a horizontal scrollbar on the whole popup). The closed
+   control clips its text when shrunk; phones open the native
+   full-screen picker anyway, so nothing is lost. */
 .settingsSelect {
     flex: 1;
+    min-width: 0;
     margin-left: auto;
     max-width: 22rem;
     background: rgba(0, 0, 0, 0.5);
@@ -1547,9 +1554,16 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
     margin-left: auto;
 }
 /* Volume slider — TANTЯO style: thin gray track, blue thumb with white
-   border. Sits between the row's label and toggle, taking up the slack. */
+   border. Sits between the row's label and toggle, taking up the slack.
+   min-width: 2rem overrides the flex min-width:auto floor — a range
+   input's intrinsic width is ~8rem, which the visual-tuning rows
+   (7rem label + slider + value) can't afford inside a 90vw phone popup;
+   without this the rows sat a few px past the content box and kept the
+   popup's horizontal scrollbar alive even after the select fix. 2rem
+   (not 0) so the track can never collapse to an unusable sliver. */
 .settingsSlider {
     flex: 1;
+    min-width: 2rem;
     -webkit-appearance: none;
     appearance: none;
     height: 4px;
