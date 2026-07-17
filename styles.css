@@ -2718,6 +2718,29 @@ body.credits-rolling #potdSolveTransition.visible {
 @media (max-width: 600px) and (orientation: portrait) {
     .credits-role,
     .credits-name { width: 44vw; }
+    /* Soundtrack pills: the desktop-fixed metrics (40px section side
+       padding + 30px gaps + 22px icons + 18px pill padding) total ~430px
+       of row for ~330px of phone — the flex items got crushed ("Apple
+       Music" wrapped inside its pill) and both ends clipped. Compact
+       metrics fit all three pills on one ~390px-wide line; nowrap keeps
+       each label whole, and flex-wrap is the graceful fallback on the
+       narrowest phones (Apple Music drops to a centered second line
+       instead of clipping). */
+    .soundtrack-section { padding: 24px 10px; }
+    .soundtrack-links {
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .soundtrack-link {
+        padding: 7px 12px;
+        font-size: 13px;
+        gap: 8px;
+        white-space: nowrap;
+    }
+    .soundtrack-link svg {
+        width: 18px;
+        height: 18px;
+    }
 }
 
 /* ----- Leaderboard view ----- */
