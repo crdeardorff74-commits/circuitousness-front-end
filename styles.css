@@ -2727,6 +2727,18 @@ body.credits-rolling #potdSolveTransition.visible {
        narrowest phones (Apple Music drops to a centered second line
        instead of clipping). */
     .soundtrack-section { padding: 24px 10px; }
+    /* The heading must stay one line ("SOUNDTRACK AVAILABLE / ON" read
+       wrong). At the desktop metrics (15px + 3px tracking) it runs
+       ~330px — more than the credits content box gives it on a phone —
+       so tighten both and pin with nowrap. The vw-capped tracking keeps
+       it fitting down to ~340px-wide phones; being centered with
+       overflow visible, a few px past the box on anything narrower
+       spills symmetrically instead of wrapping. */
+    .soundtrack-heading {
+        white-space: nowrap;
+        font-size: 13px;
+        letter-spacing: min(2px, 0.5vw);
+    }
     .soundtrack-links {
         gap: 12px;
         flex-wrap: wrap;
