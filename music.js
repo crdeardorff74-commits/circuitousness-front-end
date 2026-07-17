@@ -469,8 +469,20 @@ const Music = (function () {
         // blocks have inconsistent hoisting in sloppy mode).
         const blessOnGesture = function () {
             if (blessed) return;
-            blessed = true;
             const a = ensureAudio();
+            // Already playing ⇒ already blessed — a successful play() IS
+            // the blessing. Without this early-out the retry path killed
+            // live music: gesture #1's bless ran before src existed (its
+            // play() rejected → blessed reset to false for a retry) while
+            // that same gesture's bubble-phase kick started a real song;
+            // gesture #2's retry then ran the silent play()/pause() dance
+            // on the PLAYING element and the .then() pause stopped the
+            // music seconds into a fresh session (player-visible symptom:
+            // first tap starts music, next tap silences it; the chip's
+            // pause/unpause "fixed" it because blessed had stuck true by
+            // then).
+            if (!a.paused) { blessed = true; return; }
+            blessed = true;
             const savedVol = a.volume;
             a.volume = 0;
             const p = a.play();
@@ -1000,6 +1012,11 @@ const Music = (function () {
         // UI hides). The shuffle bag is ALSO persisted to localStorage
         // by persistShuffleBag() so it additionally survives page
         // reloads — see SHUFFLE_REMAIN_KEY at top of module.
+        // (`history` does still get cleared elsewhere — on menu/game
+        // phase FLIPS in setMenuPhase and at startCreditsSequence — so
+        // ⏮ can't rewind across a phase boundary; stop() itself keeps
+        // it because playlist progression is queue/introRemaining's job
+        // and a stop alone isn't a phase change.)
         currentSong = null;
         notifySongChange();
     }
@@ -1289,7 +1306,19 @@ const Music = (function () {
     // transitions smooth. If the player skips with the ⏭ button right
     // after a phase change, the new pool kicks in immediately.
     function setMenuPhase(on) {
-        inMenuPhase = !!on;
+        on = !!on;
+        if (on === inMenuPhase) return;
+        inMenuPhase = on;
+        // Prev must not rewind across the phase boundary — with the
+        // history kept, clicking ⏮ during gameplay resurfaced the
+        // menu-only track (and Prev on the menu could dredge up game
+        // songs). Each phase is a fresh listening session, same as
+        // startCreditsSequence. Guarded on an actual FLIP so repeated
+        // same-phase calls (e.g. goToMenu paths) don't nuke legitimate
+        // within-phase prev history. The carried-over current song keeps
+        // playing per the comment above; ⏮ on it now just restarts it,
+        // and when it ends the new pool starts a fresh history.
+        history = []; historyPos = -1;
     }
     // True iff currentSong's id is in the menu pool. Lets callers (e.g.
     // marathon goToMenu) skip the stop+start "restart menu music"
@@ -1359,6 +1388,12 @@ const Music = (function () {
 
         const controlsEl = document.getElementById('nowPlayingControls');
         Music.setOnSongChange(function (song, paused) {
+            // Render.resize() reserves bottom space for this chip while it's
+            // visible (the grid sits slightly higher so its bottom terminal
+            // pads don't run under the box) — so a visibility CHANGE here
+            // must re-layout the canvas. Captured before the add/remove
+            // below; compared at the end.
+            const wasVisible = el.classList.contains('visible');
             // During a replay the box's visibility follows the ORIGINAL
             // player's music state, not the watcher's: show the recorded
             // song title iff the recording actually had music
@@ -1385,6 +1420,13 @@ const Music = (function () {
                 // while scriptedPlayback is null) and we don't want
                 // stale display:none lingering on the controls.
                 if (controlsEl) controlsEl.style.display = '';
+            }
+            // Visibility flipped → the canvas's bottom reserve changed;
+            // re-layout. Guarded: this module must keep working on pages
+            // without the renderer (and before Render.init).
+            if (el.classList.contains('visible') !== wasVisible &&
+                typeof Render !== 'undefined' && Render.resize) {
+                Render.resize();
             }
         });
     }

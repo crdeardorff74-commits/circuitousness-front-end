@@ -422,6 +422,9 @@ const Render = (() => {
     }
 
     function resize() {
+        // Callable from outside (music.js, on Now Playing visibility
+        // changes) — bail before init has bound the canvas.
+        if (!canvas) return;
         // While the How-to-Solve tutorial owns the renderer, a window resize
         // must re-layout the small tutorial canvas, NOT the (hidden) main
         // game canvas. layoutTutorial mirrors this function's device-pixel
@@ -460,6 +463,46 @@ const Render = (() => {
                 // + 12px ≈ the buttons' 0.75rem fixed bottom offset.
                 if (btnH > 0) bottomReserve = (btnH + 12) / 2;
             }
+        }
+        // Now Playing chip (bottom-center on every layout): reserve half
+        // its band so the grid sits slightly higher instead of running
+        // its bottom terminal pads under the box. max(), not sum — the
+        // chip and the corner buttons share the same bottom band.
+        // music.js calls Render.resize() whenever the chip's visibility
+        // toggles, so this reacts to music stopping mid-puzzle too.
+        //
+        // Reserve PREDICTIVELY as well: on a fresh load with music ON,
+        // the chip can't show until the first user gesture unlocks
+        // playback — reserving only once it's visible made the puzzle
+        // visibly jump up at the player's first click. If the player's
+        // music setting is on, the chip is coming: measure it hidden and
+        // reserve up front. The measurement toggles .visible with an
+        // inline visibility:hidden inside this same synchronous layout
+        // pass — nothing paints between the mutations, so there is no
+        // flash. An empty title is padded with an NBSP during the
+        // measure so the prospective height matches the real one-line
+        // title the chip will have (an empty div adds no line box).
+        const npEl = document.getElementById('nowPlaying');
+        if (npEl) {
+            const chipVisible  = npEl.classList.contains('visible');
+            const chipExpected = !chipVisible &&
+                typeof Music !== 'undefined' && Music.isMuted && !Music.isMuted();
+            let npH = 0;
+            if (chipVisible) {
+                npH = npEl.getBoundingClientRect().height;
+            } else if (chipExpected) {
+                const titleEl  = document.getElementById('nowPlayingTitle');
+                const padTitle = titleEl && !titleEl.textContent;
+                if (padTitle) titleEl.textContent = ' '; // NBSP — a plain space would collapse to no line box
+                npEl.style.visibility = 'hidden';
+                npEl.classList.add('visible');
+                npH = npEl.getBoundingClientRect().height;
+                npEl.classList.remove('visible');
+                npEl.style.visibility = '';
+                if (padTitle) titleEl.textContent = '';
+            }
+            // + 13px ≈ the chip's ~0.8rem bottom offset.
+            if (npH > 0) bottomReserve = Math.max(bottomReserve, (npH + 13) / 2);
         }
         canvas.style.marginTop = (hudReserve - bottomReserve) + 'px';
         const availW = window.innerWidth  - margin * 2;
@@ -2854,6 +2897,7 @@ const Render = (() => {
     }
 
     return { init, draw, cellAt, gateAt, animateGateRotation,
+             resize,  // music.js re-layouts when the Now Playing chip toggles (bottom reserve)
              setTileColor, setPathColor, setPathOpacity,
              setPathWidth, setBevelThickness, setTileFaceAlpha, setFaceTexture,
              setLitGreenBase, setLitGreenLo, setLitGreenHi,

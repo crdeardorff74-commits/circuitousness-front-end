@@ -173,13 +173,16 @@ body {
 #nowPlaying {
     display: none;
     position: absolute;
-    /* env(safe-area-inset-*) handles iOS PWA fullscreen + viewport-fit=cover:
-       on iPad in PWA fullscreen the home indicator + screen-corner curvature
-       eat the bottom-right corner where this panel sits. max(default, inset)
-       collapses to the default on platforms where the insets are 0 (desktop,
-       Android, Safari with a visible URL bar), so this is a no-op there. */
+    /* Bottom-CENTER on every device/orientation (2026-07-17; was bottom-
+       right). Centered under the grid, clear of the corner controls the
+       narrow layout pins bottom-left/right (Undo/Hint); those sit at
+       z-25 with pointer-events restored, so even a wide chip can never
+       block them. env(safe-area-inset-bottom) handles iOS PWA
+       fullscreen + viewport-fit=cover (home indicator eats the bottom
+       edge); max() collapses to the default where insets are 0. */
     bottom: max(clamp(0.4rem, 1vmin, 0.8rem), env(safe-area-inset-bottom));
-    right:  max(clamp(0.4rem, 1vmin, 0.8rem), env(safe-area-inset-right));
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 24;
     /* Everything scales off vmin (the SMALLER viewport axis): the old vw
        clamps hit their caps in wide-but-short embeds (CG's ~680px iframe
@@ -196,7 +199,15 @@ body {
     line-height: 1.2;
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
-    max-width: clamp(9.5rem, 26vmin, 20rem);
+    /* Sized by the TITLE on every device (2026-07-17; was a 26vmin clamp
+       that ellipsized long titles — first noticed on portrait phones,
+       then on desktop too). The box is shrink-to-fit, so short titles
+       still get a small chip; the cap just keeps an absurdly long title
+       ellipsizing inside the viewport instead of overflowing it. Wider
+       chips cover more of the canvas's bottom pad — fine: the panel is
+       pointer-transparent except the transport row, and the corner
+       controls sit above it at z-25. */
+    max-width: calc(100vw - 1.5rem);
     /* Never block the puzzle: the panel itself is click-transparent so
        tiles underneath stay playable even when a large grid runs under
        it — only the transport buttons (below) take pointer input.
@@ -2007,24 +2018,46 @@ html.mode-debug #settingsOverlay { display: none !important; }
         bottom: max(0.75rem, env(safe-area-inset-bottom));
         transform: none;
     }
+    /* First-run How-to-Solve button: takes the level readout's top-LEFT
+       slot — its desktop slot (HUD center) collides with Quit/⚙ at
+       phone widths, and bottom-center belongs to the Now Playing chip.
+       Base position:absolute stands; only the anchor changes. It never
+       coexists with a visible timer (practice mode hides #hudTimer) and
+       the readout it displaces is moved below the strip (next rule). */
     #hudHowToBtn {
-        position: fixed;
-        left: 50%;
-        top: auto;
-        bottom: max(0.75rem, env(safe-area-inset-bottom));
-        transform: translateX(-50%);
+        left: max(1rem, env(safe-area-inset-left));
+        top: 50%;
+        transform: translateY(-50%);
     }
-    /* Tighter label bubbles so the far-left "Puzzle N · C×R" readout
-       clears the centered timer at ~390px. */
+    /* Level readout ("Puzzle N · C×R"): dropped just BELOW the HUD strip
+       and centered — its far-left slot is the How-to button's now, and
+       at ~390px it couldn't clear the centered timer anyway. It hangs
+       into the canvas's top pad region; accepted — the pad is empty
+       except top-edge terminal stubs, and the pill is small. */
+    #hudLevel {
+        left: 50%;
+        top: calc(100% + 0.4rem);
+        transform: translate(-50%, 0);
+    }
+    /* Tighter label bubbles at ~390px. */
     #hud > div { padding: 0.3rem 0.45rem; }
-    /* Now Playing chip: the Hint button now owns the bottom-right
-       corner, so lift the chip clear of it (button ≈ 2.9rem incl. its
-       offset). 3.5rem also exceeds any iOS safe-area inset, so the
-       base rule's max(..., env()) isn't needed here. The one-time
-       tooltip strip (bottom: 4.75rem at ≤600px) may overlap the
-       chip's UPPER half while visible — accepted: the tooltip is
-       transient and renders on top (z-100 vs 24). */
-    #nowPlaying { bottom: 3.5rem; }
+}
+/* Portrait phones. (The Now Playing chip's title-sized max-width used
+   to live here before moving into the base rule — the chip is handled
+   entirely by its base styles now, on every device/orientation.) */
+@media (max-width: 700px) and (orientation: portrait) {
+    /* Top-strip buttons on the first-run layout: HOW TO SOLVE (top-left)
+       + "DAILY & MORE" + ⚙ overlapped by ~26px at 390px. Slim the side
+       padding (0.9rem → 0.5rem) and the strip gap, and drop How-to's
+       letter-spacing to Quit's 0.06em — 0.12em pads EVERY glyph gap
+       including the ❓-to-text space, which is why its icon looked more
+       detached than DAILY's 📅. Undo/Hint keep their 0.12em (bottom
+       corners, no crowding). */
+    #hud { gap: 0.5rem; }
+    #hudHowToBtn,
+    #hudQuitBtn { padding: 0.4rem 0.5rem; }
+    #hudHowToBtn { letter-spacing: 0.06em; }
+    #hudSettingsBtn { padding: 0.4rem 0.45rem; }
 }
 
 /* ----- Game over screen ----- */
@@ -3406,9 +3439,9 @@ body.credits-rolling #potdSolveTransition.visible {
    bottom-center where it has more room and doesn't compete with the
    HUD's top-right Quit button. The 4.75rem bottom offset clears the
    bottom strip's occupants — the ≤700px corner Undo/Hint buttons
-   (~3.5rem incl. their offset) and the bottom-right Now Playing chip
-   (~4.4rem: chip height + its own bottom offset) — instead of the old
-   1rem, which rendered the card over both. */
+   (~3.5rem incl. their offset) and the bottom-center Now Playing chip
+   (top edge ≈ 4.4rem: chip height + its own bottom offset) — instead
+   of the old 1rem, which rendered the card over both. */
 @media (max-width: 600px) {
     #tooltipCard {
         top: auto;
@@ -4025,9 +4058,16 @@ body.credits-rolling #potdSolveTransition.visible {
     font-size: clamp(0.7rem, 1.9vh, 0.98rem);
     line-height: 1.34;
     color: #e6e6e6;
-    /* Fade-only reveal (no translate): the bullets are all pre-built so the
-       layout height is fixed; a translateY would make a hidden bullet's slide
-       offset poke past the bottom and trigger a stray scrollbar. */
+    /* Un-revealed bullets take NO layout space — display:none until
+       revealBullet() flips an inline display first and adds --in a frame
+       later (same-frame display+opacity flips skip the transition). The
+       old approach reserved every bullet's height up front (opacity:0
+       only), which put a scrollbar on the steps area before any step was
+       visible on portrait phones; now the list grows per reveal and
+       scrolls only when revealed content actually overflows. Fade-only
+       reveal (no translate) kept: a translateY slide offset could poke
+       past the bottom and trigger a stray scrollbar. */
+    display: none;
     opacity: 0;
     transition: opacity 0.35s ease;
 }

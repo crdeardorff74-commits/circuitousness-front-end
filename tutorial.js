@@ -390,22 +390,40 @@ const Tutorial = (function () {
         }
         return html;
     }
-    // Build ALL bullets up front (hidden, but occupying their layout space) so
-    // the modal is full-height from the start and never resizes as steps are
-    // revealed one by one. .tutorial-step-item starts at opacity:0; revealing
-    // just adds --in to fade it in — the reserved height never changes.
+    // Build ALL bullets up front, display:none (no layout space) so the
+    // steps area starts EMPTY and grows one bullet per reveal. History:
+    // they used to be pre-built at opacity:0 WITH their layout space
+    // reserved, so the modal never resized mid-tutorial — but that
+    // reserved height overflowed the steps area on portrait phones and
+    // showed a scrollbar before any step was visible. Growing per-reveal
+    // means the scrollbar appears only when revealed content actually
+    // overflows; the modal getting taller per step is the accepted
+    // trade-off (2026-07-17).
     function buildAllBullets() {
         stepList.innerHTML = '';
         STEPS.forEach(function (step) {
             const li = document.createElement('li');
             li.innerHTML = bulletHtml(step);
-            li.className = 'tutorial-step-item';   // not --in yet → invisible, height reserved
+            li.className = 'tutorial-step-item';   // display:none until revealed
             stepList.appendChild(li);
         });
     }
     function revealBullet(index) {
         const li = stepList.children[index];
-        if (li) requestAnimationFrame(function () { li.classList.add('tutorial-step-item--in'); });
+        if (!li) return;
+        // Two-stage reveal: display first (the bullet enters layout at
+        // opacity 0), then --in one frame later so the opacity transition
+        // actually runs — flipping display and opacity in the same style
+        // recalc skips the fade entirely (transitions don't animate on
+        // elements entering layout).
+        li.style.display = 'list-item';
+        requestAnimationFrame(function () {
+            li.classList.add('tutorial-step-item--in');
+            // The list can outgrow the steps area on short screens now
+            // that it scrolls only when needed — keep the newest bullet
+            // in view.
+            li.scrollIntoView({ block: 'nearest' });
+        });
     }
 
     function setNextLabel() {
@@ -457,8 +475,9 @@ const Tutorial = (function () {
             paths: Maze.pathCount
         };
 
-        // Reset the step UI. All bullets are built now (hidden) so the modal
-        // is already at full height and won't grow as steps are revealed.
+        // Reset the step UI. Bullets are built display:none and enter
+        // layout one per reveal — the modal starts compact and grows
+        // with each step (see buildAllBullets).
         stepIdx = 0;
         playing = false;
         buildAllBullets();
