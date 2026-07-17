@@ -2453,7 +2453,14 @@ html.mode-debug #settingsOverlay { display: none !important; }
 }
 
 .credits-title {
-    font-size: 36px;
+    /* min() binds the wordmark by viewport WIDTH on phones: 14 Orbitron
+       bold glyphs at 36px run ~420px — wider than a ~393px portrait
+       phone, which cropped the title to "CIRCUITOUSNE". 7.5vw resolves
+       to 36px at ≥480px viewports, so desktop and landscape render
+       exactly as before; only narrower screens shrink. Letter-spacing
+       gets the same treatment (its vh basis is large relative to a
+       portrait phone's width). */
+    font-size: min(36px, 7.5vw);
     font-weight: bold;
     font-family: 'Orbitron', sans-serif;
     background: linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%);
@@ -2461,7 +2468,7 @@ html.mode-debug #settingsOverlay { display: none !important; }
     -webkit-text-fill-color: transparent;
     background-clip: text;
     text-shadow: none;
-    letter-spacing: 0.3vh;
+    letter-spacing: min(0.3vh, 0.6vw);
     filter: drop-shadow(0 0.2vh 0.4vh rgba(255, 215, 0, 0.5))
             drop-shadow(0 0.4vh 0.8vh rgba(0, 0, 0, 0.7));
     margin-bottom: 60px;
