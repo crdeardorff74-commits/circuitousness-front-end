@@ -4058,7 +4058,7 @@ body.credits-rolling #potdSolveTransition.visible {
 }
 
 /* ============================================================
-   PORTRAIT-PHONE MENU  (max-width: 600px, portrait)
+   PORTRAIT-PHONE MENU + LEADERBOARD  (max-width: 600px, portrait)
    ----------------------------------------------------------
    The tablet-class squeeze block (~line 1266) also fires on
    portrait phones (they satisfy max-height:1080 + coarse), but
@@ -4153,5 +4153,27 @@ body.credits-rolling #potdSolveTransition.visible {
     .menuBottomBtns #menuCreditsBtn {
         padding: 0.4rem 0.7rem;
         font-size: 0.78rem;
+    }
+    /* Leaderboard rows: at the list's 20rem width floor the 6-column
+       grid ran out of room — the 2rem rank column + five 0.8rem gaps
+       (empty columns still gap) left the auto-sized hints cell squeezed
+       to min-content, wrapping "2 hints" onto two lines while the rank
+       column sat half-empty. Tighten the left side (1.6rem still seats
+       "#20"), pin hints to one line, and let overlong names ellipsize —
+       min-width: 0 on the name span is required for its 1fr track to
+       shrink below the name's own min-content at all. */
+    #leaderboardEntries { padding: 0.3rem 0.5rem; }
+    #leaderboardEntries li {
+        grid-template-columns: 1.6rem 1fr auto auto auto auto;
+        gap: 0.4rem;
+        padding: 0.2rem 0.25rem;
+        font-size: 0.85rem;
+    }
+    #leaderboardEntries li .lbHints { white-space: nowrap; }
+    #leaderboardEntries li .lbName {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 }
