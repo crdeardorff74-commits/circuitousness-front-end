@@ -2707,6 +2707,18 @@ body.credits-rolling #potdSolveTransition.visible {
     .credits-name    { width: 35vw; }
     .credits-row     { gap: 3vw; font-size: max(1.8vh, 13px); }
 }
+/* Portrait phones: 35vw (~145px) is too narrow for the longest role
+   labels ("Slop, With Love" Lyrics needs ~165px at this block's font
+   size) and forced a two-line wrap despite the row only using ~73vw.
+   Widen BOTH columns the same amount so the role/name seam stays on the
+   centerline; 44vw + 3vw gap + 44vw = 91vw still fits. Tablets keep
+   35vw — on their wide viewports the extra vw would just look
+   off-balance. Must sit after the coarse block (same specificity,
+   source order decides). */
+@media (max-width: 600px) and (orientation: portrait) {
+    .credits-role,
+    .credits-name { width: 44vw; }
+}
 
 /* ----- Leaderboard view ----- */
 #leaderboard {
