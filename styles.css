@@ -3064,6 +3064,12 @@ body.credits-rolling #potdSolveTransition.visible {
     -webkit-backdrop-filter: blur(6px);
     user-select: none;
 }
+/* ESC toggles .dbgHidden on <html> (wiring script in index.html) so the
+   panel AND the debug Hint/Undo buttons can be hidden to see the full
+   board while staying in debug mode. */
+html.dbgHidden #debugSliders,
+html.dbgHidden #hintBtn,
+html.dbgHidden #undoBtn { display: none !important; }
 #debugSliders strong {
     display: block;
     font-size: 0.7rem;

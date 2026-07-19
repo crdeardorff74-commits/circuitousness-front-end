@@ -1063,6 +1063,30 @@
             });
         }
 
+        // Debug-mode keyboard extras (both no-ops outside mode-debug):
+        //   ESC        — toggle .dbgHidden on <html>, hiding the slider panel
+        //                plus the Hint/Undo buttons so the full board can be
+        //                seen unobstructed without leaving debug mode.
+        //   ArrowRight — step sequentially to the next background image
+        //                (level1 → level2 → …), for reviewing the pool.
+        // Guards: ESC skips genuine text entry only (range/color/checkbox
+        // inputs don't capture Escape, so the toggle still works right after
+        // tweaking a slider; debug mode has no text inputs today, but stay
+        // future-proof). ArrowRight additionally skips ALL inputs — arrow
+        // keys nudge a focused range slider, and that must win.
+        document.addEventListener('keydown', function (ev) {
+            if (!document.documentElement.classList.contains('mode-debug')) return;
+            var t = ev.target;
+            var inInput = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+            if (ev.key === 'Escape') {
+                if (inInput && !(t.tagName === 'INPUT' && /^(range|color|checkbox)$/.test(t.type))) return;
+                document.documentElement.classList.toggle('dbgHidden');
+            } else if (ev.key === 'ArrowRight') {
+                if (inInput) return;
+                if (window.Render && Render.debugCycleBackground) Render.debugCycleBackground();
+            }
+        });
+
         bindPicker('tileColorPicker', 'tileColorVal', Render.setTileColor);
         bindPicker('pathColorPicker', 'pathColorVal', Render.setPathColor);
         bindSlider('opacitySlider',   'opacityVal',  function(v) { return (v / 100).toFixed(2); },

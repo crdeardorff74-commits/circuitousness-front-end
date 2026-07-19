@@ -359,6 +359,22 @@ const Render = (() => {
     // Public alias — Marathon.onPuzzleReady calls this on every puzzle start
     // so the visible bg rotates with the player's progression.
     function shuffleBackground() { applyBodyBackground(); }
+    // Debug-only (ArrowRight in mode-debug): step SEQUENTIALLY through the
+    // pool (level1 → level2 → … → levelN → level1) instead of drawing from
+    // the shuffle bag, so every image can be reviewed in a known order while
+    // tuning. Updates lastBgIdx/currentBgUrl so the bag's avoid-back-to-back
+    // swap and the settings on/off toggle stay consistent with what's shown.
+    function debugCycleBackground() {
+        if (typeof BACKGROUND_IMAGE_URL_BASE !== 'string' || !BACKGROUND_IMAGE_URL_BASE) return;
+        const count = (typeof BACKGROUND_IMAGE_COUNT === 'number' && BACKGROUND_IMAGE_COUNT > 0)
+                      ? BACKGROUND_IMAGE_COUNT : 0;
+        if (count === 0) return;
+        const idx = (lastBgIdx >= 1 && lastBgIdx < count) ? lastBgIdx + 1 : 1;
+        lastBgIdx = idx;
+        currentBgUrl = BACKGROUND_IMAGE_URL_BASE + 'level' + idx + '.jpg';
+        if (bgEnabled) document.documentElement.style.backgroundImage = `url("${currentBgUrl}")`;
+        if (typeof Logger !== 'undefined') Logger.info('[dev] background → level' + idx + '.jpg');
+    }
     // Settings toggle. When off, html falls back to pure black instead of
     // the CSS default dark navy — matches the "just be black" expectation.
     // Re-applies the CURRENT bag URL (rather than advancing) on enable, so
@@ -2912,6 +2928,7 @@ const Render = (() => {
              hasJoinedLanes,    // game.js polls this for the overlap-SFX state machine
              fadeLanes, clearFadingLanes,  // broken-chain fade triggered alongside the twin-break SFX
              shuffleBackground,  // marathon.js calls on each new puzzle to draw a fresh body bg from the 54-image bag
+             debugCycleBackground,  // debug-mode ArrowRight steps sequentially through the bg pool
              setBackgroundEnabled,  // settings.js calls to toggle bg images off (body goes pure black)
              refit: resize };  // public hook to recompute canvas dims after Maze.ROWS/COLS change
 })();
