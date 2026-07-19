@@ -1069,11 +1069,17 @@
         //                seen unobstructed without leaving debug mode.
         //   ArrowRight — step sequentially to the next background image
         //                (level1 → level2 → …), for reviewing the pool.
+        //   F5         — regenerate the puzzle with the CURRENT slider /
+        //                checkbox parameters (rebuildGrid), instead of the
+        //                browser's page reload. Plain F5 only — Ctrl+F5 /
+        //                Shift+F5 fall through so a real (hard) reload is
+        //                still reachable from the keyboard.
         // Guards: ESC skips genuine text entry only (range/color/checkbox
         // inputs don't capture Escape, so the toggle still works right after
         // tweaking a slider; debug mode has no text inputs today, but stay
         // future-proof). ArrowRight additionally skips ALL inputs — arrow
-        // keys nudge a focused range slider, and that must win.
+        // keys nudge a focused range slider, and that must win. F5 skips no
+        // inputs: refreshing right after tweaking a slider is the whole point.
         document.addEventListener('keydown', function (ev) {
             if (!document.documentElement.classList.contains('mode-debug')) return;
             var t = ev.target;
@@ -1084,6 +1090,9 @@
             } else if (ev.key === 'ArrowRight') {
                 if (inInput) return;
                 if (window.Render && Render.debugCycleBackground) Render.debugCycleBackground();
+            } else if (ev.key === 'F5' && !ev.ctrlKey && !ev.shiftKey && !ev.metaKey) {
+                ev.preventDefault();
+                rebuildGrid();
             }
         });
 
