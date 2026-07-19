@@ -1089,7 +1089,11 @@
                 document.documentElement.classList.toggle('dbgHidden');
             } else if (ev.key === 'ArrowRight') {
                 if (inInput) return;
-                if (window.Render && Render.debugCycleBackground) Render.debugCycleBackground();
+                // NOTE: Render is a top-level `const` (render.js), so it is
+                // NOT on window — window.Render would always be undefined.
+                // The script-order guarantee (render.js loads before this
+                // inline script) makes the bare reference safe.
+                if (Render.debugCycleBackground) Render.debugCycleBackground();
             } else if (ev.key === 'F5' && !ev.ctrlKey && !ev.shiftKey && !ev.metaKey) {
                 ev.preventDefault();
                 rebuildGrid();
