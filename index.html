@@ -1067,8 +1067,9 @@
         //   ESC        — toggle .dbgHidden on <html>, hiding the slider panel
         //                plus the Hint/Undo buttons so the full board can be
         //                seen unobstructed without leaving debug mode.
-        //   ArrowRight — step sequentially to the next background image
-        //                (level1 → level2 → …), for reviewing the pool.
+        //   ArrowRight / ArrowLeft — step sequentially forward / backward
+        //                through the background image pool (level1 ↔ level2
+        //                ↔ …, wrapping), for reviewing the pool.
         //   F5         — regenerate the puzzle with the CURRENT slider /
         //                checkbox parameters (rebuildGrid), instead of the
         //                browser's page reload. Plain F5 only — Ctrl+F5 /
@@ -1087,13 +1088,15 @@
             if (ev.key === 'Escape') {
                 if (inInput && !(t.tagName === 'INPUT' && /^(range|color|checkbox)$/.test(t.type))) return;
                 document.documentElement.classList.toggle('dbgHidden');
-            } else if (ev.key === 'ArrowRight') {
+            } else if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') {
                 if (inInput) return;
                 // NOTE: Render is a top-level `const` (render.js), so it is
                 // NOT on window — window.Render would always be undefined.
                 // The script-order guarantee (render.js loads before this
                 // inline script) makes the bare reference safe.
-                if (Render.debugCycleBackground) Render.debugCycleBackground();
+                if (Render.debugCycleBackground) {
+                    Render.debugCycleBackground(ev.key === 'ArrowLeft' ? -1 : 1);
+                }
             } else if (ev.key === 'F5' && !ev.ctrlKey && !ev.shiftKey && !ev.metaKey) {
                 ev.preventDefault();
                 rebuildGrid();

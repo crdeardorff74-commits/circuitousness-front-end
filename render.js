@@ -359,17 +359,26 @@ const Render = (() => {
     // Public alias — Marathon.onPuzzleReady calls this on every puzzle start
     // so the visible bg rotates with the player's progression.
     function shuffleBackground() { applyBodyBackground(); }
-    // Debug-only (ArrowRight in mode-debug): step SEQUENTIALLY through the
-    // pool (level1 → level2 → … → levelN → level1) instead of drawing from
+    // Debug-only (Arrow keys in mode-debug): step SEQUENTIALLY through the
+    // pool (level1 ↔ level2 ↔ … ↔ levelN, wrapping) instead of drawing from
     // the shuffle bag, so every image can be reviewed in a known order while
-    // tuning. Updates lastBgIdx/currentBgUrl so the bag's avoid-back-to-back
-    // swap and the settings on/off toggle stay consistent with what's shown.
-    function debugCycleBackground() {
+    // tuning. dir = +1 (ArrowRight) or -1 (ArrowLeft). Updates lastBgIdx/
+    // currentBgUrl so the bag's avoid-back-to-back swap and the settings
+    // on/off toggle stay consistent with what's shown.
+    function debugCycleBackground(dir) {
         if (typeof BACKGROUND_IMAGE_URL_BASE !== 'string' || !BACKGROUND_IMAGE_URL_BASE) return;
         const count = (typeof BACKGROUND_IMAGE_COUNT === 'number' && BACKGROUND_IMAGE_COUNT > 0)
                       ? BACKGROUND_IMAGE_COUNT : 0;
         if (count === 0) return;
-        const idx = (lastBgIdx >= 1 && lastBgIdx < count) ? lastBgIdx + 1 : 1;
+        const step = dir < 0 ? -1 : 1;
+        let idx;
+        if (lastBgIdx >= 1 && lastBgIdx <= count) {
+            idx = lastBgIdx + step;
+            if (idx > count) idx = 1;          // wrap forward
+            else if (idx < 1) idx = count;     // wrap backward
+        } else {
+            idx = step === 1 ? 1 : count;      // nothing shown yet: start at an end
+        }
         lastBgIdx = idx;
         currentBgUrl = BACKGROUND_IMAGE_URL_BASE + 'level' + idx + '.jpg';
         if (bgEnabled) document.documentElement.style.backgroundImage = `url("${currentBgUrl}")`;
