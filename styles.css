@@ -3922,10 +3922,12 @@ html.dbgHidden #undoBtn { display: none !important; }
     font-size: 0.9em;
 }
 /* The dev-site link inside the copyright stays as quiet as the text
-   around it (the general footer-a color would make it pop); hover/focus
-   still brightens via the higher-specificity rule above. */
+   around it (the general footer-a color would make it pop), but keeps
+   its underline so it reads as a link at rest; hover/focus still
+   brightens via the higher-specificity rule above. */
 .menu-legal-copyright a {
     color: inherit;
+    text-decoration: underline;
 }
 
 .tutorial-overlay {
