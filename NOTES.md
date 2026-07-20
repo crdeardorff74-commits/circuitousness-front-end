@@ -2,6 +2,11 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-20 — Release v0.91 (menu copyright links to the OI site)
+- "Official Intelligence" in the menu footer's © line is now an anchor to https://official-intelligence.art/ — using the same `.cg-hide` anchor + `.cg-only` plain-text-span pair as the credits URL, so CrazyGames (no-cross-promotion rule) sees non-clickable text.
+- New `.menu-legal-copyright a` rule: `color: inherit` (stays as dim as the © text — the general footer-a color would make it pop) + `text-decoration: underline` at rest (user feedback: without it, it wasn't obviously a link until hover). Hover/focus still brightens via the existing `.menu-legal-footer a:hover` rule.
+- Version bumped 0.90 → 0.91.
+
 ## 2026-07-19 — Brushed-bevel look tried and REJECTED
 - Post-v0.90: mocked up brushed-metal grain on the bevel trapezoids (same overlay pattern the tile faces use) via a temp `bevel-compare.html` + a gated `Render.setBevelTexture` hook in render.js — side-by-side vs the shipping flat bevels on one real generated puzzle.
 - **User didn't like the look; everything removed same-session** (page deleted, hook + export reverted, CLAUDE.md zip-exclude entry dropped). Don't re-propose textured bevels; flat bevels are a settled aesthetic choice.
