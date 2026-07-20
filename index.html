@@ -282,7 +282,11 @@
                     <span class="menu-legal-sep" aria-hidden="true">·</span>
                     <a href="mailto:privacy@official-intelligence.art" data-i18n="footer.contact">Contact</a>
                 </nav>
-                <div class="menu-legal-copyright">© 2026 Official Intelligence</div>
+                <!-- Same cg-hide/cg-only split as the credits URL: linking the
+                     dev site is fine everywhere except CrazyGames (their
+                     no-cross-promotion rule — the site hosts playable games),
+                     where the name shows as plain text instead. -->
+                <div class="menu-legal-copyright">© 2026 <a href="https://official-intelligence.art/" target="_blank" rel="noopener" class="cg-hide">Official Intelligence</a><span class="cg-only">Official Intelligence</span></div>
             </footer>
         </div>
 
@@ -1024,7 +1028,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.89';</script>
+    <script>var PAGE_VERSION = '0.90';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

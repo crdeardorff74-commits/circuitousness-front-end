@@ -2,6 +2,19 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-19 — Brushed-bevel look tried and REJECTED
+- Post-v0.90: mocked up brushed-metal grain on the bevel trapezoids (same overlay pattern the tile faces use) via a temp `bevel-compare.html` + a gated `Render.setBevelTexture` hook in render.js — side-by-side vs the shipping flat bevels on one real generated puzzle.
+- **User didn't like the look; everything removed same-session** (page deleted, hook + export reverted, CLAUDE.md zip-exclude entry dropped). Don't re-propose textured bevels; flat bevels are a settled aesthetic choice.
+- Reusable technique if a future mockup needs a real puzzle standalone: `Maze.setDimensions/setPathCount` + `await Maze.init()` then `Render.renderSnippet(canvas, size, {})` — renders the live Maze at any dims with in-game defaults, no Render.init/HUD entanglement (it save/restores module canvas state internally).
+
+## 2026-07-19 — Release v0.90 (new icon set + debug-mode keyboard tools)
+- **All 11 `/icons` PNGs + `favicon.svg` replaced with the new title-O icon** (red ring on 2×2 tiles, white viewfinder brackets, transparent bg). Source: `icon-o-tuner.html` → user-tuned export at `Downloads\icon-o-512.png`. Maskable pair flattened onto opaque `#0a0a2e` (Android fills maskable transparency with white); regular icons keep transparency (iOS apple-touch-icon black-fills — accepted). favicon.svg = SVG-wrapped base64 96px PNG, same filename so index.html/sw.js untouched.
+- **`icon-o-tuner.html` created** (temp dev tool, zip-EXCLUDED — added to CLAUDE.md's exclude list): renders the title-O through the real pipeline (title-renderer.js's snapshot → renderSnippet → paintSnippetRingMask) with `litPulse:false` = exactly halfway flash brightness (pulse is 1 ± 0.45·sin). Sliders + PNG export. The older `title-o-tuner.html` it mimics no longer exists on disk.
+- **Debug-mode keyboard extras** (index.html debug-sliders wiring, all gated per-keypress on `mode-debug`, zero game-mode effect): ESC toggles `.dbgHidden` on `<html>` (hides #debugSliders + #hintBtn + #undoBtn via one CSS rule); ArrowRight/ArrowLeft step the background pool SEQUENTIALLY ±1 with wrap via new `Render.debugCycleBackground(dir)` (logs `[dev] background → levelN.jpg`); plain F5 = rebuildGrid() with current slider params (Ctrl/Shift+F5 fall through for real reloads). Arrows/F5 skip focused inputs per-key (arrows must nudge sliders; F5 doesn't care).
+- **PITFALL hit: `const Render` is NOT `window.Render`** — top-level const never attaches to window, so a `window.Render &&` guard silently no-ops forever. game.js works because it explicitly assigns `window.Game`. Comment now marks the spot in the wiring script.
+- Deploy facts confirmed this session: git deploy serves `/icons/*` fine (bare `/icons` 404 is just no-directory-listing); itch's iframe can never PWA-install (install criteria evaluate the top-level itch.io page), so installed users exist only on the real domain; Android WebAPK re-checks manifest+icon bytes ~daily on launch, iOS home-screen icons are frozen until delete-and-re-add.
+- Version bumped 0.89 → 0.90.
+
 ## 2026-07-17 — Release v0.89 (audio moved to the shared music host)
 - **All audio now loads from `https://music.official-intelligence.art`** (the new `oi-music/` Netlify project at the umbrella root — see its CLAUDE.md/NOTES.md). WHY: Render workspace bandwidth hit 23.99/25 GB with ~10 days left in the month; the culprit was iOS music + all-platform SFX streaming through the back-end `/api/music/` proxy. Netlify Pro's credit pool absorbs the load ~5×.
 - config.js: new `MUSIC_HOST` const; `MUSIC_BASE_URL` is unconditional now (the `IS_IOS_AUDIO` URL split is gone — the host serves direct 200s + CORS on every platform). `IS_IOS_AUDIO` itself stays: music.js still needs it for the gesture-blessing workaround. audio.js SFX base → `MUSIC_HOST + '/SFX/' + PROJECT_SLUG + '/'`.

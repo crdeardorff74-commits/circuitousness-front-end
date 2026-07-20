@@ -3921,6 +3921,12 @@ html.dbgHidden #undoBtn { display: none !important; }
     color: rgba(255, 255, 255, 0.5);
     font-size: 0.9em;
 }
+/* The dev-site link inside the copyright stays as quiet as the text
+   around it (the general footer-a color would make it pop); hover/focus
+   still brightens via the higher-specificity rule above. */
+.menu-legal-copyright a {
+    color: inherit;
+}
 
 .tutorial-overlay {
     position: fixed;
