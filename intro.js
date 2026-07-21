@@ -347,9 +347,10 @@ const Intro = (() => {
         // ---- Fullscreen toggle ----
         // Initial state mirrors the document's actual fullscreen status
         // (might be true if the player F11'd before the intro painted).
-        // The change handler fires requestFullscreen INSIDE the gesture
-        // path — Safari/iOS require the request to be synchronous with
-        // a user input event.
+        // Checking the box does NOT enter fullscreen immediately — it only
+        // records intent, which dismiss() applies when the player agrees.
+        // That still satisfies Safari/iOS's user-gesture requirement
+        // because dismiss() always runs inside a click/keydown handler.
         //
         // Phones HIDE the Full Screen toggle entirely: the OS install /
         // "Add to Home Screen" path owns the fullscreen story there (and iOS
@@ -365,17 +366,8 @@ const Intro = (() => {
                 if (fsToggle) fsToggle.style.display = 'none';
             }
             fsBox.checked = !!getFullscreenElement();
-            fsBox.addEventListener('change', () => {
-                if (fsBox.checked) {
-                    requestFullscreen(document.documentElement).catch(() => {
-                        // Failure (browser denial, no API) — sync the
-                        // checkbox back so it doesn't lie about state.
-                        fsBox.checked = false;
-                    });
-                } else {
-                    exitFullscreen().catch(() => {});
-                }
-            });
+            // No change handler: the checkbox is pure intent until the
+            // player dismisses the intro (see dismiss()).
             // Keep the checkbox honest if the user F11s or escapes
             // out of fullscreen while still on the intro screen.
             const onFsChange = () => { fsBox.checked = !!getFullscreenElement(); };
@@ -487,6 +479,19 @@ const Intro = (() => {
     function dismiss() {
         if (dismissed) return;
         dismissed = true;
+        // Apply the Full Screen checkbox's intent now, inside the same
+        // user gesture (button click / Enter / Escape) that dismissed the
+        // intro — Safari/iOS require requestFullscreen to be synchronous
+        // with a user input event. Only act when intent differs from the
+        // document's actual state, so an untouched checkbox is a no-op.
+        const fsBox = document.getElementById('introFullscreenCheckbox');
+        if (fsBox && fsBox.checked !== !!getFullscreenElement()) {
+            if (fsBox.checked) {
+                requestFullscreen(document.documentElement).catch(() => {});
+            } else {
+                exitFullscreen().catch(() => {});
+            }
+        }
         // Funnel milestone: the player got past the warning and is now at the
         // mode menu. Fired however they dismissed (button / Enter / Escape).
         // Tracking owns its own suppression (dev / localhost) and defers to
