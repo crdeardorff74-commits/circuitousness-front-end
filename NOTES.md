@@ -2,6 +2,16 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-21 — Release v0.92 (intro Full Screen checkbox deferred to AGREE)
+- The intro's Full Screen checkbox no longer enters/exits fullscreen on click — it only records intent; `dismiss()` applies it (AGREE / Enter / Escape all count, and all are user gestures so Safari/iOS's synchronous-gesture requirement still holds).
+- `dismiss()` only acts when checkbox state differs from the document's actual fullscreen state, so an untouched box is a no-op; the F11-sync listener on the checkbox stays.
+- Version bumped 0.91 → 0.92.
+
+## 2026-07-20 — CG trial: second-chance policy + outreach plan
+- Basic Launch worry (desktop metrics great, mobile weak because the portrait-overlay fix landed mid-trial): per docs.crazygames.com, "some metrics meet benchmarks" → may be invited to improve and **request another Basic Launch period**; only "most metrics below" forces resubmission as a new game. Benchmarks: 80%+ conversion (1+ min), 10+ min avg playtime, 10–15% D1.
+- Plan: proactively message CG via https://developer.crazygames.com/support flagging the mid-trial fix date + post-fix daily mobile numbers (blended averages hide the turnaround), and request a second Basic Launch period there if needed.
+- New shared image host created this session: `oi-images/` at the umbrella root → https://images.official-intelligence.art (first content: `circuitousness/Singular 3 Paths.jpg`). See its own CLAUDE.md/NOTES.md — incl. the Netlify single-subfolder drag-deploy flattening pitfall.
+
 ## 2026-07-20 — Release v0.91 (menu copyright links to the OI site)
 - "Official Intelligence" in the menu footer's © line is now an anchor to https://official-intelligence.art/ — using the same `.cg-hide` anchor + `.cg-only` plain-text-span pair as the credits URL, so CrazyGames (no-cross-promotion rule) sees non-clickable text.
 - New `.menu-legal-copyright a` rule: `color: inherit` (stays as dim as the © text — the general footer-a color would make it pop) + `text-decoration: underline` at rest (user feedback: without it, it wasn't obviously a link until hover). Hover/focus still brightens via the existing `.menu-legal-footer a:hover` rule.
