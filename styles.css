@@ -4288,9 +4288,15 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
     font-weight: 600;
     line-height: 1;
     font-family: inherit;
-    cursor: pointer;
+    /* Default cursor: on desktop the stat chips' explainer shows on
+       HOVER — clicking does nothing there, so a pointer cursor would
+       promise a click action that doesn't exist. (Touch taps still work;
+       no cursor on touch.) Only the 📅 chip below, whose click opens
+       the calendar, advertises clickability. */
+    cursor: default;
     transition: border-color 0.15s ease, background 0.15s ease;
 }
+.potdStreakCalBtn { cursor: pointer; }
 @media (hover: hover) and (pointer: fine) {
     .potdStreakChip:hover {
         background: rgba(40, 48, 90, 0.8);
