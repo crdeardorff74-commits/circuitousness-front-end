@@ -141,6 +141,55 @@ const PotdStreaks = (() => {
         rec.pBest = Math.max(rec.pBest, bestOverall(rec.days, 'p'));
     }
 
+    // The 8 slot ids — mirrors Potd.SLOTS (loaded later in script order,
+    // so read it at call time with a literal fallback).
+    function slotIds() {
+        return (typeof Potd !== 'undefined' && Potd.SLOTS)
+            ? Potd.SLOTS
+            : ['s1', 's2', 's3', 's4', 'q1', 'q2', 'q3', 'q4'];
+    }
+    // Ground truth for a day's solve count: potd.js writes one
+    // <slug>_potd_<date>_<slot> = 'solved' marker per solved slot (and
+    // never prunes them). Counting these instead of incrementing keeps
+    // `s` idempotent — the launch-day double-count happened because
+    // onSolve writes the marker BEFORE recordSolve runs, so the lazy
+    // backfill's first-ever run saw the just-written marker and counted
+    // the same solve twice.
+    function countSolvedSlots(dateStr) {
+        let n = 0;
+        try {
+            for (const s of slotIds()) {
+                if (localStorage.getItem(slug() + '_potd_' + dateStr + '_' + s) === 'solved') n++;
+            }
+        } catch (e) {}
+        return n;
+    }
+
+    // Re-derive today's `s` from the slot markers and persist the record
+    // (which also persists the backfill's bf flag EARLY — at init, before
+    // any solve can race it). Heals drift both ways: the double-count
+    // above (4 → 3) and re-seed wipes (markers removed server-side →
+    // count drops). The perfect flag is kept — markers carry no hint
+    // data, so `p` has no ground truth to recount from.
+    function reconcileToday() {
+        const rec = load();
+        backfill(rec);
+        const today = todayUTC();
+        const count = countSolvedSlots(today);
+        const entry = rec.days[today];
+        const cur = entry ? (entry.s | 0) : 0;
+        if (count !== cur) {
+            if (count > 0) {
+                rec.days[today] = { s: count, p: entry && entry.p ? 1 : 0 };
+            } else {
+                // All markers gone (re-seed wipe) — the day no longer
+                // qualifies; a stale entry would fake a streak day.
+                delete rec.days[today];
+            }
+        }
+        save(rec);
+    }
+
     // ── Public data API ──
 
     // Called by Potd.onSolve on every genuine PotD solve. Returns the
@@ -149,7 +198,11 @@ const PotdStreaks = (() => {
         const rec = load();
         backfill(rec);
         const entry = rec.days[dateStr] || { s: 0, p: 0 };
-        entry.s = (entry.s | 0) + 1;
+        // Recount from the markers (this solve's marker is already
+        // written — see countSolvedSlots). The max(1, …) floor covers
+        // marker writes failing (private mode/quota): we ARE inside a
+        // solve, so the day counts at least once.
+        entry.s = Math.max(1, countSolvedSlots(dateStr));
         if (hintFree) entry.p = 1;
         rec.days[dateStr] = entry;
         const current = streakEndingNow(rec.days, 's');
@@ -229,6 +282,7 @@ const PotdStreaks = (() => {
         // resets. potd.js has its own rollover watcher for slot badges.
         if (today !== lastSeenDate) {
             lastSeenDate = today;
+            reconcileToday();
             refreshStrip();
         }
         if (countdownEl) {
@@ -256,6 +310,9 @@ const PotdStreaks = (() => {
         }
 
         lastSeenDate = todayUTC();
+        // Recount today from the slot markers + persist the backfill
+        // flag before any solve can race it (see reconcileToday).
+        reconcileToday();
         refreshStrip();
         tick();
         // 1s cadence for the countdown. The strip is hidden outside PotD
