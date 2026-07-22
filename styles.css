@@ -3788,7 +3788,9 @@ html.dbgHidden #undoBtn { display: none !important; }
     #potdSolveTime,
     #potdSolveRank,
     #potdSolveIneligible,
-    #potdSolveOffline {
+    #potdSolveOffline,
+    #potdSolveStreak,
+    #potdSolvePerfect {
         font-size: clamp(0.75rem, 2.6vh, 0.95rem);
     }
     #potdSolveContinue {
@@ -4117,6 +4119,293 @@ html.dbgHidden #undoBtn { display: none !important; }
     .tutorial-body { flex-direction: column; align-items: center; overflow: visible; }
     .tutorial-canvas-wrap { width: min(64vw, 20rem); max-height: 34vh; }
     .tutorial-steps { max-height: none; width: 100%; }
+}
+
+/* ============================================================
+   CONTINUE-YOUR-RUN CARDS + POTD STREAK STRIP + POTD CALENDAR
+   (marathon.js saved-run resume; potd-streaks.js / potd-calendar.js)
+   ============================================================ */
+
+/* Continue card — one accent-bordered row above the mode sections.
+   The play area and the discard ✕ are sibling buttons in a flex shell
+   (nested buttons are invalid HTML). Gold accent matches the menu's
+   leaderboard-button family so it reads as a primary menu action. */
+#continueRunRow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+.continueRunCard {
+    display: flex;
+    align-items: stretch;
+    gap: 0.4rem;
+    margin-bottom: 0.8rem;
+    min-width: clamp(16rem, 50vw, 26rem);
+}
+/* The display:flex above would otherwise beat the UA's [hidden] rule
+   (author styles win over UA styles regardless of specificity), and
+   refreshContinueCards toggles visibility via the hidden attribute. */
+.continueRunCard[hidden] { display: none; }
+.continueRunMain {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.55rem 1rem;
+    background: rgba(40, 30, 50, 0.7);
+    border: 1px solid rgba(255, 215, 0, 0.55);
+    border-radius: 0.5rem;
+    color: rgba(255, 215, 0, 0.95);
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+    box-shadow: 0 0 0.5rem rgba(255, 215, 0, 0.12);
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+    .continueRunMain:hover {
+        background: rgba(60, 45, 70, 0.85);
+        border-color: rgba(255, 215, 0, 0.85);
+        box-shadow: 0 0 0.8rem rgba(255, 215, 0, 0.25);
+    }
+}
+.continueRunPlay {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+.continueRunText {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+.continueRunLabel {
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: clamp(0.85rem, 1.8vw, 1rem);
+}
+.continueRunDetail {
+    font-size: clamp(0.75rem, 1.6vw, 0.9rem);
+    color: rgba(220, 240, 255, 0.85);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.continueRunDiscard {
+    padding: 0 0.7rem;
+    background: rgba(30, 25, 40, 0.6);
+    border: 1px solid rgba(150, 170, 220, 0.25);
+    border-radius: 0.5rem;
+    color: rgba(220, 240, 255, 0.55);
+    font-family: inherit;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+    .continueRunDiscard:hover {
+        color: rgba(255, 130, 130, 0.95);
+        border-color: rgba(255, 130, 130, 0.55);
+    }
+}
+
+/* Streak strip — PotD mode only. One wrapping row of glassy chips
+   under the mode subtitle: 🔥 current/best, ⭐ perfect current/best,
+   📅 calendar button, and the next-puzzles countdown. */
+#potdStreakStrip {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.9rem;
+}
+body:not(.mode-potd) #potdStreakStrip { display: none; }
+.potdStreakChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.3rem 0.7rem;
+    background: rgba(20, 24, 50, 0.65);
+    border: 1px solid rgba(150, 170, 220, 0.3);
+    border-radius: 1.2rem;
+    color: rgba(220, 240, 255, 0.95);
+    font-size: clamp(0.85rem, 1.8vw, 1rem);
+    font-weight: 600;
+    line-height: 1;
+}
+.potdStreakBest {
+    color: rgba(220, 240, 255, 0.5);
+    font-size: 0.8em;
+    font-weight: 500;
+    margin-left: 0.25rem;
+}
+.potdStreakCalBtn {
+    font-family: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+    .potdStreakCalBtn:hover {
+        background: rgba(40, 48, 90, 0.8);
+        border-color: rgba(150, 170, 220, 0.6);
+    }
+}
+.potdStreakCountdown {
+    color: rgba(255, 215, 0, 0.8);
+    font-size: clamp(0.75rem, 1.6vw, 0.9rem);
+    /* Tabular digits stop the h:mm:ss tick from jittering the row. */
+    font-variant-numeric: tabular-nums;
+}
+
+/* Solve-modal streak lines (potd.js paints the text per solve). */
+#potdSolveStreak {
+    color: rgba(255, 160, 60, 0.95);
+    font-weight: 700;
+    font-size: clamp(0.95rem, 2vw, 1.1rem);
+    margin-top: 0.4rem;
+}
+#potdSolvePerfect {
+    color: rgba(220, 240, 255, 0.7);
+    font-size: clamp(0.8rem, 1.8vw, 0.95rem);
+    margin-top: 0.25rem;
+}
+#potdSolvePerfect.earned {
+    color: rgba(255, 215, 0, 0.95);
+    font-weight: 600;
+}
+
+/* Calendar modal internals (shell comes from .combo-modal). */
+.potd-cal-modal {
+    /* The 7-col grid reads better centered and slightly narrower than
+       the confirm modals' text bodies. */
+    min-width: min(22rem, 85vw);
+    max-width: min(24rem, 90vw);
+}
+.potd-cal-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+}
+.potd-cal-month {
+    font-weight: 600;
+    color: rgba(220, 240, 255, 0.95);
+    text-align: center;
+    flex: 1;
+    /* Localized month names vary wildly in width — keep one line. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.potd-cal-navBtn {
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(20, 24, 50, 0.65);
+    border: 1px solid rgba(150, 170, 220, 0.3);
+    border-radius: 0.4rem;
+    color: rgba(220, 240, 255, 0.9);
+    font-family: inherit;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+    .potd-cal-navBtn:hover:not(:disabled) {
+        background: rgba(40, 48, 90, 0.8);
+        border-color: rgba(150, 170, 220, 0.6);
+    }
+}
+.potd-cal-navBtn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+.potd-cal-weekdays,
+.potd-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.25rem;
+}
+.potd-cal-weekdays {
+    margin-bottom: 0.25rem;
+}
+.potd-cal-wd {
+    text-align: center;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    color: rgba(220, 240, 255, 0.45);
+    text-transform: uppercase;
+}
+.potd-cal-day {
+    position: relative;
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.35rem;
+    background: rgba(20, 24, 50, 0.55);
+    border: 1px solid rgba(150, 170, 220, 0.12);
+    color: rgba(220, 240, 255, 0.75);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+}
+.potd-cal-day.out {
+    background: none;
+    border-color: transparent;
+}
+.potd-cal-day.future {
+    opacity: 0.3;
+}
+.potd-cal-day.today {
+    border-color: rgba(255, 215, 0, 0.7);
+    box-shadow: 0 0 0.3rem rgba(255, 215, 0, 0.25);
+}
+.potd-cal-day.solved {
+    background: rgba(40, 160, 80, 0.55);
+    border-color: rgba(120, 220, 140, 0.5);
+    color: #fff;
+    font-weight: 600;
+}
+.potd-cal-star {
+    position: absolute;
+    top: -0.3rem;
+    right: -0.25rem;
+    font-size: 0.6rem;
+    /* The emoji renders on its own layer above the cell fill. */
+    pointer-events: none;
+}
+.potd-cal-legend {
+    display: flex;
+    justify-content: center;
+    gap: 1.2rem;
+    margin-top: 0.7rem;
+    font-size: 0.75rem;
+    color: rgba(220, 240, 255, 0.6);
+}
+.potd-cal-legendItem {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.potd-cal-swatch {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 0.9rem;
+    height: 0.9rem;
+    border-radius: 0.25rem;
+    font-size: 0.65rem;
+}
+.potd-cal-swatch.solved {
+    background: rgba(40, 160, 80, 0.55);
+    border: 1px solid rgba(120, 220, 140, 0.5);
 }
 
 /* ============================================================

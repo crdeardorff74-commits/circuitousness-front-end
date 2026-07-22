@@ -1,0 +1,259 @@
+/**
+ * potd-streaks.js — Puzzle of the Day streak tracking + menu streak strip.
+ *
+ * Retention hooks around the daily puzzle (2026-07-22, post-CrazyGames
+ * Basic Launch — D1 retention was the weakest metric, and visible
+ * incomplete state is the lever):
+ *
+ *   🔥 daily streak    — consecutive UTC days with ≥1 PotD slot solved.
+ *   ⭐ perfect streak  — consecutive UTC days with ≥1 HINT-FREE solve.
+ *
+ * Data lives in one localStorage record (see STREAK_KEY below):
+ *   { days: { 'YYYY-MM-DD': { s: <slots solved>, p: 0|1 } },
+ *     best: n, pBest: n, bf: 1 }
+ * `days` doubles as the calendar's data source (potd-calendar.js reads it
+ * via getHistory). `best`/`pBest` are maintained incrementally so pruning
+ * old days can never lose a historical record. `bf` marks the one-time
+ * backfill from the legacy per-slot state keys (<slug>_potd_<date>_<slot>
+ * = 'solved') that potd.js has been writing since launch — players keep
+ * credit for days they solved before this feature existed (hint data
+ * wasn't recorded back then, so backfilled days are never 'perfect').
+ *
+ * "Current streak" counts consecutive qualifying days ending TODAY or
+ * YESTERDAY — a streak isn't broken until a full UTC day passes unsolved,
+ * matching the convention players know from other daily puzzles.
+ *
+ * Also owns the menu streak strip (#potdStreakStrip): the 🔥/⭐ chips, the
+ * 📅 calendar button, and the next-puzzles countdown, ticked once per
+ * second. Strip visibility is CSS-gated on body.mode-potd.
+ *
+ * Update entry point: Potd.onSolve calls recordSolve(date, hintFree).
+ */
+const PotdStreaks = (() => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    // Days of history to retain. Well past a year so year-over-year
+    // calendar browsing works; prevents unbounded localStorage growth.
+    const KEEP_DAYS = 400;
+
+    function slug() {
+        return (typeof PROJECT_SLUG === 'string') ? PROJECT_SLUG : 'circuitousness';
+    }
+    function storageKey() { return slug() + '_potd_streak_v1'; }
+
+    function fmtDate(d) {
+        return d.getUTCFullYear() + '-'
+            + String(d.getUTCMonth() + 1).padStart(2, '0') + '-'
+            + String(d.getUTCDate()).padStart(2, '0');
+    }
+    function todayUTC() { return fmtDate(new Date()); }
+    // 'YYYY-MM-DD' ± n days → 'YYYY-MM-DD'. All arithmetic in UTC ms so
+    // DST on the player's local clock can never skip or double a day.
+    function shiftDate(dateStr, deltaDays) {
+        return fmtDate(new Date(Date.parse(dateStr + 'T00:00:00Z') + deltaDays * DAY_MS));
+    }
+
+    function load() {
+        try {
+            const raw = localStorage.getItem(storageKey());
+            if (raw) {
+                const rec = JSON.parse(raw);
+                if (rec && typeof rec === 'object' && rec.days && typeof rec.days === 'object') {
+                    rec.best  = rec.best  | 0;
+                    rec.pBest = rec.pBest | 0;
+                    return rec;
+                }
+            }
+        } catch (e) { /* private mode / corrupt JSON — start fresh */ }
+        return { days: {}, best: 0, pBest: 0 };
+    }
+    function save(rec) {
+        try { localStorage.setItem(storageKey(), JSON.stringify(rec)); }
+        catch (e) { /* private mode / quota — streaks just won't persist */ }
+    }
+
+    function qualifies(entry, field) {
+        if (!entry) return false;
+        return field === 'p' ? !!entry.p : (entry.s | 0) > 0;
+    }
+
+    // Consecutive qualifying days ending today (or yesterday, if today
+    // hasn't qualified yet — the streak isn't broken until a full day
+    // passes unsolved).
+    function streakEndingNow(days, field) {
+        const today = todayUTC();
+        let cursor = qualifies(days[today], field) ? today : shiftDate(today, -1);
+        let n = 0;
+        while (qualifies(days[cursor], field)) {
+            n++;
+            cursor = shiftDate(cursor, -1);
+        }
+        return n;
+    }
+
+    // Longest run anywhere in the map — needed once at backfill time,
+    // where historical runs don't end at today. Walks forward only from
+    // run STARTS (previous day absent), so total work is O(days).
+    function bestOverall(days, field) {
+        let best = 0;
+        for (const d in days) {
+            if (!qualifies(days[d], field)) continue;
+            if (qualifies(days[shiftDate(d, -1)], field)) continue;  // not a run start
+            let n = 0, cursor = d;
+            while (qualifies(days[cursor], field)) {
+                n++;
+                cursor = shiftDate(cursor, 1);
+            }
+            if (n > best) best = n;
+        }
+        return best;
+    }
+
+    function prune(rec) {
+        const cutoff = shiftDate(todayUTC(), -KEEP_DAYS);
+        for (const d in rec.days) {
+            // ISO date strings compare correctly as plain strings.
+            if (d < cutoff) delete rec.days[d];
+        }
+    }
+
+    // One-time import of the legacy per-slot solved markers that potd.js
+    // has always written (and never pruned): <slug>_potd_<date>_<slot> =
+    // 'solved'. Gives pre-feature players their earned history. The exact
+    // key regex keeps cousins like _potd_genAt_* / _potd_puzzles_* /
+    // _potd_lb_* out of the scan.
+    function backfill(rec) {
+        if (rec.bf) return;
+        rec.bf = 1;
+        const re = new RegExp('^' + slug() + '_potd_(\\d{4}-\\d{2}-\\d{2})_([sq][1-4])$');
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (!k) continue;
+                const m = re.exec(k);
+                if (!m) continue;
+                if (localStorage.getItem(k) !== 'solved') continue;
+                const entry = rec.days[m[1]] || { s: 0, p: 0 };
+                entry.s = (entry.s | 0) + 1;
+                rec.days[m[1]] = entry;
+            }
+        } catch (e) { /* private mode — nothing to backfill */ }
+        rec.best  = Math.max(rec.best,  bestOverall(rec.days, 's'));
+        rec.pBest = Math.max(rec.pBest, bestOverall(rec.days, 'p'));
+    }
+
+    // ── Public data API ──
+
+    // Called by Potd.onSolve on every genuine PotD solve. Returns the
+    // post-update streak numbers for the solve modal's streak line.
+    function recordSolve(dateStr, hintFree) {
+        const rec = load();
+        backfill(rec);
+        const entry = rec.days[dateStr] || { s: 0, p: 0 };
+        entry.s = (entry.s | 0) + 1;
+        if (hintFree) entry.p = 1;
+        rec.days[dateStr] = entry;
+        const current = streakEndingNow(rec.days, 's');
+        const perfect = streakEndingNow(rec.days, 'p');
+        if (current > rec.best)  rec.best  = current;
+        if (perfect > rec.pBest) rec.pBest = perfect;
+        prune(rec);
+        save(rec);
+        refreshStrip();
+        return { current: current, best: rec.best, perfect: perfect, perfectBest: rec.pBest };
+    }
+
+    function getStreaks() {
+        const rec = load();
+        backfill(rec);
+        return {
+            current:     streakEndingNow(rec.days, 's'),
+            best:        rec.best,
+            perfect:     streakEndingNow(rec.days, 'p'),
+            perfectBest: rec.pBest,
+        };
+    }
+
+    // Calendar data source — a copy so callers can't mutate the record.
+    function getHistory() {
+        const rec = load();
+        backfill(rec);
+        const out = {};
+        for (const d in rec.days) out[d] = { s: rec.days[d].s | 0, p: rec.days[d].p ? 1 : 0 };
+        return out;
+    }
+
+    // ── Menu strip UI ──
+
+    let fireValEl, fireBestEl, starValEl, starBestEl, countdownEl;
+    let lastSeenDate = null;
+
+    function refreshStrip() {
+        if (!fireValEl) return;
+        const s = getStreaks();
+        fireValEl.textContent = String(s.current);
+        starValEl.textContent = String(s.perfect);
+        // "· best" suffix only when it beats the current run — a best
+        // equal to current adds no information. Numeric + glyph only, so
+        // no per-language string is needed.
+        fireBestEl.textContent = s.best  > s.current ? '· ' + s.best  : '';
+        starBestEl.textContent = s.perfectBest > s.perfect ? '· ' + s.perfectBest : '';
+    }
+
+    function fmtCountdown(ms) {
+        const totalSec = Math.max(0, Math.floor(ms / 1000));
+        const h = Math.floor(totalSec / 3600);
+        const m = Math.floor((totalSec % 3600) / 60);
+        const sec = totalSec % 60;
+        return h + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+    }
+
+    function tick() {
+        const now = new Date();
+        const today = fmtDate(now);
+        // UTC day rolled over while the menu sat open — the streak chips
+        // may flip (today's solve becomes yesterday's) and the countdown
+        // resets. potd.js has its own rollover watcher for slot badges.
+        if (today !== lastSeenDate) {
+            lastSeenDate = today;
+            refreshStrip();
+        }
+        if (countdownEl) {
+            const nextMidnight = Date.parse(today + 'T00:00:00Z') + DAY_MS;
+            const t = fmtCountdown(nextMidnight - now.getTime());
+            countdownEl.textContent = (typeof I18n !== 'undefined' && I18n.t)
+                ? I18n.t('potd.countdown', { t: t })
+                : 'New puzzles in ' + t;
+        }
+    }
+
+    function init() {
+        fireValEl   = document.getElementById('potdStreakFireVal');
+        fireBestEl  = document.getElementById('potdStreakFireBest');
+        starValEl   = document.getElementById('potdStreakStarVal');
+        starBestEl  = document.getElementById('potdStreakStarBest');
+        countdownEl = document.getElementById('potdCountdown');
+
+        const calBtn = document.getElementById('potdCalendarBtn');
+        if (calBtn) {
+            calBtn.addEventListener('click', () => {
+                if (typeof PotdCalendar !== 'undefined' && PotdCalendar.open) PotdCalendar.open();
+            });
+        }
+
+        lastSeenDate = todayUTC();
+        refreshStrip();
+        tick();
+        // 1s cadence for the countdown. The strip is hidden outside PotD
+        // mode (CSS), but updating hidden text is far cheaper than
+        // wiring start/stop to mode changes.
+        setInterval(tick, 1000);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    return { recordSolve, getStreaks, getHistory, refreshStrip };
+})();

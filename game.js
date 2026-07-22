@@ -573,6 +573,29 @@
             // Fresh puzzle → fresh undo history anchored on the loaded board.
             resetUndo();
         }
+        // Adopt a previously-captured recording (marathon's saved-run
+        // resume). MUST be called AFTER Maze.loadSnapshot has put the
+        // saved board back on-screen — resetUndo() anchors the undo
+        // history on the live Maze state. The startTime rebase makes the
+        // away-gap vanish from the timeline: the next live move's t
+        // lands right after the last saved move's, so a replay plays the
+        // run as one continuous solve instead of stalling for the hours
+        // the tab was closed. A recording with no moves yet keeps the
+        // lazy startTime=0 anchor (appendMove re-anchors on first move).
+        // Falls back to a fresh recording when handed nothing usable
+        // (corrupt save, pre-feature save shape).
+        function restoreRecording(rec) {
+            if (!rec || !rec.initialState || !Array.isArray(rec.moves)) {
+                startRecording();
+                return;
+            }
+            recording = rec;
+            if (!Array.isArray(recording.musicEvents)) recording.musicEvents = [];
+            recording.startTime = recording.moves.length > 0
+                ? Date.now() - recording.moves[recording.moves.length - 1].t
+                : 0;
+            resetUndo();
+        }
         // Raw append to the active recording — sets the move's timestamp and
         // pushes it, with NO undo bookkeeping. Used both by recordMove (real
         // moves) and undo() (which records an `undo` move so playback replays
@@ -1192,6 +1215,10 @@
             // anchored on the loaded state instead of inheriting whatever
             // the previous marathon run left in `recording`.
             startRecording: startRecording,
+            // Marathon saved-run resume: adopt the recording captured at
+            // save time so the replayed run includes pre-quit moves. Call
+            // order matters — see the function's comment.
+            restoreRecording: restoreRecording,
             // Undo the last committed move. Exposed for tests / future
             // gamepad or controls-config bindings.
             undo: undo,

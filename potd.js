@@ -1348,6 +1348,36 @@ const Potd = (() => {
 
         setSlotState(slot, date, 'solved');
 
+        // Streak bookkeeping (potd-streaks.js) — fires on every genuine
+        // solve, eligible or not: the streak is a personal habit metric,
+        // not a leaderboard one, so a hint-assisted or retry solve still
+        // keeps the 🔥 day alive. Hint-free is what earns the ⭐ perfect
+        // flag. The returned numbers feed the solve modal's streak line.
+        let streakInfo = null;
+        if (typeof PotdStreaks !== 'undefined' && PotdStreaks.recordSolve) {
+            streakInfo = PotdStreaks.recordSolve(date, hintsUsed === 0);
+        }
+        // Populate the modal's streak + perfect lines up front — both
+        // showSolveModal branches below render the same card. The perfect
+        // line doubles as the near-miss tease: a hint-assisted solve is
+        // told what a hint-free one would have earned.
+        const streakLineEl  = document.getElementById('potdSolveStreak');
+        const perfectLineEl = document.getElementById('potdSolvePerfect');
+        const t = (key, vars) =>
+            (typeof I18n !== 'undefined' && I18n.t) ? I18n.t(key, vars) : key;
+        if (streakLineEl) {
+            const n = streakInfo ? streakInfo.current : 0;
+            streakLineEl.textContent = t('potd.streak.solveLine', { n: n });
+            streakLineEl.hidden = n <= 0;
+        }
+        if (perfectLineEl) {
+            perfectLineEl.textContent = (hintsUsed === 0)
+                ? t('potd.streak.perfectEarned')
+                : t('potd.streak.perfectTease');
+            perfectLineEl.classList.toggle('earned', hintsUsed === 0);
+            perfectLineEl.hidden = false;
+        }
+
         // Audio-context tally — same call marathon.onSolve makes; see the
         // comment there. The STATE.PLAYING guard at the top excludes
         // replays here too.

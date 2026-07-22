@@ -80,6 +80,18 @@ const Marathon = (() => {
     let lastTickTime   = 0;        // ms epoch — for delta-based timer
     let timerHandle    = null;
     let puzzleStartMs  = 0;        // ms epoch when current puzzle finished building
+    // Epoch of the run's /game/start — persisted with the run save so a
+    // resumed marathon knows how old its sessionToken is (the server
+    // rejects submits more than MAX_SESSION_MS ≈ 6h after token issue;
+    // see saveScore's pending-queue gate).
+    let runStartedAtMs = 0;
+    // True while the CURRENT puzzle is actually on-screen and playable
+    // (set in onPuzzleReady, cleared when a build starts / the run ends).
+    // saveRunState uses it to tell a mid-puzzle save (full board
+    // snapshot) from a mid-BUILD save (level already ++'d and fresh time
+    // already granted for a puzzle that never appeared — must be rolled
+    // back to a boundary save or the resume would double-grant).
+    let puzzleLive = false;
 
     // Per-game accumulated recordings. Each entry is a deep clone of
     // Game.recording captured in onSolve() right before the next puzzle
@@ -255,6 +267,25 @@ const Marathon = (() => {
             });
         }
         if (replayStopBtn)      replayStopBtn.addEventListener('click', stopReplay);
+        // Continue-your-run cards (saved-run resume) + their discard ✕.
+        document.querySelectorAll('[data-run-resume]').forEach((btn) => {
+            btn.addEventListener('click', () => resumeRun(btn.getAttribute('data-run-resume')));
+        });
+        document.querySelectorAll('[data-run-discard]').forEach((btn) => {
+            btn.addEventListener('click', () => clearRunSave(btn.getAttribute('data-run-discard')));
+        });
+        // Cards are mode-gated — repaint when the player switches tabs.
+        if (typeof ModePicker !== 'undefined' && ModePicker.onChange) {
+            ModePicker.onChange(refreshContinueCards);
+        }
+        // Checkpoint on tab close / backgrounding so a killed tab mid-run
+        // is resumable. pagehide is the reliable mobile signal; the
+        // visibilitychange fallback covers browsers that skip pagehide on
+        // process kill. Both are no-ops unless a run is in progress.
+        window.addEventListener('pagehide', saveRunState);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') saveRunState();
+        });
         // Tap the popup to advance to the next puzzle. The canvas does NOT
         // route here — see comment on the inTransition declaration above.
         if (solveTransitionEl)  solveTransitionEl.addEventListener('click', advance);
@@ -430,7 +461,10 @@ const Marathon = (() => {
             }
         }
         pendingHighlight = null;   // leaving the leaderboard drops the highlight
+        puzzleLive = false;
         showOnly(menuEl);
+        // Surface/refresh the Continue card for whatever run is saved.
+        refreshContinueCards();
     }
 
     // CREDITS menu button — roll the end credits on demand, without a game
@@ -662,11 +696,235 @@ const Marathon = (() => {
         return Math.max(MARATHON.TIME_FLOOR, Math.round(fresh)) * 1000;
     }
 
+    // ----- Saved-run persistence (Continue-your-run) -----
+    //
+    // One save slot PER MODE (marathon / practice) so a quick Marathon
+    // sprint can't clobber a 30-puzzle Zen run. Saved at every puzzle-
+    // ready + solve boundary, on Quit, and on pagehide/tab-hide; cleared
+    // on game-over and whenever a fresh run of the same mode starts.
+    // The menu's Continue card (refreshContinueCards) offers the resume.
+    //
+    // Mid-puzzle saves carry the full board snapshot + the in-progress
+    // recording, so a resume restores the exact state the player left —
+    // no retry-scumming a bad puzzle by quitting (the clock and board
+    // come back exactly as saved).
+
+    function runSaveKey(mode) { return PROJECT_SLUG + '_run_save_' + mode + '_v1'; }
+    function currentRunMode() { return isPractice ? 'practice' : 'marathon'; }
+
+    function loadRunSave(mode) {
+        try {
+            const raw = localStorage.getItem(runSaveKey(mode));
+            if (!raw) return null;
+            const save = JSON.parse(raw);
+            if (!save || save.v !== 1) return null;
+            if (typeof save.type !== 'string' || !/^[sq][1-4]$/.test(save.type)) return null;
+            if (!(save.level >= 1)) return null;
+            return save;
+        } catch (e) { return null; }
+    }
+    function clearRunSave(mode) {
+        try { localStorage.removeItem(runSaveKey(mode)); } catch (e) {}
+        refreshContinueCards();
+    }
+
+    function saveRunState() {
+        if (state !== STATE.PLAYING) return;
+        // The one-time auto-start run is a menu-skipping tutorial surface,
+        // not a run the player chose — a "Continue your run" card for it
+        // on a brand-new player's second visit would only confuse.
+        if (isFirstRunAutoStart) return;
+        if (!activeType) return;
+        // Nothing worth resuming yet: no solves banked and no moves made.
+        // (Also keeps a fresh no-touch run from writing a "Puzzle 1" card.)
+        const rec = (typeof Game !== 'undefined') ? Game.recording : null;
+        if (solvedCount === 0 && !(rec && Array.isArray(rec.moves) && rec.moves.length > 0)) return;
+
+        const decoded = decodeType(activeType);
+        let saveLevel     = level;
+        let saveRemaining = timeRemaining;
+        const midPuzzle   = puzzleLive && !inTransition;
+        if (!puzzleLive && !inTransition) {
+            // Build in flight: startNextPuzzle already advanced `level` and
+            // granted the next puzzle's fresh time, but that puzzle never
+            // appeared. Roll both back so the boundary-resume's own
+            // startNextPuzzle replays the grant exactly once. (The timer
+            // never ticks during a build, so the subtraction is exact.)
+            const logical = dimsForLevel(level, decoded.quadMode, decoded.pathCount);
+            const fresh   = timeForPuzzle(decoded.quadMode, decoded.pathCount, solvedCount, logical);
+            saveLevel     = level - 1;
+            saveRemaining = Math.max(0, timeRemaining - fresh);
+            if (saveLevel < 1 && solvedCount === 0) return;   // nothing to resume
+        }
+
+        const save = {
+            v: 1,
+            mode: currentRunMode(),
+            type: activeType,
+            level: saveLevel,
+            solvedCount, hintsUsed, totalSolveTime,
+            timeRemaining: saveRemaining,
+            growthSequence: growthSequence.slice(),
+            sessionToken, runStartedAtMs,
+            // Practice never submits a score, so its completed-puzzle
+            // recordings would persist for nothing — and Zen runs are
+            // exactly the long ones that would bloat localStorage. The
+            // CURRENT puzzle's recording (below) is still saved in both
+            // modes; it's one puzzle and the resume continues its
+            // timeline.
+            recordings: isPractice ? [] : recordings,
+            boundary: !midPuzzle,
+            savedAtMs: Date.now(),
+        };
+        if (midPuzzle) {
+            save.maze  = Maze.snapshotState();
+            save.gates = (typeof Gates !== 'undefined' && Gates.snapshot) ? Gates.snapshot() : null;
+            save.recording = rec;
+            save.puzzleElapsedMs = Math.max(0, Date.now() - puzzleStartMs);
+        }
+        try {
+            localStorage.setItem(runSaveKey(save.mode), JSON.stringify(save));
+        } catch (e) {
+            // Quota — the accumulated recordings are far and away the
+            // heaviest field. Drop them and retry: the resume still works,
+            // the eventual score submit just ships without a replay.
+            try {
+                save.recordings = [];
+                save.recordingsDropped = true;
+                localStorage.setItem(runSaveKey(save.mode), JSON.stringify(save));
+            } catch (e2) { /* storage truly unavailable — no resume */ }
+        }
+        refreshContinueCards();
+    }
+
+    // Resume a saved run. Boundary saves re-enter through startNextPuzzle
+    // (fresh random puzzle — identical to what advance() would have
+    // built); mid-puzzle saves restore the exact board, clock, and
+    // in-progress recording the player left.
+    function resumeRun(mode) {
+        if (state !== STATE.MENU) return;
+        const save = loadRunSave(mode);
+        if (!save) { refreshContinueCards(); return; }
+
+        isPractice          = mode === 'practice';
+        isFirstRunAutoStart = false;
+        deferredStartTracking = null;
+        activeType     = save.type;
+        level          = save.level;
+        solvedCount    = save.solvedCount || 0;
+        hintsUsed      = save.hintsUsed || 0;
+        totalSolveTime = save.totalSolveTime || 0;
+        timeRemaining  = save.timeRemaining || 0;
+        growthSequence = Array.isArray(save.growthSequence) ? save.growthSequence : [];
+        recordings     = Array.isArray(save.recordings) ? save.recordings : [];
+        sessionToken   = save.sessionToken || null;
+        runStartedAtMs = save.runStartedAtMs || 0;
+        pendingHighlight = null;
+
+        // Keep the mode picker (body class, subtitle, persisted pick) in
+        // step with what's actually being played.
+        if (typeof ModePicker !== 'undefined' && ModePicker.setMode) ModePicker.setMode(mode);
+
+        // Same game-phase music handoff as startGame — see the comment
+        // there for the iPad stop+start rationale.
+        if (typeof Music !== 'undefined') {
+            if (Music.setMenuPhase) Music.setMenuPhase(false);
+            const stillMenu = Music.isMenuSongPlaying && Music.isMenuSongPlaying();
+            if (stillMenu && Music.stop) Music.stop();
+            if (Music.start) Music.start();
+        }
+        // The original run's start was recorded in its own visit; this
+        // visit's funnel needs its own "chose to play" milestone.
+        if (typeof Tracking !== 'undefined' && Tracking.recordStart) {
+            Tracking.recordStart(isPractice ? 'practice' : 'marathon', activeType);
+        }
+
+        if (save.boundary || !save.maze) {
+            // Between puzzles: startNextPuzzle owns level++, the fresh time
+            // grant, HUD, state flip, and the build.
+            startNextPuzzle();
+        } else {
+            state = STATE.PLAYING;
+            puzzleLive = true;
+            showOnly(hudEl);
+            const decoded = decodeType(activeType);
+            Maze.setQuadMode(decoded.quadMode);
+            Maze.setPathCount(decoded.pathCount);
+            Maze.loadSnapshot(save.maze);
+            if (save.gates && typeof Gates !== 'undefined' && Gates.restore) {
+                Gates.restore(save.gates);
+                if (Maze.recompute) Maze.recompute();
+            } else if (typeof Gates !== 'undefined' && Gates.clear) {
+                Gates.clear();
+            }
+            Render.refit();
+            Render.draw();
+            // Same bypass-newPuzzle housekeeping PotD's snapshot load does:
+            // SFX diff baselines, then adopt the saved recording (AFTER
+            // loadSnapshot — restoreRecording anchors undo on the live
+            // board).
+            if (typeof Game !== 'undefined') {
+                if (Game.resetSfxBaselines) Game.resetSfxBaselines();
+                if (Game.restoreRecording)  Game.restoreRecording(save.recording || null);
+            }
+            const logical = {
+                rows: decoded.quadMode ? save.maze.rows / 2 : save.maze.rows,
+                cols: decoded.quadMode ? save.maze.cols / 2 : save.maze.cols,
+            };
+            updateHud(logical);
+            if (hudHowTo) hudHowTo.hidden = true;
+            if (hudQuit) {
+                hudQuit.setAttribute('data-i18n', 'marathon.quit');
+                hudQuit.textContent = I18n.t('marathon.quit');
+            }
+            // Clock resumes where it stopped; the current puzzle's solve
+            // time keeps accruing from its pre-quit elapsed.
+            puzzleStartMs = Date.now() - (save.puzzleElapsedMs || 0);
+            if (!isPractice) startTimer();
+            if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
+            if (typeof CgSdk !== 'undefined') CgSdk.gameplayStart();
+            if (typeof Tooltip !== 'undefined') scheduleLockTip();
+            saveRunState();   // refresh savedAt so the slot reflects the live run
+        }
+    }
+
+    // Menu Continue cards — one per saved mode, shown only on that mode's
+    // tab (the player's persisted mode pick lands them on the right tab
+    // anyway). Static label is data-i18n; the "Puzzle N · type" detail is
+    // painted here.
+    function refreshContinueCards() {
+        const picked = (typeof ModePicker !== 'undefined' && ModePicker.getMode)
+            ? ModePicker.getMode() : 'practice';
+        for (const mode of ['marathon', 'practice']) {
+            const card = $('continueRunCard-' + mode);
+            if (!card) continue;
+            const save = loadRunSave(mode);
+            const show = !!save && picked === mode;
+            card.hidden = !show;
+            if (show) {
+                const detailEl = card.querySelector('.continueRunDetail');
+                if (detailEl) {
+                    // Boundary saves resume INTO level+1 (startNextPuzzle
+                    // increments); mid-puzzle saves resume level itself.
+                    const n = save.boundary ? save.level + 1 : save.level;
+                    detailEl.textContent =
+                        I18n.t('menu.continuePuzzle', { n: n })
+                        + ' · ' + I18n.t('marathon.mode' + save.type.toUpperCase());
+                }
+            }
+        }
+    }
+
     function startGame(type, practice, firstRunAutoStart) {
         isPractice       = !!practice;
         // Only autoStartFirstPractice passes the 3rd arg — every normal
         // start (menu card click) leaves it undefined, clearing the flag.
         isFirstRunAutoStart = !!firstRunAutoStart;
+        // Choosing a fresh run of this mode abandons its saved one (the
+        // Continue card was right there). The OTHER mode's save survives —
+        // one slot per mode.
+        clearRunSave(practice ? 'practice' : 'marathon');
+        runStartedAtMs   = Date.now();
         activeType       = type;
         sessionToken     = null;  // cleared until /api/game/start resolves
         level            = 0;
@@ -807,6 +1065,10 @@ const Marathon = (() => {
         // player's allotment for the puzzle they can't even see yet.
         // Restarts in onPuzzleReady once the new puzzle is on-screen.
         stopTimer();
+        // Build starting — the previous board is no longer the live
+        // puzzle. saveRunState treats the build window as a boundary
+        // (with the level/time grant below rolled back).
+        puzzleLive = false;
 
         level++;
         const decoded   = decodeType(activeType);
@@ -857,7 +1119,11 @@ const Marathon = (() => {
     // countdown so build time isn't deducted from the player's allotment.
     function onPuzzleReady() {
         if (state !== STATE.PLAYING) return;
+        puzzleLive = true;
         puzzleStartMs = Date.now();
+        // Checkpoint the run at every puzzle boundary — a crash or killed
+        // tab from here on resumes at this puzzle instead of losing the run.
+        saveRunState();
         // Practice is untimed — no countdown, so the game only ever ends when
         // the player quits. Marathon starts its per-puzzle clock here.
         if (!isPractice) startTimer();
@@ -1106,10 +1372,18 @@ const Marathon = (() => {
         }
 
         // No auto-timeout — player taps (popup or canvas) to call advance().
+
+        // Boundary checkpoint: the solve (and its recording) is banked, so
+        // quitting/crashing during the transition popup resumes into the
+        // NEXT puzzle rather than replaying this one.
+        saveRunState();
     }
 
     function gameOver() {
         state = STATE.GAME_OVER;
+        puzzleLive = false;
+        // The run ended for real — nothing to continue.
+        clearRunSave(currentRunMode());
         stopTimer();
         clearTransition();
         // Cancel the pending lock-tip timer so it can't fire over the
@@ -1154,6 +1428,11 @@ const Marathon = (() => {
     }
 
     function quitToMenu() {
+        // Quit no longer abandons the run — checkpoint it first so the
+        // menu offers Continue. (No-op unless a run is actually in
+        // progress; the auto-start run and zero-progress runs are
+        // filtered inside saveRunState.)
+        saveRunState();
         clearTransition();
         if (callbacks.quit) callbacks.quit();
         // Kill any sustained SFX loops (currently just 'glitch_overlap', but
@@ -1557,7 +1836,14 @@ const Marathon = (() => {
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify(payload)
         });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        if (!resp.ok) {
+            // Carry the status so callers can tell a permanent rejection
+            // (4xx — e.g. an expired sessionToken on a run resumed >6h
+            // after it started) from a retryable network/server failure.
+            const err = new Error('HTTP ' + resp.status);
+            err.status = resp.status;
+            throw err;
+        }
         return resp.json();
     }
 
@@ -1588,7 +1874,13 @@ const Marathon = (() => {
         const remaining = [];
         for (const p of pending) {
             try { await submitToServer(p); }
-            catch (e) { remaining.push(p); }
+            catch (e) {
+                // 4xx = the server examined and rejected this payload
+                // (expired/used token, malformed) — it will never succeed,
+                // so requeueing would retry it forever. Only transient
+                // failures (network, 5xx) stay queued.
+                if (!(e && e.status >= 400 && e.status < 500)) remaining.push(p);
+            }
         }
         savePending(remaining);
     }
@@ -1679,9 +1971,16 @@ const Marathon = (() => {
             if (board.length > MARATHON.LEADERBOARD_TOP_N) board.length = MARATHON.LEADERBOARD_TOP_N;
             saveBoard(activeType, board);
 
-            const pending = loadPending();
-            pending.push(payload);
-            savePending(pending);
+            // Queue for retry — but not when the server just REJECTED it
+            // (4xx, e.g. a token expired past MAX_SESSION_MS on a resumed
+            // run): that payload can never succeed, and flushPending
+            // would re-fail it on every future save. The local-board
+            // entry above still shows the player their score.
+            if (!(e && e.status >= 400 && e.status < 500)) {
+                const pending = loadPending();
+                pending.push(payload);
+                savePending(pending);
+            }
         }
 
         // Player may have navigated away during the in-flight submit.

@@ -245,6 +245,44 @@
                 <button type="button" class="menu-mode-tab" data-mode="marathon" data-i18n="mode.marathon.name" aria-pressed="false">🏃 Marathon</button>
             </div>
             <p class="menuSubtitle" data-i18n="marathon.subtitle">Solve as many puzzles as you can before time runs out</p>
+            <!-- Continue-your-run cards (marathon.js saved-run resume).
+                 One per mode slot; refreshContinueCards shows at most the
+                 card matching the active mode tab and paints its
+                 "Puzzle N · type" detail. The discard ✕ is a sibling
+                 button (nested buttons are invalid HTML). -->
+            <div id="continueRunRow">
+                <div class="continueRunCard" id="continueRunCard-marathon" hidden>
+                    <button type="button" class="continueRunMain" data-run-resume="marathon">
+                        <span class="continueRunPlay" aria-hidden="true">▶</span>
+                        <span class="continueRunText">
+                            <span class="continueRunLabel" data-i18n="menu.continueRun">Continue your run</span>
+                            <span class="continueRunDetail"></span>
+                        </span>
+                    </button>
+                    <button type="button" class="continueRunDiscard" data-run-discard="marathon" data-i18n-attr="title:menu.discardRun,aria-label:menu.discardRun" title="Discard saved run">✕</button>
+                </div>
+                <div class="continueRunCard" id="continueRunCard-practice" hidden>
+                    <button type="button" class="continueRunMain" data-run-resume="practice">
+                        <span class="continueRunPlay" aria-hidden="true">▶</span>
+                        <span class="continueRunText">
+                            <span class="continueRunLabel" data-i18n="menu.continueRun">Continue your run</span>
+                            <span class="continueRunDetail"></span>
+                        </span>
+                    </button>
+                    <button type="button" class="continueRunDiscard" data-run-discard="practice" data-i18n-attr="title:menu.discardRun,aria-label:menu.discardRun" title="Discard saved run">✕</button>
+                </div>
+            </div>
+            <!-- PotD streak strip (potd-streaks.js): 🔥 daily streak,
+                 ⭐ perfect (hint-free) streak, 📅 calendar, and the
+                 next-puzzles countdown. CSS shows it only in PotD mode
+                 (body.mode-potd). Chips carry data-i18n-attr titles only —
+                 the numbers are painted by JS and stay language-neutral. -->
+            <div id="potdStreakStrip">
+                <span class="potdStreakChip" id="potdStreakFire" data-i18n-attr="title:potd.streak.currentTitle" title="Daily streak">🔥&nbsp;<span id="potdStreakFireVal">0</span><span class="potdStreakBest" id="potdStreakFireBest"></span></span>
+                <span class="potdStreakChip" id="potdStreakStar" data-i18n-attr="title:potd.streak.perfectTitle" title="Perfect streak">⭐&nbsp;<span id="potdStreakStarVal">0</span><span class="potdStreakBest" id="potdStreakStarBest"></span></span>
+                <button type="button" class="potdStreakChip potdStreakCalBtn" id="potdCalendarBtn" data-i18n-attr="title:potd.cal.button,aria-label:potd.cal.button" title="Calendar">📅</button>
+                <span class="potdStreakCountdown" id="potdCountdown"></span>
+            </div>
             <div class="menuSection">
                 <h2 data-i18n="marathon.regularTiles">Singular tiles</h2>
                 <div class="menuModeRow">
@@ -327,6 +365,12 @@
             <div id="potdSolveRank" hidden></div>
             <div id="potdSolveIneligible" data-i18n="potd.solved.ineligible" hidden>Not counted on the leaderboard.</div>
             <div id="potdSolveOffline" data-i18n="potd.solved.offline" hidden>Offline — not submitted.</div>
+            <!-- Streak + perfect lines, painted by Potd.onSolve from
+                 PotdStreaks. The perfect line doubles as the near-miss
+                 tease on hint-assisted solves (no data-i18n — text is
+                 dynamic per solve). -->
+            <div id="potdSolveStreak" hidden></div>
+            <div id="potdSolvePerfect" hidden></div>
             <!-- Name entry row, shown only on eligible online runs. Mirrors
                  marathon's gameOverNameRow pattern. stopPropagation lets the
                  player tap inside the input/button without dismissing the
@@ -419,6 +463,31 @@
                 <div class="combo-modal-buttons">
                     <button class="combo-modal-btn cancel" id="potdWatchedReplayCancelBtn" type="button" data-i18n="potd.watchedReplay.cancel">Cancel</button>
                     <button class="combo-modal-btn apply" id="potdWatchedReplayContinueBtn" type="button" data-i18n="potd.watchedReplay.continue">Play anyway</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PotD calendar (potd-calendar.js) — month grid of solved (🔥
+             accent fill) and hint-free (⭐) days, data from PotdStreaks.
+             Same combo-modal shell + display:flex/none show pattern as
+             the confirm modals above. Month/weekday names are localized
+             at render time via Intl, so only the title/legend need i18n. -->
+        <div class="combo-modal-overlay" id="potdCalendarOverlay">
+            <div class="combo-modal potd-cal-modal">
+                <div class="combo-modal-title" data-i18n="potd.cal.title">Daily Puzzle Calendar</div>
+                <div class="potd-cal-nav">
+                    <button type="button" class="potd-cal-navBtn" id="potdCalPrevBtn" aria-label="‹">‹</button>
+                    <div class="potd-cal-month" id="potdCalMonthLabel"></div>
+                    <button type="button" class="potd-cal-navBtn" id="potdCalNextBtn" aria-label="›">›</button>
+                </div>
+                <div class="potd-cal-weekdays" id="potdCalWeekdays"></div>
+                <div class="potd-cal-grid" id="potdCalGrid"></div>
+                <div class="potd-cal-legend">
+                    <span class="potd-cal-legendItem"><span class="potd-cal-swatch solved"></span><span data-i18n="potd.cal.legendSolved">Solved</span></span>
+                    <span class="potd-cal-legendItem"><span class="potd-cal-swatch">⭐</span><span data-i18n="potd.cal.legendPerfect">Hint-free</span></span>
+                </div>
+                <div class="combo-modal-buttons">
+                    <button class="combo-modal-btn apply" id="potdCalCloseBtn" type="button" data-i18n="marathon.close">Close</button>
                 </div>
             </div>
         </div>
@@ -1039,7 +1108,7 @@
     (function() {
         var dev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
         var bust = dev ? ('?t=' + Date.now()) : '';
-        var srcs = ['config.js','cg-sdk.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
+        var srcs = ['config.js','cg-sdk.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd-streaks.js','potd-calendar.js','potd.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
         for (var i = 0; i < srcs.length; i++) {
             document.write('<script src="' + srcs[i] + bust + '"><\/script>');
         }
