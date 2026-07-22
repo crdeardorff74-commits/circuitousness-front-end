@@ -2,6 +2,13 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-22 — Release v0.95 (menu title/tabs no longer jump on tab switch)
+- **Menu vertical-centering rework** (user: selecting the PotD tab made the title + mode tabs jump up — the streak strip's extra height re-centered the whole stack): the `margin-top:auto` (titleFrame) / `margin-bottom:auto` (legal footer) spare-space-splitting pair is replaced by a `#menu::before` flex spacer with fixed basis `clamp(0rem, 7vh, 4.5rem)`. Title/tabs now sit at a constant top offset; tab switches only move content below; spare space collects at the bottom.
+- Spacer uses `flex-shrink:999` + `min-height:0` so it collapses before any real content squeezes — short-viewport/CrazyGames-iframe overflow behavior (top-anchor + scroll) is unchanged. Pseudo-element scoping keeps the intro overlay untouched.
+- Side effect to eyeball: on tall windows the menu sits a bit higher than the old dead-center. The spacer's `7vh`/`4.5rem` is the one knob if it needs lowering.
+- Not browser-verified (standing rule — user tests).
+- Version bumped 0.94 → 0.95.
+
 ## 2026-07-22 — Release v0.94 (supersedes unshipped v0.93 — full retention pass ships here)
 - **v0.93 was never zipped/deployed** — this bump rolls it plus all same-day follow-ups into one release. The complete change list lives in the v0.93 entry below (streaks + calendar + countdown + saved-run resume + PotD resume + all fixes); everything below this line ships for the first time in 0.94.
 - Post-0.93-entry additions covered by that entry's amendments: PotD quit=pause + ⏸ resume badge + wall-clock rule, streak-strip ✅ n/8 today-chip + calendar per-day counts, first-solve double-count fix (recount from slot markers + reconcileToday self-heal), chip explainer bubbles (hover on desktop replacing native titles / tap on touch), Pause/Quit labels in all three modes, ≤700px Quit→top-left, cursor + bubble-width polish.
