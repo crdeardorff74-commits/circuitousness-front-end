@@ -1319,6 +1319,15 @@ const Potd = (() => {
         // rule (#hudLevel:empty in styles.css) hides it instead of showing the
         // wrong size in the top-left corner.
         if (hudLevel) hudLevel.textContent = '';
+        // Quit is a pause here too (mid-solve attempts checkpoint and
+        // resume) — label it like Marathon does. goToMenu's restore
+        // resets to plain marathon.quit, so every game entry re-asserts
+        // its own label.
+        const quitLabelBtn = document.getElementById('hudQuitBtn');
+        if (quitLabelBtn && typeof I18n !== 'undefined' && I18n.t) {
+            quitLabelBtn.setAttribute('data-i18n', 'marathon.pauseQuit');
+            quitLabelBtn.textContent = I18n.t('marathon.pauseQuit');
+        }
         currentSlot = slot;
         puzzleStartMs = Date.now();
         // Reset the per-attempt hint counter — incremented by
@@ -1435,6 +1444,13 @@ const Potd = (() => {
             hudType.textContent = I18n.t('marathon.mode' + slot.toUpperCase());
         }
         if (hudLevel) hudLevel.textContent = '';
+        // Same Pause/Quit label startPuzzle sets — a resumed attempt
+        // quits/checkpoints identically.
+        const quitLabelBtn = document.getElementById('hudQuitBtn');
+        if (quitLabelBtn && typeof I18n !== 'undefined' && I18n.t) {
+            quitLabelBtn.setAttribute('data-i18n', 'marathon.pauseQuit');
+            quitLabelBtn.textContent = I18n.t('marathon.pauseQuit');
+        }
         currentSlot   = slot;
         hintsUsed     = saved.hintsUsed || 0;
         puzzleStartMs = saved.startMs || Date.now();

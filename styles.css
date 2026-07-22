@@ -2073,6 +2073,21 @@ html.mode-debug #settingsOverlay { display: none !important; }
     }
     /* Tighter label bubbles at ~390px. */
     #hud > div { padding: 0.3rem 0.45rem; }
+    /* Quit → top-LEFT: the label grew to "PAUSE/QUIT" (saved-run
+       resume, 2026-07-22) and at ~390px its right-flow slot reaches
+       the centered timer. The left slot is free at this width —
+       #hudLevel already moved below the strip (rule above). Absolute
+       pulls it out of the flex flow, leaving ⚙ alone at the right
+       edge. Gated on the How-to button being hidden: the one run
+       where How-to IS visible (first-visit auto-start) owns top-left,
+       but that run is Practice, whose hidden timer frees the right
+       edge — so its "📅 Daily & More" quit keeps the flow slot. */
+    #hudHowToBtn[hidden] ~ #hudQuitBtn {
+        position: absolute;
+        left: max(1rem, env(safe-area-inset-left));
+        top: 50%;
+        transform: translateY(-50%);
+    }
 }
 /* Portrait phones. (The Now Playing chip's title-sized max-width used
    to live here before moving into the base rule — the chip is handled
