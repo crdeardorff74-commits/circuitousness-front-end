@@ -2,6 +2,11 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-22 — Release v0.94 (supersedes unshipped v0.93 — full retention pass ships here)
+- **v0.93 was never zipped/deployed** — this bump rolls it plus all same-day follow-ups into one release. The complete change list lives in the v0.93 entry below (streaks + calendar + countdown + saved-run resume + PotD resume + all fixes); everything below this line ships for the first time in 0.94.
+- Post-0.93-entry additions covered by that entry's amendments: PotD quit=pause + ⏸ resume badge + wall-clock rule, streak-strip ✅ n/8 today-chip + calendar per-day counts, first-solve double-count fix (recount from slot markers + reconcileToday self-heal), chip explainer bubbles (hover on desktop replacing native titles / tap on touch), Pause/Quit labels in all three modes, ≤700px Quit→top-left, cursor + bubble-width polish.
+- Version bumped 0.93 → 0.94.
+
 ## 2026-07-22 — Release v0.93 (retention pass: streaks, calendar, countdown, saved-run resume)
 - **Context: CG Basic Launch ended below the bar** (desktop 8/15, mobile 6/15; D1 retention the weak metric — 1.65% desktop vs their 10–15% target). No official email yet; docs say verdict comes by email and resubmission after "meaningful improvements" is allowed. This release is the retention ammunition for the second-Basic-Launch request (see 07-20 entry's outreach plan).
 - **PotD streaks** (new `potd-streaks.js`): 🔥 = consecutive UTC days with ≥1 slot solved (ANY solve counts, even ineligible retries — habit metric, not leaderboard); ⭐ = days with ≥1 hint-free solve. Record: `_potd_streak_v1` `{days:{date:{s,p}}, best, pBest, bf}`. One-time backfill (`bf` flag) from the legacy never-pruned `_potd_<date>_<slot>='solved'` keys — pre-feature players keep credit; backfilled days can't be ⭐. Streak alive through "yesterday" (Wordle convention). Menu strip (body.mode-potd-gated) + calendar 📅 + h:mm:ss countdown to UTC midnight, 1s tick.
