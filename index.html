@@ -444,7 +444,10 @@
         <div class="combo-modal-overlay" id="potdWatchWarnOverlay">
             <div class="combo-modal potd-confirm-modal">
                 <div class="combo-modal-title" data-i18n="potd.watchWarn.title">Watch this replay?</div>
-                <p data-i18n="potd.watchWarn.body">You haven't played this puzzle yet. Watching a replay reveals the solution, so you'll no longer be eligible for today's leaderboard on this puzzle.</p>
+                <!-- Body id lets guardWatch swap in the in-progress wording
+                     (potd.watchWarn.bodyInProgress) when a ⏸ resume save
+                     exists for this slot. -->
+                <p id="potdWatchWarnBody" data-i18n="potd.watchWarn.body">You haven't played this puzzle yet. Watching a replay reveals the solution, so you'll no longer be eligible for today's leaderboard on this puzzle.</p>
                 <div class="combo-modal-buttons">
                     <button class="combo-modal-btn cancel" id="potdWatchWarnCancelBtn" type="button" data-i18n="potd.watchWarn.cancel">Cancel</button>
                     <button class="combo-modal-btn apply" id="potdWatchWarnContinueBtn" type="button" data-i18n="potd.watchWarn.continue">Watch anyway</button>

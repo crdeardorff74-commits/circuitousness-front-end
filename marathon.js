@@ -873,9 +873,11 @@ const Marathon = (() => {
             };
             updateHud(logical);
             if (hudHowTo) hudHowTo.hidden = true;
+            // Same Pause/Quit label startNextPuzzle sets for normal runs —
+            // a resumed run quits/checkpoints identically.
             if (hudQuit) {
-                hudQuit.setAttribute('data-i18n', 'marathon.quit');
-                hudQuit.textContent = I18n.t('marathon.quit');
+                hudQuit.setAttribute('data-i18n', 'marathon.pauseQuit');
+                hudQuit.textContent = I18n.t('marathon.pauseQuit');
             }
             // Clock resumes where it stopped; the current puzzle's solve
             // time keeps accruing from its pre-quit elapsed.
@@ -1096,9 +1098,13 @@ const Marathon = (() => {
         // menu (PotD / Marathon / quad types) is behind it. The data-i18n
         // attribute is swapped too so a mid-run language change re-renders
         // the right string. Restored by goToMenu and by any normal start
-        // (isFirstRunAutoStart false → quit branch).
+        // (isFirstRunAutoStart false → pause/quit branch).
+        // Normal Marathon/Zen runs say "Pause/Quit" — quitting checkpoints
+        // the run (saveRunState) rather than abandoning it. PotD keeps the
+        // plain marathon.quit label via goToMenu's restore, since its quit
+        // genuinely discards the attempt.
         if (hudQuit) {
-            const quitKey = isFirstRunAutoStart ? 'marathon.moreModes' : 'marathon.quit';
+            const quitKey = isFirstRunAutoStart ? 'marathon.moreModes' : 'marathon.pauseQuit';
             hudQuit.setAttribute('data-i18n', quitKey);
             hudQuit.textContent = I18n.t(quitKey);
         }

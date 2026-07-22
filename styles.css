@@ -1113,6 +1113,36 @@ html.is-safari #introTitle .titleMazeO + .titleWord {
 }
 .menuModeBtn.potd-solved:hover .modeThumb { filter: brightness(0.65) saturate(0.85); }
 .menuModeBtn.potd-solved:hover span       { color: rgba(220, 240, 255, 0.85); }
+/* In-progress (⏸): a resumable checkpoint exists for this slot — the
+   click resumes the attempt (eligibility intact, wall clock running).
+   refreshMenuIndicators guarantees the classes are mutually exclusive
+   (started is suppressed while a save exists; solved/watched win). Blue
+   family — matches the modal-accent #6eb5ff so it reads as "action
+   available", not the started-badge's amber "warning". */
+.menuModeBtn.potd-inprogress:not(.potd-solved) {
+    border-color: rgba(110, 181, 255, 0.7);
+    box-shadow: 0 0 0.4rem rgba(110, 181, 255, 0.25);
+}
+.menuModeBtn.potd-inprogress:not(.potd-solved)::after {
+    content: '⏸';
+    position: absolute;
+    top: 0.3rem;
+    right: 0.4rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(61, 125, 212, 0.95);
+    color: #fff;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 0.8rem;
+    line-height: 1;
+    pointer-events: none;
+    box-shadow: 0 0 0.35rem rgba(0, 0, 0, 0.55);
+    z-index: 1;
+}
 .menuModeBtn.potd-started:not(.potd-solved) {
     border-color: rgba(230, 180, 60, 0.7);
 }
@@ -1165,12 +1195,14 @@ html.is-safari #introTitle .titleMazeO + .titleWord {
    also hides — marathon doesn't have the "spent today" concept. */
 body:not(.mode-potd) .menuModeBtn.potd-solved,
 body:not(.mode-potd) .menuModeBtn.potd-started,
+body:not(.mode-potd) .menuModeBtn.potd-inprogress,
 body:not(.mode-potd) .menuModeBtn.potd-watched {
     border-color: rgba(120, 180, 240, 0.45); /* restore default */
     box-shadow: none;
 }
 body:not(.mode-potd) .menuModeBtn.potd-solved::after,
 body:not(.mode-potd) .menuModeBtn.potd-started:not(.potd-solved)::after,
+body:not(.mode-potd) .menuModeBtn.potd-inprogress:not(.potd-solved)::after,
 body:not(.mode-potd) .menuModeBtn.potd-watched:not(.potd-solved):not(.potd-started)::after {
     display: none;
 }

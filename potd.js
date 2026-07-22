@@ -328,8 +328,14 @@ const Potd = (() => {
             catch (e) { /* private mode — skip */ }
             if (lastSeen !== p.generatedAt) {
                 if (lastSeen !== null) {
-                    try { localStorage.removeItem(stateKey(p.slot, date)); }
-                    catch (e) {}
+                    try {
+                        localStorage.removeItem(stateKey(p.slot, date));
+                        // A re-seeded slot's puzzle is a DIFFERENT board —
+                        // an in-progress save against the old one must die
+                        // with it or resume would restore a puzzle the
+                        // server no longer scores.
+                        localStorage.removeItem(resumeKey(date, p.slot));
+                    } catch (e) {}
                 }
                 try { localStorage.setItem(genAtKey(p.slot, date), p.generatedAt); }
                 catch (e) {}
@@ -352,6 +358,10 @@ const Potd = (() => {
             try {
                 localStorage.removeItem(stateKey(slot, date));
                 localStorage.removeItem(genAtKey(slot, date));
+                // Same reasoning as the mismatch path above — the server
+                // dropped this slot, so any in-progress save refers to a
+                // board that no longer exists server-side.
+                localStorage.removeItem(resumeKey(date, slot));
             } catch (e) {}
         }
         // After potentially clearing slot states, refresh the menu so the
@@ -405,15 +415,102 @@ const Potd = (() => {
         } catch (e) {}
     }
 
+    // ── In-progress attempt saves (quit/pagehide → resume) ──
+    //
+    // A mid-solve PotD attempt persists to localStorage so quitting (or a
+    // killed tab) no longer costs the player their progress OR their
+    // eligibility: resume restores the exact board + the ORIGINAL session
+    // token, so the server sees one continuous session and /potd/start is
+    // never re-hit (re-starting is what flags the second attempt).
+    //
+    // WALL-CLOCK BY DESIGN: resume restores the board, NOT a paused
+    // clock — puzzleStartMs comes back as the original epoch, so away
+    // time counts. The PotD board is time-ranked; a clock that stopped
+    // on quit would make quitting a free "study the board" button.
+    // (Marathon's exact-clock restore is different on purpose: its
+    // countdown is a resource, not a score.) This also matches the
+    // server's timing validation, which only believes wall time.
+    //
+    //   key = <slug>_potd_resume_<date>_<slot>
+    // The 'resume_' infix keeps these clear of the bare state keys
+    // (<slug>_potd_<date>_<slot>) that potd-streaks.js's backfill regex
+    // scans. Pruned alongside the puzzle caches on init/day-rollover.
+    const RESUME_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;   // server MAX_SESSION_MS
+
+    function resumeKey(date, slot) {
+        return projectSlug() + '_potd_resume_' + date + '_' + slot;
+    }
+    // Cheap existence probe — refreshMenuIndicators runs often and must
+    // not JSON.parse eight board snapshots per repaint.
+    function hasResume(date, slot) {
+        try { return localStorage.getItem(resumeKey(date, slot)) !== null; }
+        catch (e) { return false; }
+    }
+    function loadResume(date, slot) {
+        try {
+            const raw = localStorage.getItem(resumeKey(date, slot));
+            if (!raw) return null;
+            const data = JSON.parse(raw);
+            if (!data || data.v !== 1 || !data.maze) return null;
+            return data;
+        } catch (e) { return null; }
+    }
+    function clearResume(date, slot) {
+        try { localStorage.removeItem(resumeKey(date, slot)); } catch (e) {}
+        refreshMenuIndicators();
+    }
+    function pruneOldResumes(keepDate) {
+        try {
+            const prefix = projectSlug() + '_potd_resume_';
+            const stale = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && k.indexOf(prefix) === 0 && k.indexOf(prefix + keepDate) !== 0) {
+                    stale.push(k);
+                }
+            }
+            for (const k of stale) localStorage.removeItem(k);
+        } catch (e) {}
+    }
+
+    // Checkpoint the live attempt. Called from quitToMenu and the
+    // pagehide/visibility-hidden listeners; a no-op outside PLAYING (so
+    // the solve modal, replays, and menu idling never write).
+    function saveCurrentAttempt() {
+        if (state !== STATE.PLAYING || !currentSlot) return;
+        const date = (puzzles && puzzles.date) || todayUTC();
+        const data = {
+            v: 1,
+            maze:  Maze.snapshotState(),
+            gates: (typeof Gates !== 'undefined' && Gates.snapshot) ? Gates.snapshot() : null,
+            recording: (typeof Game !== 'undefined') ? Game.recording : null,
+            hintsUsed: hintsUsed,
+            // Original epoch — resume re-anchors the count-up timer here,
+            // which is what makes the clock wall-time (see block comment).
+            startMs: puzzleStartMs,
+            sessionToken: sessionToken,
+            eligible: eligible,
+            savedAtMs: Date.now(),
+        };
+        try { localStorage.setItem(resumeKey(date, currentSlot), JSON.stringify(data)); }
+        catch (e) { /* quota/private mode — quit just loses progress, as before */ }
+        refreshMenuIndicators();
+    }
+
     function refreshMenuIndicators() {
         const date = puzzles ? puzzles.date : todayUTC();
         document.querySelectorAll('.menuModeBtn').forEach((btn) => {
             const slot = btn.dataset.mode;
             if (!slot || SLOTS.indexOf(slot) < 0) return;
             const s = getSlotState(slot, date);
-            btn.classList.toggle('potd-solved',  s === 'solved');
-            btn.classList.toggle('potd-started', s === 'started');
-            btn.classList.toggle('potd-watched', s === 'watched');
+            // A resumable save upgrades the 'started' badge (!) to the
+            // in-progress badge (⏸) — the click resumes rather than
+            // warning about ineligibility. Solved/watched still win.
+            const resumable = s === 'started' && hasResume(date, slot);
+            btn.classList.toggle('potd-solved',     s === 'solved');
+            btn.classList.toggle('potd-inprogress', resumable);
+            btn.classList.toggle('potd-started',    s === 'started' && !resumable);
+            btn.classList.toggle('potd-watched',    s === 'watched');
         });
     }
 
@@ -1098,6 +1195,24 @@ const Potd = (() => {
             return;
         }
 
+        // Resumable in-progress attempt? Restore it instead of running the
+        // fresh-start pipeline — the save carries the ORIGINAL session
+        // token, so /potd/start is never re-hit and eligibility survives
+        // the quit. Watched slots never resume (eligibility already
+        // burned; the normal path shows the watched-replay disclaimer).
+        // Saves older than the server's token TTL can't submit anymore —
+        // discard and fall through to the normal retry flow.
+        if (local !== 'watched') {
+            const saved = loadResume(date, slot);
+            if (saved) {
+                if (Date.now() - (saved.startMs || 0) < RESUME_TOKEN_TTL_MS) {
+                    resumeAttempt(slot, saved);
+                    return;
+                }
+                clearResume(date, slot);
+            }
+        }
+
         // Sequential: ensurePuzzleAvailable MUST complete before postStart,
         // because the server's /potd/start endpoint refuses to issue a
         // session token for a slot that hasn't been seeded server-side yet
@@ -1286,6 +1401,65 @@ const Potd = (() => {
             scheduleLockTip();
         }
     }
+    // Restore a checkpointed attempt (see the resume-save block above for
+    // the design). Mirrors startPuzzle's snapshot-load tail — board,
+    // recording, HUD, music, tracking — but skips ensurePuzzleAvailable
+    // (the board comes from the save), skips /potd/start (the saved token
+    // IS the session), and re-anchors the count-up timer on the ORIGINAL
+    // start epoch so away time counts (wall-clock rule).
+    function resumeAttempt(slot, saved) {
+        sessionToken = saved.sessionToken || null;
+        eligible     = saved.eligible !== false;
+
+        const cfg = slotConfig(slot);
+        Maze.setQuadMode(cfg.quadMode);
+        Maze.setPathCount(cfg.pathCount);
+        Maze.loadSnapshot(saved.maze);
+        if (saved.gates && typeof Gates !== 'undefined' && Gates.restore) {
+            Gates.restore(saved.gates);
+            if (Maze.recompute) Maze.recompute();
+        } else if (typeof Gates !== 'undefined' && Gates.clear) {
+            Gates.clear();
+        }
+        Render.refit();
+        Render.draw();
+        if (typeof Game !== 'undefined') {
+            if (Game.resetSfxBaselines)  Game.resetSfxBaselines();
+            // AFTER loadSnapshot — restoreRecording anchors the undo
+            // history on the live board. Continues the saved move list so
+            // the eventual submit ships the full solve for replay.
+            if (Game.restoreRecording)   Game.restoreRecording(saved.recording || null);
+        }
+
+        if (hudType && typeof I18n !== 'undefined' && I18n.t) {
+            hudType.textContent = I18n.t('marathon.mode' + slot.toUpperCase());
+        }
+        if (hudLevel) hudLevel.textContent = '';
+        currentSlot   = slot;
+        hintsUsed     = saved.hintsUsed || 0;
+        puzzleStartMs = saved.startMs || Date.now();
+        startTimerDisplay();
+
+        // Same music/SFX/tracking tail as startPuzzle — see the comments
+        // there (esp. the Music-before-cinematic_bass ordering).
+        if (typeof Music !== 'undefined') {
+            if (Music.setMenuPhase) Music.setMenuPhase(false);
+            const stillMenu = Music.isMenuSongPlaying && Music.isMenuSongPlaying();
+            if (stillMenu && Music.stop) Music.stop();
+            if (Music.start) Music.start();
+        }
+        if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
+        // This visit's funnel gets its own "chose to play" milestone —
+        // same call the marathon resume makes.
+        if (typeof Tracking !== 'undefined' && Tracking.recordStart) Tracking.recordStart('potd', slot);
+
+        showHud();
+        hideBanner();
+        state = STATE.PLAYING;
+        if (typeof CgSdk !== 'undefined') CgSdk.gameplayStart();
+        if (typeof Tooltip !== 'undefined') scheduleLockTip();
+    }
+
     // Same lock-tip scheduling pattern marathon uses — see marathon.js
     // for the rationale. Cancelled on puzzle exit (quit-to-menu / solve)
     // so the tip can't fire over a non-puzzle screen.
@@ -1347,6 +1521,8 @@ const Potd = (() => {
         const slot = currentSlot;
 
         setSlotState(slot, date, 'solved');
+        // The attempt is finished — its checkpoint (if any) is spent.
+        clearResume(date, slot);
 
         // Streak bookkeeping (potd-streaks.js) — fires on every genuine
         // solve, eligible or not: the streak is a personal habit metric,
@@ -1580,16 +1756,37 @@ const Potd = (() => {
     async function guardWatch(slot) {
         if (!slot || SLOTS.indexOf(slot) < 0) return true;
         const date = (puzzles && puzzles.date) || todayUTC();
-        if (getSlotState(slot, date)) return true;   // already played → free
+        const st = getSlotState(slot, date);
+        // A resumable in-progress attempt is still live and still
+        // eligible — watching would reveal the solution of the very board
+        // the player is mid-solve on, so it needs the warning even though
+        // the slot state says 'started'. (Solved slots have nothing left
+        // to protect; watched slots already paid.)
+        const inProgress = st === 'started' && hasResume(date, slot);
+        if (st && !inProgress) return true;   // already played → free
+        // Swap the warning body for the in-progress wording — the default
+        // text claims "you haven't played this puzzle yet", which is
+        // wrong (and confusing) when a ⏸ save exists.
+        const bodyEl = document.getElementById('potdWatchWarnBody');
+        if (bodyEl && typeof I18n !== 'undefined' && I18n.t) {
+            bodyEl.textContent = I18n.t(inProgress
+                ? 'potd.watchWarn.bodyInProgress'
+                : 'potd.watchWarn.body');
+        }
         const ok = await showWatchWarnModal();
         if (!ok) return false;
+        // Watching torches the live attempt — discard the checkpoint so
+        // the slot can't resume a puzzle whose solution was just shown.
+        if (inProgress) clearResume(date, slot);
         // Mark 'watched' locally first (distinct from 'started') so the
         // menu indicator, the play-time disclaimer, and the don't-warn-twice
         // check all reflect it even if the network call below fails.
         setSlotState(slot, date, 'watched');
         // Burn eligibility server-side. Fire-and-forget: a failure just
         // leaves the local 'watched' mirror, which still drives the
-        // play-time disclaimer.
+        // play-time disclaimer. (For the in-progress case the session
+        // already exists server-side — the extra /start is a harmless
+        // re-flag.)
         try { await postStart(date, slot); } catch (e) {}
         return true;
     }
@@ -1709,6 +1906,12 @@ const Potd = (() => {
     }
 
     function quitToMenu() {
+        // Checkpoint the live attempt BEFORE tearing state down — quit is
+        // now "pause": the board, hint count, and session token persist so
+        // the slot card offers a resume (⏸) instead of the ineligible-
+        // retry path. No-op unless state === PLAYING (solve-modal exits
+        // arrive here as SOLVED and must not re-save a finished attempt).
+        saveCurrentAttempt();
         stopTimerDisplay();
         state = STATE.MENU;
         currentSlot = null;
@@ -1949,6 +2152,9 @@ const Potd = (() => {
             serverFetchResolved = false;
             queue               = [];
             slotWaiters.clear();
+            // Yesterday's in-progress saves can never submit (their
+            // puzzles and sessions rolled over with the date).
+            pruneOldResumes(now);
             refreshMenuIndicators();
         }, 60 * 1000);
 
@@ -1968,6 +2174,16 @@ const Potd = (() => {
             const cached = loadPuzzlesCache(today);
             puzzles = cached || { date: today, byslot: {} };
         }
+        // Drop stale in-progress saves from earlier dates (same hygiene
+        // as pruneOldPuzzleCaches, which fetchTodaysPuzzles handles).
+        pruneOldResumes(todayUTC());
+        // Checkpoint the live attempt when the tab is closed or
+        // backgrounded — mirrors marathon's listeners; saveCurrentAttempt
+        // no-ops unless a PotD puzzle is actually being played.
+        window.addEventListener('pagehide', saveCurrentAttempt);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') saveCurrentAttempt();
+        });
         ensureServerFetch();
     }
 
