@@ -4262,6 +4262,8 @@ html.dbgHidden #undoBtn { display: none !important; }
    under the mode subtitle: 🔥 current/best, ⭐ perfect current/best,
    📅 calendar button, and the next-puzzles countdown. */
 #potdStreakStrip {
+    /* Positioning context for the tap-explainer bubble (#potdStreakTip). */
+    position: relative;
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
@@ -4270,6 +4272,9 @@ html.dbgHidden #undoBtn { display: none !important; }
     margin-bottom: 0.9rem;
 }
 body:not(.mode-potd) #potdStreakStrip { display: none; }
+/* Every chip is a <button> now (tap toggles the explainer bubble on
+   mobile; 📅 opens the calendar), so the base rule carries the button
+   resets + interaction affordances. */
 .potdStreakChip {
     display: inline-flex;
     align-items: center;
@@ -4282,6 +4287,15 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
     font-size: clamp(0.85rem, 1.8vw, 1rem);
     font-weight: 600;
     line-height: 1;
+    font-family: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+    .potdStreakChip:hover {
+        background: rgba(40, 48, 90, 0.8);
+        border-color: rgba(150, 170, 220, 0.6);
+    }
 }
 .potdStreakBest {
     color: rgba(220, 240, 255, 0.5);
@@ -4289,16 +4303,30 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
     font-weight: 500;
     margin-left: 0.25rem;
 }
-.potdStreakCalBtn {
-    font-family: inherit;
-    cursor: pointer;
-    transition: border-color 0.15s ease, background 0.15s ease;
-}
-@media (hover: hover) and (pointer: fine) {
-    .potdStreakCalBtn:hover {
-        background: rgba(40, 48, 90, 0.8);
-        border-color: rgba(150, 170, 220, 0.6);
-    }
+/* Tap-explainer bubble: one shared popover under the strip, centered —
+   avoids per-chip anchoring math on a wrapping flex row. Painted by
+   showChipTip (potd-streaks.js); [hidden] hides it (no display property
+   here, so the UA rule keeps working). pointer-events: none so the next
+   tap lands on the page and the document-level dismiss handler fires. */
+#potdStreakTip {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 40;
+    width: max-content;
+    max-width: min(20rem, 85vw);
+    padding: 0.5rem 0.8rem;
+    background: rgba(15, 18, 40, 0.95);
+    border: 1px solid rgba(150, 170, 220, 0.4);
+    border-radius: 0.5rem;
+    color: rgba(220, 240, 255, 0.95);
+    font-size: 0.8rem;
+    font-weight: 500;
+    line-height: 1.35;
+    text-align: center;
+    box-shadow: 0 0.4rem 1.2rem rgba(0, 0, 0, 0.5);
+    pointer-events: none;
 }
 .potdStreakCountdown {
     color: rgba(255, 215, 0, 0.8);

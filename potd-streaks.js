@@ -294,6 +294,40 @@ const PotdStreaks = (() => {
         }
     }
 
+    // ── Chip explainer bubble ──
+    //
+    // Mobile has no hover, so the chips' title attributes were invisible
+    // there (user feedback 2026-07-22). Tapping a chip toggles a small
+    // popover under the strip with the chip's explanation — the SAME
+    // i18n strings the titles use, resolved at show time so language
+    // switches are picked up. Dismissed by tapping the chip again,
+    // tapping anywhere else, or a timeout.
+    const CHIP_TIP_TIMEOUT_MS = 6000;
+    let tipEl = null, tipFor = null, tipTimer = null;
+
+    function hideChipTip() {
+        if (tipTimer) { clearTimeout(tipTimer); tipTimer = null; }
+        if (tipEl) tipEl.hidden = true;
+        tipFor = null;
+    }
+    function showChipTip(chipId, key) {
+        const strip = document.getElementById('potdStreakStrip');
+        if (!strip) return;
+        if (!tipEl) {
+            tipEl = document.createElement('div');
+            tipEl.id = 'potdStreakTip';
+            tipEl.hidden = true;
+            strip.appendChild(tipEl);
+        }
+        // Second tap on the same chip toggles off.
+        if (tipFor === chipId && !tipEl.hidden) { hideChipTip(); return; }
+        tipEl.textContent = (typeof I18n !== 'undefined' && I18n.t) ? I18n.t(key) : key;
+        tipEl.hidden = false;
+        tipFor = chipId;
+        if (tipTimer) clearTimeout(tipTimer);
+        tipTimer = setTimeout(hideChipTip, CHIP_TIP_TIMEOUT_MS);
+    }
+
     function init() {
         fireValEl   = document.getElementById('potdStreakFireVal');
         fireBestEl  = document.getElementById('potdStreakFireBest');
@@ -308,6 +342,26 @@ const PotdStreaks = (() => {
                 if (typeof PotdCalendar !== 'undefined' && PotdCalendar.open) PotdCalendar.open();
             });
         }
+
+        // Explainer taps — stopPropagation keeps the chip tap from
+        // reaching the document-level dismiss listener below (which
+        // handles every OTHER tap, including the calendar button's —
+        // its own click handler still runs, the bubble just closes).
+        const chipTips = [
+            ['potdStreakFire',  'potd.streak.currentTitle'],
+            ['potdStreakStar',  'potd.streak.perfectTitle'],
+            ['potdStreakToday', 'potd.streak.todayTitle'],
+        ];
+        for (const pair of chipTips) {
+            const el = document.getElementById(pair[0]);
+            if (el) {
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showChipTip(pair[0], pair[1]);
+                });
+            }
+        }
+        document.addEventListener('click', hideChipTip);
 
         lastSeenDate = todayUTC();
         // Recount today from the slot markers + persist the backfill
