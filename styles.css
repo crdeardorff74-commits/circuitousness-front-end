@@ -4321,7 +4321,10 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
     transform: translateX(-50%);
     z-index: 40;
     width: max-content;
-    max-width: min(20rem, 85vw);
+    /* Wide enough that no language's chip explainer wraps on desktop
+       (the longest run ~60+ chars at this font size); narrow viewports
+       still cap at the screen and wrap there, unavoidably. */
+    max-width: min(32rem, 92vw);
     padding: 0.5rem 0.8rem;
     background: rgba(15, 18, 40, 0.95);
     border: 1px solid rgba(150, 170, 220, 0.4);
