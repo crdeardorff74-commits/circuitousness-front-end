@@ -99,6 +99,14 @@ const PotdCalendar = (() => {
                 const entry = history[fmtDate(viewYear, viewMonth, d)];
                 if (entry && entry.s > 0) {
                     cell.classList.add('solved');
+                    // How many of the day's slots were solved — the
+                    // per-day count the menu's ✅ chip shows for today,
+                    // here for every day. Bottom-right mini badge; the
+                    // ⭐ (if any) keeps the top-right corner.
+                    const count = document.createElement('span');
+                    count.className = 'potd-cal-count';
+                    count.textContent = String(entry.s);
+                    cell.appendChild(count);
                     if (entry.p) {
                         cell.classList.add('perfect');
                         const star = document.createElement('span');

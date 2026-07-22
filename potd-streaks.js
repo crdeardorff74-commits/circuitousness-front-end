@@ -184,19 +184,33 @@ const PotdStreaks = (() => {
 
     // ── Menu strip UI ──
 
-    let fireValEl, fireBestEl, starValEl, starBestEl, countdownEl;
+    let fireValEl, fireBestEl, starValEl, starBestEl, todayValEl, countdownEl;
     let lastSeenDate = null;
 
     function refreshStrip() {
         if (!fireValEl) return;
         const s = getStreaks();
-        fireValEl.textContent = String(s.current);
-        starValEl.textContent = String(s.perfect);
+        const t = (key, vars, fallback) =>
+            (typeof I18n !== 'undefined' && I18n.t) ? I18n.t(key, vars) : fallback;
+        // Streak chips carry a day-unit suffix ("1d" not bare "1"):
+        // the bare number read as a SOLVE count sitting next to the
+        // today-chip (user hit this 2026-07-22 — three solves in, the
+        // chips showed 1 and 1 because the streak was one day old).
+        fireValEl.textContent = t('potd.streak.chipDays', { n: s.current }, s.current + 'd');
+        starValEl.textContent = t('potd.streak.chipDays', { n: s.perfect }, s.perfect + 'd');
         // "· best" suffix only when it beats the current run — a best
-        // equal to current adds no information. Numeric + glyph only, so
-        // no per-language string is needed.
+        // equal to current adds no information. Bare number here (the
+        // unit is established by the main value beside it).
         fireBestEl.textContent = s.best  > s.current ? '· ' + s.best  : '';
         starBestEl.textContent = s.perfectBest > s.perfect ? '· ' + s.perfectBest : '';
+        // Today chip: slots solved today over the day's total — the
+        // per-day progress the streak chips deliberately don't show,
+        // and an all-8 completion hook in its own right.
+        if (todayValEl) {
+            const entry = getHistory()[todayUTC()];
+            const total = (typeof Potd !== 'undefined' && Potd.SLOTS) ? Potd.SLOTS.length : 8;
+            todayValEl.textContent = ((entry && entry.s) || 0) + '/' + total;
+        }
     }
 
     function fmtCountdown(ms) {
@@ -231,6 +245,7 @@ const PotdStreaks = (() => {
         fireBestEl  = document.getElementById('potdStreakFireBest');
         starValEl   = document.getElementById('potdStreakStarVal');
         starBestEl  = document.getElementById('potdStreakStarBest');
+        todayValEl  = document.getElementById('potdStreakTodayVal');
         countdownEl = document.getElementById('potdCountdown');
 
         const calBtn = document.getElementById('potdCalendarBtn');

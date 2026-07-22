@@ -4428,6 +4428,27 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
     /* The emoji renders on its own layer above the cell fill. */
     pointer-events: none;
 }
+/* Per-day solved count (1–8) — mini badge in the bottom-right corner
+   of solved cells; the ⭐ keeps the top-right. Same dark-on-green
+   family as the cell fill so it reads as "count of these". */
+.potd-cal-count {
+    position: absolute;
+    bottom: -0.3rem;
+    right: -0.25rem;
+    min-width: 0.85rem;
+    height: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(20, 90, 45, 0.95);
+    border: 1px solid rgba(120, 220, 140, 0.6);
+    border-radius: 50%;
+    color: #d8ffe0;
+    font-size: 0.55rem;
+    font-weight: 700;
+    line-height: 1;
+    pointer-events: none;
+}
 .potd-cal-legend {
     display: flex;
     justify-content: center;
