@@ -771,15 +771,14 @@ html.is-crazygames .cg-only { display: revert !important; }
     z-index: 30;
     flex-direction: column;
     align-items: center;
-    /* flex-start + the auto-margin pair below (titleFrame margin-top,
-       legal-footer margin-bottom) — NOT justify-content: center. Centering
-       a flex column that overflows its scroll container pushes the top
-       half into a negative scroll region that can't be scrolled to (this
-       cropped the title + MODE chip inside short embed iframes, e.g.
-       CrazyGames). Auto margins split any spare space equally (visually
-       identical to center when content fits) but collapse to 0 on
-       overflow, so the stack top-anchors and everything stays reachable
-       via scroll. */
+    /* flex-start + the #menu::before spacer below — NOT justify-content:
+       center. Centering a flex column that overflows its scroll container
+       pushes the top half into a negative scroll region that can't be
+       scrolled to (this cropped the title + MODE chip inside short embed
+       iframes, e.g. CrazyGames). The spacer top-anchors the title at a
+       constant viewport-based offset, so the title/tabs don't move when
+       the content below them changes height, and it collapses to 0 on
+       overflow so everything stays reachable via scroll. */
     justify-content: flex-start;
     gap: 0.6rem;
     /* Top padding gets its own clamp with a higher floor so the title
@@ -792,11 +791,23 @@ html.is-crazygames .cg-only { display: revert !important; }
     overflow: auto;
     -webkit-overflow-scrolling: touch;  /* momentum scroll on iOS */
 }
-/* The auto-margin pair that replaces justify-content: center (see the
-   #menu comment above). Scoped to #menu's own children — the intro's
-   .introTitleFrame must not pick up the margin-top. */
-#menu > .titleFrame { margin-top: auto; }
-#menu > .menu-legal-footer { margin-bottom: auto; }
+/* Top spacer that replaces justify-content: center (see the #menu comment
+   above). This USED to be an auto-margin pair on the titleFrame + legal
+   footer that split spare space evenly — but that ties the title's
+   position to the total content height, so switching to the PotD tab
+   (which adds the streak strip below the tabs) made the title + tabs
+   jump upward. A fixed flex-basis spacer gives the title a constant
+   offset from the top instead: tab switches only move the content BELOW
+   the tabs, and spare space collects at the bottom. The huge shrink
+   factor + min-height: 0 let the spacer collapse to nothing before any
+   real content is squeezed, so short viewports still top-anchor and
+   scroll exactly like the old collapsed-auto-margin case. A pseudo-
+   element keeps this scoped to #menu — the intro overlay is untouched. */
+#menu::before {
+    content: '';
+    flex: 0 999 clamp(0rem, 7vh, 4.5rem);
+    min-height: 0;
+}
 /* Title frame — small viewfinder-style corner brackets. Tighter padding
    pulls them in close to the text; slightly thicker borders give them more
    visual presence at small sizes. */
@@ -1283,7 +1294,7 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
    The overflow-safety half of the old fix (anchoring so overflow only
    goes downward, since centered overflow clips a top that isn't
    scroll-reachable) now lives in the base #menu rule via the
-   flex-start + auto-margin pair. This block's job is just to shrink
+   flex-start + collapsible #menu::before spacer. This block's job is just to shrink
    the mode cards + section chrome moderately so the whole stack fits
    the viewport's usable height. Earlier values (4.5vh title, 8.5vh
    thumbs) shrank too far and the user reported the result felt
@@ -1303,8 +1314,8 @@ body:not(.mode-potd) .menuModeBtn.potd-solved span {
 @media (max-height: 1080px) and (min-height: 501px) and (pointer: coarse),
        (max-height: 920px) and (min-height: 501px) {
     #menu {
-        /* The base auto-margin pair centers the content when it fits and
-           top-anchors it when it overflows; overflow:auto + smooth scroll
+        /* The base #menu::before spacer top-anchors the content at a fixed
+           offset and collapses when space is tight; overflow:auto + smooth scroll
            on #menu still catches the edge case where a really short
            viewport (and full safe-area insets) makes things overflow.
            Vertical dimensions throughout this block are vh-fluid with low
