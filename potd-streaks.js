@@ -296,12 +296,18 @@ const PotdStreaks = (() => {
 
     // ── Chip explainer bubble ──
     //
-    // Mobile has no hover, so the chips' title attributes were invisible
-    // there (user feedback 2026-07-22). Tapping a chip toggles a small
-    // popover under the strip with the chip's explanation — the SAME
-    // i18n strings the titles use, resolved at show time so language
-    // switches are picked up. Dismissed by tapping the chip again,
-    // tapping anywhere else, or a timeout.
+    // One shared popover under the strip explaining the tapped/hovered
+    // chip — the i18n strings are resolved at show time so language
+    // switches are picked up. Two wiring modes (chosen at init by
+    // hover-capability):
+    //   • hover devices (desktop): mouseenter/focus shows, mouseleave/
+    //     blur hides — REPLACES the native title tooltip (the title
+    //     attributes are gone from the markup so the two can't double
+    //     up). No auto-timeout; leaving hides it.
+    //   • touch devices: tap toggles, tap-elsewhere or a timeout hides.
+    //     Tap-mode wiring must NOT coexist with hover wiring — touch
+    //     taps synthesize mouseenter first, which would show the bubble
+    //     and turn the click's toggle into an immediate hide.
     const CHIP_TIP_TIMEOUT_MS = 6000;
     let tipEl = null, tipFor = null, tipTimer = null;
 
@@ -310,7 +316,10 @@ const PotdStreaks = (() => {
         if (tipEl) tipEl.hidden = true;
         tipFor = null;
     }
-    function showChipTip(chipId, key) {
+    // autoHide=true is tap mode: same-chip re-tap toggles off and a
+    // timeout backstops dismissal. Hover mode passes false — visibility
+    // is owned entirely by enter/leave, so no toggle and no timer.
+    function showChipTip(chipId, key, autoHide) {
         const strip = document.getElementById('potdStreakStrip');
         if (!strip) return;
         if (!tipEl) {
@@ -319,13 +328,12 @@ const PotdStreaks = (() => {
             tipEl.hidden = true;
             strip.appendChild(tipEl);
         }
-        // Second tap on the same chip toggles off.
-        if (tipFor === chipId && !tipEl.hidden) { hideChipTip(); return; }
+        if (autoHide && tipFor === chipId && !tipEl.hidden) { hideChipTip(); return; }
         tipEl.textContent = (typeof I18n !== 'undefined' && I18n.t) ? I18n.t(key) : key;
         tipEl.hidden = false;
         tipFor = chipId;
-        if (tipTimer) clearTimeout(tipTimer);
-        tipTimer = setTimeout(hideChipTip, CHIP_TIP_TIMEOUT_MS);
+        if (tipTimer) { clearTimeout(tipTimer); tipTimer = null; }
+        if (autoHide) tipTimer = setTimeout(hideChipTip, CHIP_TIP_TIMEOUT_MS);
     }
 
     function init() {
@@ -343,24 +351,44 @@ const PotdStreaks = (() => {
             });
         }
 
-        // Explainer taps — stopPropagation keeps the chip tap from
-        // reaching the document-level dismiss listener below (which
-        // handles every OTHER tap, including the calendar button's —
-        // its own click handler still runs, the bubble just closes).
+        // Explainer wiring — hover/focus on hover-capable devices,
+        // tap-toggle on touch (see the mode rationale on the bubble's
+        // block comment above; the two wirings must not coexist). The
+        // 📅 chip participates too — its native title is gone like the
+        // others', and its click still opens the calendar in both modes.
         const chipTips = [
             ['potdStreakFire',  'potd.streak.currentTitle'],
             ['potdStreakStar',  'potd.streak.perfectTitle'],
             ['potdStreakToday', 'potd.streak.todayTitle'],
+            ['potdCalendarBtn', 'potd.cal.button'],
         ];
+        const hoverCapable = !!(window.matchMedia
+            && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
         for (const pair of chipTips) {
             const el = document.getElementById(pair[0]);
-            if (el) {
+            if (!el) continue;
+            if (hoverCapable) {
+                el.addEventListener('mouseenter', () => showChipTip(pair[0], pair[1], false));
+                el.addEventListener('mouseleave', hideChipTip);
+                // Keyboard parity: focus shows, blur hides.
+                el.addEventListener('focus', () => showChipTip(pair[0], pair[1], false));
+                el.addEventListener('blur',  hideChipTip);
+            } else {
+                // Tap mode: the 📅 chip is excluded — its tap PERFORMS
+                // an action (opens the calendar), so an explainer bubble
+                // would pop up behind the overlay it just opened.
+                if (pair[0] === 'potdCalendarBtn') continue;
+                // stopPropagation keeps the chip tap from reaching the
+                // document-level dismiss listener below (which handles
+                // every OTHER tap).
                 el.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    showChipTip(pair[0], pair[1]);
+                    showChipTip(pair[0], pair[1], true);
                 });
             }
         }
+        // Tap-elsewhere dismiss (touch mode); harmless on desktop where
+        // mouseleave has usually hidden the bubble already.
         document.addEventListener('click', hideChipTip);
 
         lastSeenDate = todayUTC();
