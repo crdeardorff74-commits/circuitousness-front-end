@@ -2,6 +2,13 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-22 — Release v0.99 (progressive-card polish: labels, 3-path art, bigger thumbs)
+- **Card labels** now "Singular tiles"/"Quad tiles" — reused the PotD section-header keys `marathon.regularTiles`/`quadTiles` (already ×15 languages, zero new keys); the short `marathon.singular`/`quad` keys stay on the leaderboard tile tabs.
+- **Card art** switched to the 3-path thumbnails (painter fallback `mode[1] || '3'` → 1x3.png / 4x3.png) — busier art reads better at card size (user call), even though runs open on a 1-path board.
+- **Thumbs ~1.5× larger** for the two cards only: `#menuMarathonTypes .menuModeBtn .modeThumb` with `clamp(5rem, min(26vw, 24vh), 13.5rem)`. ID specificity deliberately beats all four responsive .modeThumb shrink rules — those squeeze 4-across; 2-across fits everywhere with the one min(vw,vh) clamp. PotD grid sizing untouched.
+- Supersedes unshipped v0.98 if that zip never went out; v0.96's deploy-order warning (back-end FIRST) still applies.
+- Version bumped 0.98 → 0.99.
+
 ## 2026-07-22 — Release v0.98 (replay dead-air cap)
 - **Replays cap inter-move dead air at 15s** (`REPLAY_MAX_GAP_MS`, config.js): new `compressReplayTimeline` in game.js runs before `playOneRecording`'s loop — pacing under the cap untouched, gaps beyond it play as exactly 15s. Quit/resume gaps were ALREADY edited out at resume time (`restoreRecording` rebases startTime — v0.93); this cap covers in-session idling, which PotD's uncapped clock makes unbounded.
 - **Why up-front compression, not a wait clamp**: the playback loop schedules against absolute t offsets, so clamping one wait would re-introduce the skipped time on the next move. Also `musicEvents` are remapped through the SAME piecewise map — otherwise song cues would fire after a compressed replay already ended (breaking v0.93's scripted playback on any long-think recording). Source recording never mutated (own-replay button plays the live object).
