@@ -11,9 +11,12 @@
 //     stats, regardless of any ?dev / ?debug flag. ALL Tracking.*
 //     methods short-circuit before any POST. (Belt-and-braces: the
 //     back-end also drops visits whose origin/referrer is localhost.)
+//   - ?track=false — STICKY per-browser opt-out (persists to
+//     localStorage; ?track=true clears). The universal-rule flag —
+//     covers tooling that reloads the page without query params.
 //   - DevMode.isActive() (?dev=true)  — the dev's own runs don't
 //     pollute aggregate stats. ALL Tracking.* methods short-circuit
-//     before any POST when dev mode is on.
+//     before any POST when dev mode is on. Per-load, NOT sticky.
 //   - Bot UAs — filtered SERVER-SIDE in POST /api/visit. Bot visits
 //     return visit_id=-1 and the client silently skips further PATCHes.
 //   - Worker context — `window` undefined; nothing to track from a
@@ -43,8 +46,28 @@ const Tracking = (function () {
         if (typeof location === 'undefined' || !location.hostname) return false;
         return location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     }
+    // Sticky per-browser opt-out via the universal ?track=false flag
+    // (mirrors TANTЯO's sticky opt-out): seen once, it persists to
+    // localStorage so SUBSEQUENT loads in the same browser stay
+    // suppressed even when they don't carry the query — dev tooling
+    // (editor preview panes) reopens index.html on its own without
+    // params, and a session of such loads posted real "(direct)"
+    // desktop rows on 2026-07-23 because this project only honored the
+    // per-load ?dev=true. ?track=true clears the flag. Evaluated once
+    // at module init; try/catch covers workers/private mode.
+    const stickyOptOut = (function () {
+        try {
+            const key = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness')
+                + '_trackOptOut_v1';
+            const t = new URLSearchParams(location.search || '').get('track');
+            if (t === 'false') { localStorage.setItem(key, '1'); return true; }
+            if (t === 'true')  { localStorage.removeItem(key); return false; }
+            return localStorage.getItem(key) === '1';
+        } catch (e) { return false; }
+    })();
     function isSuppressed() {
         if (isLocalHost()) return true;
+        if (stickyOptOut) return true;
         return (typeof DevMode !== 'undefined') && DevMode.isActive && DevMode.isActive();
     }
     function apiBase() {
