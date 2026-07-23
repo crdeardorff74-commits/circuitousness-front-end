@@ -2,6 +2,13 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-23 — Release v1.02 (portrait title sizing pass)
+- **Portrait-phone titles enlarged** (intro + menu, shared rule in the ≤600px portrait block): 6vw → 6.5vw → final `clamp(1.6rem, 8.5vw, 2.8rem)` across two user feedback rounds. **Key correction recorded in the CSS comment**: the wordmark renders at ≈8.8× its font-size in width (MEASURED from screenshot), not the ~14× the old comment claimed — scaleX(0.78) + negative word-margins compress more than assumed. 8.5vw ≈ 75vw title width, safe in the ~94vw box incl. Safari kerning.
+- **C→IRCUIT gap** (portrait-only crowding reported on-device): `margin-right` on `.titleInitial` in the portrait block, user-tuned 0.07em → **0.04em**. Em-scaled; composes with the Safari-only translateX C-shift.
+- Watch-point (unresolved, benign so far): at 8.5vw the menu title's right edge passes under the settings gear's corner band; the #menu::before spacer normally separates them vertically — check short portrait windows; if they collide, split the shared rule and hold the MENU title smaller.
+- Supersedes unshipped v1.01 if that zip never went out (intro restyle + baseline 36.4% — see below).
+- Version bumped 1.01 → 1.02.
+
 ## 2026-07-23 — Release v1.01 (intro restyle: PLAY-first, WARNING demoted)
 - **Why**: admin On-site Intro Funnel (newly windowed — see below) showed the intro leaking hard on recent cold traffic: **7d deduped agree-rate 36.4% (8/22 browsers) vs 70.8% lifetime**, recorded 2026-07-23 as the pre-restyle BASELINE. Compare next week's 7d number against 36.4% to judge this release; if it doesn't move, suspect load time next, not the intro.
 - **Intro restyle**: WARNING demoted from focal (clamp 2.4-7rem red) to wink-size (clamp 1.5-2.6rem; joke text/randomized activity unchanged); agree button is the focal point now — flex-column with big "▶ PLAY" face (new `intro.play` key ×15) + `intro.agree` line as lowercase fine print INSIDE the button. One tap still carries consent flavor + audio/fullscreen user-gesture + first-visit auto-start trigger. intro.js untouched (only wires click on the button id). Landscape-phone block re-tuned.
