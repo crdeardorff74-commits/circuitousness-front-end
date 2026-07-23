@@ -886,13 +886,16 @@ const Maze = (() => {
         // below — greedy DFS for paths 2/3 often picks routes that box
         // path 4 out of the grid. Backtracking undoes a path and tries a
         // different (pair, route) when a deeper level fails.
-        // The post-hoc quality floors (windiness / interior / crossing)
-        // are DELIBERATELY not applied inside the backtracker: its
-        // generateLanes budget (200 calls) is spent on fitting four
-        // paths at all, and rejecting a fitted route risks trading it
-        // for a dropped path. 4-path boards get their quality push from
-        // the inward exit-ordering bias inside generateLanes' dfs
-        // instead — that one is free and applies to every mode.
+        // The backtracker applies the quality floors (windiness /
+        // interior / crossing) as a BUDGET-GATED filter — choosy while
+        // steps remain above BT_QUALITY_RESERVE, accept-anything once
+        // the reserve is reached, so a rejected route can never cost a
+        // path outright. (History: v1.06 exempted the backtracker
+        // entirely, leaning on the inward dfs bias alone — a windy but
+        // border-hugging, crossing-free path still shipped on a 4-path
+        // board, user-confirmed via HINT.) The inward exit-ordering
+        // bias in generateLanes' dfs additionally shifts all modes'
+        // route distribution for free.
         if (pathCount === 4) {
             const initialUsed = new Set();
             initialUsed.add(pair1.entry.row + ',' + pair1.entry.col);
@@ -901,6 +904,18 @@ const Maze = (() => {
             const MAX_BT_PAIRS  = 4;     // endpoint configs to try per level
             const MAX_BT_ROUTES = 6;     // DFS routes to try per pair
             const budget = { steps: 200 }; // total generateLanes calls cap
+            // Budget-gated quality: while more than RESERVE steps remain,
+            // routes must score >= MIN on the shared quality floors
+            // (bends 2 + interior 2 + crossing 1 — see tryAddPath) or
+            // they're skipped; once the budget dips into the reserve the
+            // gate opens and anything valid is accepted. Four plain paths
+            // still beat three good ones, but the search no longer takes
+            // the FIRST route that fits when it can afford to be choosy —
+            // that first-fit behavior is how windy-but-border-hugging,
+            // crossing-free paths kept reaching shipped 4-path boards
+            // (user-confirmed via HINT on v1.06).
+            const BT_QUALITY_MIN     = 3;
+            const BT_QUALITY_RESERVE = 80;
             const best = {
                 depth: 1, lanes: cellLanes,
                 e2: null, x2: null, e3: null, x3: null, e4: null, x4: null
@@ -933,8 +948,16 @@ const Maze = (() => {
                         const r = generateLanes(seed, pathIdx);
                         entry = sE; exit = sX;
                         if (!r) continue;
-                        if (pathCellCountIn(r, pathIdx) < MIN_PATH_CELLS) continue;
+                        const cells = pathCellCountIn(r, pathIdx);
+                        if (cells < MIN_PATH_CELLS) continue;
                         if (!pathSpansRowsAndCols(r, pathIdx)) continue;
+                        if (budget.steps > BT_QUALITY_RESERVE) {
+                            let q = 0;
+                            if (pathBendCountIn(r, pathIdx) >= minPathBends(cells)) q += 2;
+                            if (meetsInteriorFloor(r, pathIdx, cells))              q += 2;
+                            if (pathCrossCountIn(r, pathIdx) >= 1)                  q += 1;
+                            if (q < BT_QUALITY_MIN) continue;
+                        }
                         const oldE2 = entry2, oldX2 = exit2;
                         const oldE3 = entry3, oldX3 = exit3;
                         const oldE4 = entry4, oldX4 = exit4;

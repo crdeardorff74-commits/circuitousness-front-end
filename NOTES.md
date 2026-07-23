@@ -2,6 +2,14 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-23 — Release v1.07 (quality floors extended into the 4-path backtracker)
+- **v1.06's backtracker exemption didn't hold**: user deployed, played a 4-path quad board, and HINT-confirmed the intended solution still contained a simple (windy-but-border, crossing-free) path — the inward DFS bias alone shifts odds but the backtracker took the FIRST route that fit.
+- **Budget-gated quality in place()**: while budget.steps > `BT_QUALITY_RESERVE` (80 of 200), a fitted route must score ≥ `BT_QUALITY_MIN` (3) on the shared floors (bends 2 + interior 2 + crossing 1) or it's skipped; once the budget dips into the reserve the gate opens and anything valid is accepted. Guarantees intact: four plain paths still beat three good ones, and worst-case build time is unchanged (same 200-step cap — the gate only changes which routes spend it).
+- MIN=3 semantics: every path must at least (interior AND cross) or (windy AND cross) or (windy AND interior) while the search can afford it. Both user-reported simple shapes score 0-2.
+- Knobs: BT_QUALITY_MIN (4 = windy+interior mandatory — likely too strict), BT_QUALITY_RESERVE (raise → less choosy → faster if 4-path builds ever feel slow).
+- Supersedes v1.06's "backtracker exempt" note; maze.js comment rewritten with the history. Test recipe: fresh 4-path quad boards + HINT-check that intended paths wander interior and cross.
+- Version bumped 1.06 → 1.07.
+
 ## 2026-07-23 — Release v1.06 (path quality: bend/interior/crossing floors + inward DFS bias)
 - **Why (two user reports)**: (1) a near-straight border path (3 bends in ~20 cells) played trivially; (2) after the bend floor, two windy-but-still-simple paths — S-curving along the BORDER, crossing nothing — showed the other two easy shapes.
 - **maze.js quality system** (single source — worker imports it, so Zen/Marathon pre-gen + urgent builds + PotD seeding all covered):
