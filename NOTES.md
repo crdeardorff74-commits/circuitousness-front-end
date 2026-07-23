@@ -2,6 +2,11 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-22 — Release v0.97 (PotD nudge moved to first 3-path solve)
+- **PotD nudge tooltip delayed** (user call): was "as puzzle 3 of the first-visit auto-start run appears"; now fires as the next puzzle appears after the player's FIRST 3-PATH SOLVE — level 12 under current tiers, but derived from `pathCountForLevel(level-1)===3 && pathCountForLevel(level-2)===2` so it tracks any TIER_LENGTH/TIER_DROP retune automatically. Deliberate reach trade: far fewer players see it, but they're the hooked ones; the menu's "📅 Daily & More" HUD button still advertises passively for everyone.
+- Supersedes unshipped v0.96 if that zip never went out — v0.96 entry below has the deploy-order warning (back-end FIRST) that still applies to this release.
+- Version bumped 0.96 → 0.97.
+
 ## 2026-07-22 — Release v0.96 (progressive Zen/Marathon revamp + PotD all-time boards)
 - **⚠ DEPLOY ORDER: back-end FIRST.** app.py gained `/api/potd/alltime` (Streak/Career boards) AND `VALID_MARATHON_TYPES = {'s','q'} ∪ legacy 8` on the three marathon endpoints. A v0.96 front-end against the old back-end can't start runs, submit, or fetch the new boards. Old clients keep working (legacy union).
 - **Zen/Marathon collapsed 8 types → 2 progressive types** ('s'/'q'): start 4×4 logical 1-path, +1 axis per solve, every TIER_LENGTH(5) puzzles path count steps up (→4) and growth drops back TIER_DROP(3) steps (retraces the same rolled axis entries — same dims again, deliberate). L16+ endless at 4 paths. Pure function of level (`pathCountForLevel`/`growthStepsForLevel` in marathon.js); tune via MARATHON.TIER_LENGTH/TIER_DROP/MAX_PATHS. Singular start 5×5→4×4 (PotD unaffected — own generateDims).

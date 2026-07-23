@@ -1227,17 +1227,26 @@ const Marathon = (() => {
         // above keeps replays (state REPLAYING) from ever reporting.
         if (typeof CgSdk !== 'undefined') CgSdk.gameplayStart();
         // One-time PotD nudge for the first-visit auto-start run: fires as
-        // puzzle 3 appears — i.e., after the player's SECOND solve. This is
-        // the retention pitch the auto-start otherwise hides (a menu-skipping
-        // first-timer never sees the Puzzle of the Day exists). After the
-        // FIRST solve felt too aggressive given the "📅 Daily & More" button
-        // is already advertising the daily on-screen the whole run — two
-        // solves = demonstrably hooked, and the pitch lands as a suggestion
-        // rather than an interruption. The action jumps straight into
-        // today's 1-path daily — same type they're already solving: tear the
-        // Zen run down, flip the picker, start the slot. Level-3-of-first-run
-        // happens once ever; Tooltip.showOnce's seen-flag backstops even that.
-        if (isFirstRunAutoStart && level === 3
+        // the next puzzle appears after the player's FIRST 3-PATH SOLVE
+        // (level 12 under TIER_LENGTH 5 — the tier math below derives it,
+        // so tuning the tier constants moves the nudge automatically).
+        // This is the retention pitch the auto-start otherwise hides (a
+        // menu-skipping first-timer never sees the Puzzle of the Day
+        // exists). History: fired at puzzle 3 (after the second solve) —
+        // user moved it deeper (2026-07-22): a player who has climbed to
+        // and cleared a 3-path puzzle has seen the game's real depth, is
+        // demonstrably hooked, and the "📅 Daily & More" button has been
+        // advertising the daily on-screen the whole time regardless. The
+        // action jumps straight into today's 1-path daily: tear the Zen
+        // run down, flip the picker, start the slot. The first-3-path-
+        // solve moment happens once ever in the one auto-start run;
+        // Tooltip.showOnce's seen-flag backstops even that. (level-2 is
+        // safe here: level ≥ 12 by the pathCountForLevel(level-1) === 3
+        // condition, and pathCountForLevel(10) === 2 gates the ready of
+        // 13-15 out — only level 12 passes.)
+        if (isFirstRunAutoStart && level > 2
+            && pathCountForLevel(level - 1) === 3
+            && pathCountForLevel(level - 2) === 2
             && typeof Tooltip !== 'undefined' && Tooltip.showOnce) {
             Tooltip.showOnce('potdNudge', I18n.t('tooltip.potdNudge'), {
                 label: I18n.t('mode.potd.name'),
