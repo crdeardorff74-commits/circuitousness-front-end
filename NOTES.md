@@ -2,6 +2,10 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-23 — Release v1.05 (aspect cap loosened 1.3 → 1.5)
+- `MARATHON.MAX_ASPECT_RATIO` 1.3 → 1.5 (user call): grids may now stretch to 1.5× the other dimension before growth is forced back onto the short axis — 4×6 early, 10×15 late. Logic untouched; same per-roll enforcement in ensureGrowthSequence with all its properties (prefix-legal for tier drops, rotation/legacy convergence, logical-tile quad coverage).
+- Version bumped 1.04 → 1.05.
+
 ## 2026-07-23 — Release v1.04 (tracking opt-out hardening)
 - **stickyOptOut bug fixed** (tracking.js): the v1.03 version wrapped everything in one try/catch — in contexts where localStorage THROWS (sandboxed/file:// pages, i.e. the editor preview pane), an explicit ?track=false load fell into the catch and tracked anyway. Now the query param decides the current load unconditionally; storage is persistence only.
 - **Back-end belt-and-braces** (deploy circuitousness-api): `_is_localhost_origin` now also drops file:// visits — literal `Origin: null` header or file:-scheme origin/referrer. Real players always carry the site's https origin on these cross-host POSTs; ABSENT Origin is deliberately NOT dropped (curl tests survive). This guard works regardless of any browser's opt-out state — the durable fix for preview-pane pollution.

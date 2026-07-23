@@ -694,8 +694,9 @@ const Marathon = (() => {
             // Aspect cap (MARATHON.MAX_ASPECT_RATIO): if growing the long
             // axis would push it past ratio × the short one, the roll is
             // FORCED onto the short axis — no more ribbon grids, with the
-            // allowed spread scaling as the grid grows (4×5 early, 10×13
-            // late). Dims here = square start base + grown counts; both
+            // allowed spread scaling as the grid grows (at the current
+            // 1.5: 4×6 early, 10×15 late). Dims here = square start base
+            // + grown counts; both
             // progressive types start 4×4 logical (startDimsFor), and
             // growing the short axis can never violate the cap at base ≥4.
             // Enforced per roll, so every prefix of the sequence honors

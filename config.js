@@ -264,9 +264,10 @@ const MARATHON = {
     // but without a cap the 50/50 phase could drift into ribbon grids
     // (a 4×12 was observed). A ratio — not a fixed unit gap — so the
     // allowed spread scales with the grid (user call, superseding the
-    // brief fixed-2-units version): 4×5 and 5×6 early, 10×13 late.
-    // Enforced per roll in ensureGrowthSequence.
-    MAX_ASPECT_RATIO: 1.3,
+    // brief fixed-2-units version): at 1.5, 4×6 early, 10×15 late.
+    // (Loosened 1.3 → 1.5, 2026-07-23 user call.) Enforced per roll in
+    // ensureGrowthSequence.
+    MAX_ASPECT_RATIO: 1.5,
 
     // 2 progressive game types: singular ('s') and quad ('q'). The path
     // count is no longer part of the type — it ramps within the run (see
