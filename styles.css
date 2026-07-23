@@ -4635,10 +4635,12 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
        scaleX'd glyphs + negative word-margins round the C into the I
        (reported on-device); an em-scaled margin keeps the fix
        proportional at every size in this block's range. Composes fine
-       with the Safari-only translateX C-shift (both widen the gap). */
+       with the Safari-only translateX C-shift (both widen the gap).
+       0.07em read slightly too wide on-device — 0.04em is the dialed-in
+       value (user-tuned 2026-07-23). */
     #menuTitle .titleInitial,
     #introTitle .titleInitial {
-        margin-right: 0.07em;
+        margin-right: 0.04em;
     }
     /* Settings gear: smaller + tucked into the corner so the (centered,
        near-full-width) title can't reach it. */
