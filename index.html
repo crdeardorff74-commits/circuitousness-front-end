@@ -122,9 +122,15 @@
                 </h1>
             </div>
 
-            <!-- Big Ridiculousness-style WARNING + randomized silly
-                 activity. introBody's {activity} placeholder is filled
-                 at runtime from warnings.txt by intro.js. -->
+            <!-- Ridiculousness-style WARNING + randomized silly activity.
+                 introBody's {activity} placeholder is filled at runtime
+                 from warnings.txt by intro.js. Deliberately SMALL since
+                 the v1.0x intro restyle: at full 7rem scale the all-caps
+                 red WARNING made the two-second cold-visitor silhouette
+                 read as a scam/consent wall (admin funnel showed ~29% of
+                 unique browsers bouncing here) — the joke now plays as a
+                 wink under the title, and the PLAY button is the focal
+                 point instead. -->
             <div class="introWarningBlock">
                 <div class="introWarning" data-i18n="intro.warning">WARNING</div>
                 <!-- No data-i18n on this body: intro.js sets textContent
@@ -155,7 +161,17 @@
                 </label>
             </div>
 
-            <button id="introAgreeBtn" type="button" data-i18n="intro.agree">I agree to solve responsibly</button>
+            <!-- Primary CTA — reads as PLAY at a glance (the intro
+                 restyle's whole point); the "I agree to solve
+                 responsibly" gag survives as small print inside the same
+                 button, so the single tap still carries the consent
+                 flavor AND the audio/fullscreen user-gesture. intro.js
+                 only wires a click listener on the button id, so the
+                 child spans are safe. -->
+            <button id="introAgreeBtn" type="button">
+                <span class="introPlayMain" data-i18n="intro.play">▶ PLAY</span>
+                <span class="introPlaySub" data-i18n="intro.agree">I agree to solve responsibly</span>
+            </button>
 
             <!-- "Add to Home Screen" hint — populated + un-hidden by
                  intro.js for touch users who aren't already in standalone
@@ -1143,7 +1159,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '0.99';</script>
+    <script>var PAGE_VERSION = '1.00';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

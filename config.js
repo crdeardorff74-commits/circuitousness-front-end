@@ -258,6 +258,16 @@ const MARATHON = {
     TIER_DROP:   3,
     MAX_PATHS:   4,
 
+    // Aspect cap on grid growth: neither logical dimension may grow to
+    // MORE than this ratio × the other. Growth still favors the
+    // viewport's long axis (landscape runs wide, portrait runs tall),
+    // but without a cap the 50/50 phase could drift into ribbon grids
+    // (a 4×12 was observed). A ratio — not a fixed unit gap — so the
+    // allowed spread scales with the grid (user call, superseding the
+    // brief fixed-2-units version): 4×5 and 5×6 early, 10×13 late.
+    // Enforced per roll in ensureGrowthSequence.
+    MAX_ASPECT_RATIO: 1.3,
+
     // 2 progressive game types: singular ('s') and quad ('q'). The path
     // count is no longer part of the type — it ramps within the run (see
     // the tier constants above). History: was 8 fixed types s1..s4/q1..q4

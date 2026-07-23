@@ -558,10 +558,13 @@ html.mode-game #undoBtn { display: none; }
     font-family: 'Helvetica Neue', 'Arial Black', Impact, sans-serif;
     font-weight: 900;
     font-stretch: condensed;
-    /* Hard cap so 4K displays don't ship a 200px title that overwhelms
-       the body text. Floor is generous so it's still readable on
-       a 320px-wide phone. */
-    font-size: clamp(2.4rem, 12vw, 7rem);
+    /* Deliberately modest (was clamp(2.4rem, 12vw, 7rem) — the intro's
+       focal point): at that scale the red all-caps made cold visitors'
+       two-second read look like a scam/consent wall (~29% of unique
+       browsers bounced at the intro per the admin funnel). The joke now
+       sits wink-sized under the title; #introAgreeBtn's PLAY face is
+       the focal point instead. */
+    font-size: clamp(1.5rem, 4.5vw, 2.6rem);
     letter-spacing: 0.08em;
     line-height: 1;
     /* Same red palette as the lit path — ties the warning visually
@@ -632,14 +635,22 @@ html.mode-game #undoBtn { display: none; }
    bigger than any other button on the page since it's THE action
    on this screen. */
 #introAgreeBtn {
+    /* THE focal point of the intro since the restyle (the WARNING gag
+       above is deliberately small now): a big PLAY face with the "I
+       agree to solve responsibly" line as small print inside the same
+       button — one tap still carries both the consent flavor and the
+       audio/fullscreen user-gesture. */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
     margin-top: clamp(0.6rem, 2vh, 1.2rem);
-    padding: clamp(0.7rem, 1.8vh, 1rem) clamp(1.6rem, 4vw, 2.4rem);
+    padding: clamp(0.8rem, 2.2vh, 1.2rem) clamp(2.2rem, 6vw, 3.6rem);
     background: linear-gradient(180deg, rgba(60, 45, 65, 0.95) 0%, rgba(35, 25, 40, 0.95) 100%);
     color: #ffd700;
     border: 2px solid rgba(255, 215, 0, 0.7);
-    border-radius: 0.5rem;
+    border-radius: 0.6rem;
     font-family: inherit;
-    font-size: clamp(1rem, 2.2vw, 1.25rem);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -656,6 +667,19 @@ html.mode-game #undoBtn { display: none; }
                 0 0 1.6rem rgba(255, 215, 0, 0.35) inset;
 }
 #introAgreeBtn:active { transform: translateY(1px); }
+/* PLAY face + fine-print line inside the agree button. The sub-line
+   drops the uppercase so it reads as a wry aside, not a second CTA. */
+.introPlayMain {
+    font-size: clamp(1.5rem, 4.5vw, 2.3rem);
+    line-height: 1;
+}
+.introPlaySub {
+    font-size: clamp(0.7rem, 1.6vw, 0.85rem);
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: none;
+    color: rgba(255, 215, 0, 0.75);
+}
 /* Debug mode bypasses the intro entirely — hide it server-side too in
    case intro.js doesn't get to run for some reason. */
 html.mode-debug #introOverlay { display: none !important; }
@@ -671,7 +695,7 @@ html.mode-debug #introOverlay { display: none !important; }
     /* .introTitleFrame inherits the .titleFrame short-viewport rule
        at clamp(1.3rem, 8vh, 2.2rem) — same as the main menu title. */
     .introWarning {
-        font-size: clamp(1.6rem, 14vh, 3.2rem);
+        font-size: clamp(1rem, 5vh, 1.6rem);
     }
     .introBody {
         font-size: clamp(0.75rem, 2.6vh, 0.95rem);
@@ -694,8 +718,10 @@ html.mode-debug #introOverlay { display: none !important; }
     #introAgreeBtn {
         margin-top: 0.3rem;
         padding: 0.4rem 1.2rem;
-        font-size: clamp(0.8rem, 2.4vh, 1rem);
+        gap: 0.15rem;
     }
+    .introPlayMain { font-size: clamp(1rem, 4.5vh, 1.5rem); }
+    .introPlaySub  { font-size: clamp(0.6rem, 2vh, 0.75rem); }
 }
 
 /* Portrait orientation overlay — RETIRED 2026-07-17. Portrait is now a

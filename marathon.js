@@ -691,7 +691,31 @@ const Marathon = (() => {
             const shortAxis  = portrait ? 'c' : 'r';
             const longGrown  = portrait ? rGrown : cGrown;
             const shortGrown = portrait ? cGrown : rGrown;
-            growthSequence.push(longGrown > shortGrown && Math.random() < 0.5 ? shortAxis : longAxis);
+            // Aspect cap (MARATHON.MAX_ASPECT_RATIO): if growing the long
+            // axis would push it past ratio × the short one, the roll is
+            // FORCED onto the short axis — no more ribbon grids, with the
+            // allowed spread scaling as the grid grows (4×5 early, 10×13
+            // late). Dims here = square start base + grown counts; both
+            // progressive types start 4×4 logical (startDimsFor), and
+            // growing the short axis can never violate the cap at base ≥4.
+            // Enforced per roll, so every prefix of the sequence honors
+            // the cap too (tier drops replay prefixes). After a device
+            // rotation flips the long axis (or on a legacy pre-cap
+            // sequence already past the ratio), the long-axis-first
+            // branch + forced-short rolls converge the grid back toward
+            // square as new entries are rolled.
+            const base     = MARATHON.startDimsFor(false, 1).rows;  // square base (4)
+            const longDim  = base + longGrown;
+            const shortDim = base + shortGrown;
+            let axis;
+            if (longDim + 1 > shortDim * MARATHON.MAX_ASPECT_RATIO) {
+                axis = shortAxis;
+            } else if (longGrown > shortGrown && Math.random() < 0.5) {
+                axis = shortAxis;
+            } else {
+                axis = longAxis;
+            }
+            growthSequence.push(axis);
         }
     }
     // Logical dims at `lev` for a decoded type (see decodeType).

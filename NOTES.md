@@ -2,6 +2,13 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-22 — Release v1.00 (aspect-ratio growth cap + phone leaderboard width)
+- **Grid growth aspect cap** (user: progressive grids got "too thin" — a 4×12 observed): `MARATHON.MAX_ASPECT_RATIO: 1.3` — before growing the long axis, `ensureGrowthSequence` checks `longDim+1 > shortDim×1.3` and forces the roll onto the short axis instead. Ratio (not fixed units — user revised mid-session from a brief 2-unit version): spread scales with size (4×5 early, 7×9 legal at 1.286, 10×13 late). Per-roll enforcement → every prefix honors it (tier drops replay prefixes); rotation flips + legacy stretched saves converge back via the long-axis-first branch. Quad covered (logical tiles). PotD untouched — its own ranges still allow 6×9 singular (diff 3); user aware, no change requested.
+- **Portrait-phone leaderboards widened**: `width: min(94vw, 32rem)` on tabs/tile-row/path-row/entries in the ≤600px portrait block (~367px at 390px vs ~312px before). End-of-file source order beats the 70vw/80vw rules at equal specificity — same precedence pattern the block documents.
+- **Version crossed to 1.00** — mechanical next patch from 0.99 in the two-decimal scheme; not a deliberate "1.0 launch" declaration. Rename downward if sub-1.0 numbering was intended.
+- Supersedes unshipped v0.99 if that zip never went out; v0.96's deploy-order warning (back-end FIRST — /potd/alltime + 's'/'q' validation) still applies to whichever zip ships next.
+- Version bumped 0.99 → 1.00.
+
 ## 2026-07-22 — Release v0.99 (progressive-card polish: labels, 3-path art, bigger thumbs)
 - **Card labels** now "Singular tiles"/"Quad tiles" — reused the PotD section-header keys `marathon.regularTiles`/`quadTiles` (already ×15 languages, zero new keys); the short `marathon.singular`/`quad` keys stay on the leaderboard tile tabs.
 - **Card art** switched to the 3-path thumbnails (painter fallback `mode[1] || '3'` → 1x3.png / 4x3.png) — busier art reads better at card size (user call), even though runs open on a 1-path board.
