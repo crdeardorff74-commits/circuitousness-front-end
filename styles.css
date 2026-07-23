@@ -4614,19 +4614,31 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
        comfortably inside the viewport at any phone width. The bare
        .titleFrame arm covers the intro's copy of the title (the
        tablet block only touches #menu's). */
-    /* 6.5vw ≈ 91vw of title width (14-glyph rule above) — near the safe
-       ceiling once Safari's wider kerning is allowed for (7vw clips on
-       narrow phones). Bumped from 6vw 2026-07-23 (user: title read too
-       small on portrait phones; intro first, then menu to match — one
-       shared rule again). Menu watch-point: at this width the title's
-       right edge passes under the settings gear's horizontal band; the
-       #menu::before spacer + top padding normally keep them vertically
-       apart, but on a short portrait window where the spacer collapses
-       they could meet — if the gear ever overlaps the brackets, split
-       this rule again and hold the MENU title back at 6vw. */
+    /* Rendered width ≈ 8.8× the font-size (MEASURED from a portrait
+       screenshot at 6.5vw — the old "14 glyphs ≈ 14×" note here badly
+       overestimated; the scaleX(0.78) + negative word margins compress
+       far more than it assumed, which is why earlier bumps still read
+       small). 8.5vw ≈ 75vw of title width — comfortable inside the
+       ~94vw content box even with Safari's wider kerning. Bumped 6vw →
+       6.5vw → 8.5vw 2026-07-23 (user feedback, twice). Menu
+       watch-point: the title's right edge now passes under the settings
+       gear's horizontal band; the #menu::before spacer + top padding
+       normally keep them vertically apart, but on a short portrait
+       window where the spacer collapses they could meet — if the gear
+       ever overlaps the brackets, split this rule and hold the MENU
+       title smaller. */
     .titleFrame,
     #menu .titleFrame {
-        font-size: clamp(1.5rem, 6.5vw, 2.4rem);
+        font-size: clamp(1.6rem, 8.5vw, 2.8rem);
+    }
+    /* Portrait-only: re-open the C→IRCUIT gap. At phone sizes the
+       scaleX'd glyphs + negative word-margins round the C into the I
+       (reported on-device); an em-scaled margin keeps the fix
+       proportional at every size in this block's range. Composes fine
+       with the Safari-only translateX C-shift (both widen the gap). */
+    #menuTitle .titleInitial,
+    #introTitle .titleInitial {
+        margin-right: 0.07em;
     }
     /* Settings gear: smaller + tucked into the corner so the (centered,
        near-full-width) title can't reach it. */
