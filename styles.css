@@ -4663,6 +4663,19 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
         padding: 0.4rem 0.7rem;
         font-size: 0.78rem;
     }
+    /* Leaderboard panel: use (nearly) the full phone width. The base /
+       short-viewport widths (70vw/80vw with rem floors) leave ~40px of
+       dead margin per side at 390px — cramped rows for no benefit.
+       94vw ≈ 367px at 390px; the 32rem cap only matters in theory here
+       (600px × 0.94 < 32rem) but keeps the rule honest if the block's
+       width gate ever widens. Same width on all four stacked elements
+       so the tab rows, sub-tab rows, and list stay edge-aligned. */
+    #leaderboardTabs,
+    #leaderboardTileTabs,
+    #leaderboardPathTabs,
+    #leaderboardEntries {
+        width: min(94vw, 32rem);
+    }
     /* Leaderboard rows: at the list's 20rem width floor the 6-column
        grid ran out of room — the 2rem rank column + five 0.8rem gaps
        (empty columns still gap) left the auto-sized hints cell squeezed
@@ -4670,7 +4683,9 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
        column sat half-empty. Tighten the left side (1.6rem still seats
        "#20"), pin hints to one line, and let overlong names ellipsize —
        min-width: 0 on the name span is required for its 1fr track to
-       shrink below the name's own min-content at all. */
+       shrink below the name's own min-content at all. (The full-width
+       rule above relieves most of the squeeze; these stay as the
+       worst-case guard for long names + wordy locales.) */
     #leaderboardEntries { padding: 0.3rem 0.5rem; }
     #leaderboardEntries li {
         grid-template-columns: 1.6rem 1fr auto auto auto auto;
