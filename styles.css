@@ -1052,6 +1052,8 @@ html.is-safari #introTitle .titleMazeO + .titleWord {
        Sized in clamp() so it scales to viewport without overpowering the text. */
     width: clamp(5.4rem, 14.4vw, 9rem);
     height: clamp(5.4rem, 14.4vw, 9rem);
+    /* (Overridden ~1.5× larger for the two progressive cards — see the
+       #menuMarathonTypes rule below.) */
     object-fit: cover;
     border-radius: 0.3rem;
     background: rgba(0, 0, 0, 0.25);    /* fallback while loading / on error */
@@ -1068,6 +1070,16 @@ html.is-safari #introTitle .titleMazeO + .titleWord {
     pointer-events: none;
     -webkit-user-drag: none;
     user-drag: none;
+}
+/* The two progressive Zen/Marathon cards sit alone in their row, so
+   their thumbs run ~1.5× the 8-card PotD grid's. ID specificity beats
+   every responsive .modeThumb shrink rule ON PURPOSE — those breakpoint
+   overrides exist to squeeze FOUR cards across; two-across fits every
+   viewport with just this one min(vw,vh)-fluid clamp (vw arm binds on
+   narrow phones, vh arm on short embeds/landscape, caps on desktop). */
+#menuMarathonTypes .menuModeBtn .modeThumb {
+    width:  clamp(5rem, min(26vw, 24vh), 13.5rem);
+    height: clamp(5rem, min(26vw, 24vh), 13.5rem);
 }
 /* Hover style scoped to actual-hover devices only. iOS Safari (and
    most mobile browsers) emulate :hover on the FIRST tap of a button

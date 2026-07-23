@@ -190,13 +190,14 @@ const Marathon = (() => {
         // {1 or 4}x{pathCount}.png — the leading 1/4 is the grid-base
         // (regular vs quad), the trailing digit is the path count. The
         // progressive Zen/Marathon cards ('s'/'q', no path digit) reuse
-        // the 1-path art — a run's tier-1 look.
+        // the 3-path art — busier than the tier-1 board the run actually
+        // opens on, but it reads better at card size (user call).
         document.querySelectorAll('.menuModeBtn').forEach((btn) => {
             const mode = btn.getAttribute('data-mode');
             const thumb = btn.querySelector('img.modeThumb');
             if (thumb && typeof THUMBNAIL_URL_BASE === 'string') {
                 const base  = mode[0] === 'q' ? '4' : '1';
-                const paths = mode[1] || '1';
+                const paths = mode[1] || '3';
                 thumb.src = THUMBNAIL_URL_BASE + base + 'x' + paths + '.png';
             }
             // Click delegates to Potd when the mode picker says so,

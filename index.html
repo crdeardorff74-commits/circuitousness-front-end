@@ -302,13 +302,17 @@
                  pathCountForLevel), so the old per-path-count cards are
                  gone from these modes. Same .menuModeBtn contract as the
                  PotD slots below: marathon.js wires the click + paints
-                 the thumb ('s' → 1x1.png, 'q' → 4x1.png), and
-                 Potd.refreshMenuIndicators skips non-slot modes. CSS
-                 shows this block only outside body.mode-potd. -->
+                 the thumb ('s' → 1x3.png, 'q' → 4x3.png — the 3-path art
+                 reads best at card size), and Potd.refreshMenuIndicators
+                 skips non-slot modes. CSS shows this block only outside
+                 body.mode-potd. Labels reuse the PotD section-header keys
+                 ("Singular tiles"/"Quad tiles") — already ×15 languages;
+                 the shorter marathon.singular/quad keys stay on the
+                 leaderboard tile tabs where compact fits better. -->
             <div class="menuSection" id="menuMarathonTypes">
                 <div class="menuModeRow">
-                    <button class="menuModeBtn" data-mode="s"><img class="modeThumb" alt=""><span data-i18n="marathon.singular">Singular</span></button>
-                    <button class="menuModeBtn" data-mode="q"><img class="modeThumb" alt=""><span data-i18n="marathon.quad">Quad</span></button>
+                    <button class="menuModeBtn" data-mode="s"><img class="modeThumb" alt=""><span data-i18n="marathon.regularTiles">Singular tiles</span></button>
+                    <button class="menuModeBtn" data-mode="q"><img class="modeThumb" alt=""><span data-i18n="marathon.quadTiles">Quad tiles</span></button>
                 </div>
             </div>
             <!-- PotD slot cards — the 8 daily slots (s1..q4). PotD-only
