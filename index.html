@@ -193,6 +193,11 @@
              Player taps anywhere (popup or canvas) to advance. -->
         <div id="solveTransition">
             <div id="solveHeadline"></div>
+            <!-- Progressive tier-up cue — unhidden by onSolve only when the
+                 NEXT puzzle steps the path count up, so the jump doesn't
+                 read as a random difficulty spike. Text painted by JS
+                 (marathon.solveTierUp with the new count). -->
+            <div id="solveTierUp" hidden></div>
             <div id="solveBanked"></div>
             <div id="solveContinue" data-i18n="marathon.clickToContinue">Tap to continue</div>
         </div>
@@ -290,7 +295,26 @@
                 <button type="button" class="potdStreakChip potdStreakCalBtn" id="potdCalendarBtn" data-i18n-attr="aria-label:potd.cal.button" aria-label="Calendar">📅</button>
                 <span class="potdStreakCountdown" id="potdCountdown"></span>
             </div>
-            <div class="menuSection">
+            <!-- Zen/Marathon progressive type cards. Two choices only —
+                 each run ramps its path count internally (marathon.js
+                 pathCountForLevel), so the old per-path-count cards are
+                 gone from these modes. Same .menuModeBtn contract as the
+                 PotD slots below: marathon.js wires the click + paints
+                 the thumb ('s' → 1x1.png, 'q' → 4x1.png), and
+                 Potd.refreshMenuIndicators skips non-slot modes. CSS
+                 shows this block only outside body.mode-potd. -->
+            <div class="menuSection" id="menuMarathonTypes">
+                <div class="menuModeRow">
+                    <button class="menuModeBtn" data-mode="s"><img class="modeThumb" alt=""><span data-i18n="marathon.singular">Singular</span></button>
+                    <button class="menuModeBtn" data-mode="q"><img class="modeThumb" alt=""><span data-i18n="marathon.quad">Quad</span></button>
+                </div>
+            </div>
+            <!-- PotD slot cards — the 8 daily slots (s1..q4). PotD-only
+                 now (CSS hides .menuPotdSlots outside body.mode-potd);
+                 Zen/Marathon players see the 2 progressive cards above
+                 instead. potd.js's badges + slot launching key off these
+                 data-mode values — do not rename. -->
+            <div class="menuSection menuPotdSlots">
                 <h2 data-i18n="marathon.regularTiles">Singular tiles</h2>
                 <div class="menuModeRow">
                     <button class="menuModeBtn" data-mode="s1"><img class="modeThumb" alt=""><span data-i18n="marathon.path1">1 path</span></button>
@@ -299,7 +323,7 @@
                     <button class="menuModeBtn" data-mode="s4"><img class="modeThumb" alt=""><span data-i18n="marathon.path4">4 paths</span></button>
                 </div>
             </div>
-            <div class="menuSection">
+            <div class="menuSection menuPotdSlots">
                 <h2 data-i18n="marathon.quadTiles">Quad tiles</h2>
                 <div class="menuModeRow">
                     <button class="menuModeBtn" data-mode="q1"><img class="modeThumb" alt=""><span data-i18n="marathon.path1">1 path</span></button>
@@ -989,12 +1013,16 @@
                         data-i18n="mode.marathon.name">🏃 Marathon</button>
             </div>
             <!-- Two-tier board selector: tile-type tab row (Singular /
-                 Quad) above, path-count tab row (1-4 paths) below.
-                 Combined they identify the slot ('s1'..'s4', 'q1'..'q4').
-                 marathon.js's init() wires both rows' click handlers
-                 and the helpers getActiveBoardType / setActiveBoardType
-                 compose/decompose the slot identifier from the active
-                 button in each row. -->
+                 Quad) above, board-picker row below. The bottom row is
+                 the four path counts plus, on the PotD tab only, the two
+                 all-time boards (Streak / Career — .lbPotdOnly chips,
+                 hidden in Marathon mode via #leaderboard.lbModePotd).
+                 A path chip + tile chip compose the slot ('s1'..'s4',
+                 'q1'..'q4'); an all-time chip composes 'sstreak' /
+                 'qcareer' etc. marathon.js's init() wires both rows'
+                 click handlers and the helpers getActiveBoardType /
+                 setActiveBoardType compose/decompose the identifier
+                 from the active button in each row. -->
             <div id="leaderboardTileTabs" role="tablist">
                 <button class="lbSubTab" type="button" data-tile="s" data-i18n="marathon.singular">Singular</button>
                 <button class="lbSubTab" type="button" data-tile="q" data-i18n="marathon.quad">Quad</button>
@@ -1004,6 +1032,8 @@
                 <button class="lbSubTab" type="button" data-paths="2" data-i18n="marathon.path2">2 paths</button>
                 <button class="lbSubTab" type="button" data-paths="3" data-i18n="marathon.path3">3 paths</button>
                 <button class="lbSubTab" type="button" data-paths="4" data-i18n="marathon.path4">4 paths</button>
+                <button class="lbSubTab lbPotdOnly" type="button" data-paths="streak" data-i18n="potd.lb.streak">Streak</button>
+                <button class="lbSubTab lbPotdOnly" type="button" data-paths="career" data-i18n="potd.lb.career">Career</button>
             </div>
             <ol id="leaderboardEntries"></ol>
             <p id="leaderboardEmpty" data-i18n="marathon.boardEmpty" hidden>No scores yet — be the first!</p>

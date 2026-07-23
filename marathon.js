@@ -57,7 +57,7 @@ const Marathon = (() => {
     // auto-start has fired once", independent of what else the player did.
     const AUTO_START_KEY = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness')
         + '_firstVisitAutoStarted_v1';
-    let activeType     = null;     // 's1'..'s4', 'q1'..'q4'
+    let activeType     = null;     // 's' / 'q' (progressive); legacy 's1'..'q4' via resumed old saves
     let sessionToken   = null;     // server-issued cheat-proof timing token (from /api/game/start)
     let level          = 0;        // current puzzle index, 1-based
     let solvedCount    = 0;
@@ -104,7 +104,7 @@ const Marathon = (() => {
     // DOM refs (populated in init)
     let menuEl, hudEl, gameOverEl, leaderboardEl, solveTransitionEl, replayHudEl;
     let hudType, hudLevel, hudTimer, hudQuit, hudHowTo;
-    let solveHeadline, solveBanked;
+    let solveHeadline, solveBanked, solveTierUp;
     let gameOverScore, gameOverTime, gameOverRank, gameOverName, gameOverSave, gameOverMenu, gameOverNameRow;
     let leaderboardTileTabsEl, leaderboardPathTabsEl, leaderboardEntries, leaderboardEmpty, leaderboardClose, menuLeaderboardBtn;
     let leaderboardTabsEl;
@@ -161,6 +161,7 @@ const Marathon = (() => {
 
         solveHeadline = $('solveHeadline');
         solveBanked   = $('solveBanked');
+        solveTierUp   = $('solveTierUp');
 
         gameOverScore   = $('gameOverScore');
         gameOverTime    = $('gameOverTime');
@@ -187,13 +188,15 @@ const Marathon = (() => {
 
         // Wire mode buttons + populate thumbnails. Thumbnail filenames are
         // {1 or 4}x{pathCount}.png — the leading 1/4 is the grid-base
-        // (regular vs quad), the trailing digit is the path count.
+        // (regular vs quad), the trailing digit is the path count. The
+        // progressive Zen/Marathon cards ('s'/'q', no path digit) reuse
+        // the 1-path art — a run's tier-1 look.
         document.querySelectorAll('.menuModeBtn').forEach((btn) => {
             const mode = btn.getAttribute('data-mode');
             const thumb = btn.querySelector('img.modeThumb');
             if (thumb && typeof THUMBNAIL_URL_BASE === 'string') {
                 const base  = mode[0] === 'q' ? '4' : '1';
-                const paths = mode[1];
+                const paths = mode[1] || '1';
                 thumb.src = THUMBNAIL_URL_BASE + base + 'x' + paths + '.png';
             }
             // Click delegates to Potd when the mode picker says so,
@@ -235,12 +238,13 @@ const Marathon = (() => {
             if (ev.key === 'Enter') saveScore();
         });
         if (leaderboardClose)   leaderboardClose.addEventListener('click', goToMenu);
-        // Two-tier sub-tab selector replaces the old 8-option dropdown:
-        // tile-type tabs (Singular/Quad) + path-count tabs (1/2/3/4)
-        // side-by-side. Combined they pick the slot identifier
-        // ('s1'..'s4', 'q1'..'q4') the rest of the leaderboard code
-        // already expects — see getActiveBoardType / setActiveBoardType
-        // below. Both rows use the shared .lbSubTab visual.
+        // Two-tier sub-tab selector. Marathon boards use only the
+        // tile-type row (Singular/Quad → 's'/'q', one board per
+        // progressive type); PotD combines it with the path row
+        // (1/2/3/4, plus the Streak/Career all-time chips) to pick the
+        // slot identifier 's1'..'q4' — see getActiveBoardType /
+        // setActiveBoardType below. The path row is CSS-hidden outside
+        // PotD mode. Both rows use the shared .lbSubTab visual.
         // wireSubTabRow: takes the row element + default-button selector,
         // wires click handlers (toggling .active and re-rendering), and
         // sets the default-button's .active class so the panel renders
@@ -480,36 +484,52 @@ const Marathon = (() => {
         if (typeof Credits !== 'undefined' && Credits.start) Credits.start();
     }
 
-    // Combined-slot getter: reads the active tile-type tab (Singular/Quad)
-    // and the active path tab (1/2/3/4) to produce the slot identifier
-    // ('s1'..'s4', 'q1'..'q4') the fetcher + cache + render logic already
-    // speaks. Defaults conservatively to 's1' if either control is
-    // missing (e.g. during init before DOM refs are populated).
+    // All-time PotD board types compose the same way as slots — tile
+    // prefix + the chip's data-paths value — but the value is 'streak'
+    // or 'career' instead of a digit (so 'sstreak', 'qcareer', …).
+    // Returns the kind for such a type, or null for a playable slot.
+    // These types are leaderboard-view-only: they never reach the game
+    // flow (setActiveBoardType is only ever called with real slots).
+    function alltimeKind(type) {
+        const m = /^[sq](streak|career)$/.exec(type || '');
+        return m ? m[1] : null;
+    }
+
+    // Combined board-type getter. Marathon collapsed to one board per
+    // tile type ('s' / 'q' — the progressive types), so in marathon mode
+    // only the tile row matters (the path row is CSS-hidden there). PotD
+    // still composes tile + board tab (1/2/3/4 paths, or the PotD-only
+    // Streak / Career chips → all-time types, see alltimeKind). Defaults
+    // conservatively if a control is missing (e.g. during init before
+    // DOM refs are populated).
     function getActiveBoardType() {
         const tileBtn = leaderboardTileTabsEl
                         ? leaderboardTileTabsEl.querySelector('.lbSubTab.active')
                         : null;
         const tile    = (tileBtn && tileBtn.dataset.tile) || 's';
+        if (leaderboardMode === 'marathon') return tile;
         const pathBtn = leaderboardPathTabsEl
                         ? leaderboardPathTabsEl.querySelector('.lbSubTab.active')
                         : null;
         const paths   = (pathBtn && pathBtn.dataset.paths) || '1';
         return tile + paths;
     }
-    // Combined-slot setter: drives both tab rows from a slot identifier.
-    // Used by every code path that used to do `leaderboardSelect.value =
-    // <slot>` directly (showPotdLeaderboard, saveScore success, etc).
-    // No-ops if the slot is malformed or the rows aren't wired yet.
+    // Combined board-type setter: drives the tab rows from an identifier.
+    // Accepts 1-char progressive types ('s'/'q' — tile row only, the
+    // hidden path row is left untouched) and 2-char PotD slots. Used by
+    // every code path that used to set the old dropdown directly
+    // (showPotdLeaderboard, saveScore success, etc). No-ops if the type
+    // is malformed or the rows aren't wired yet.
     function setActiveBoardType(type) {
-        if (!type || typeof type !== 'string' || type.length !== 2) return;
+        if (!type || typeof type !== 'string' || type.length < 1 || type.length > 2) return;
         const tile  = type[0];
-        const paths = type[1];
+        const paths = type.length === 2 ? type[1] : null;
         if (leaderboardTileTabsEl) {
             leaderboardTileTabsEl.querySelectorAll('.lbSubTab').forEach((b) => {
                 b.classList.toggle('active', b.dataset.tile === tile);
             });
         }
-        if (leaderboardPathTabsEl) {
+        if (paths && leaderboardPathTabsEl) {
             leaderboardPathTabsEl.querySelectorAll('.lbSubTab').forEach((b) => {
                 b.classList.toggle('active', b.dataset.paths === paths);
             });
@@ -590,23 +610,65 @@ const Marathon = (() => {
                 btn.classList.toggle('active', btn.dataset.mode === mode);
             });
         }
+        // The whole path row is PotD-only now (marathon has one board per
+        // tile type) — CSS hides it plus the Streak/Career chips unless
+        // this class is on. Marathon's getActiveBoardType never reads the
+        // path row, so whatever chip is active there can safely persist
+        // for the player's return to the PotD tab.
+        if (leaderboardEl) leaderboardEl.classList.toggle('lbModePotd', mode === 'potd');
         if (render) renderLeaderboard();
     }
 
     // ----- Game flow -----
 
-    // 's3' → { quadMode: false, pathCount: 3 }, 'q1' → { quadMode: true, pathCount: 1 }
-    function decodeType(t) {
-        return { quadMode: t[0] === 'q', pathCount: parseInt(t[1], 10) };
+    // Progressive types ('s' / 'q') ramp their path count within the run
+    // as a pure function of level: tiers of MARATHON.TIER_LENGTH puzzles,
+    // path count stepping 1 → MAX_PATHS.
+    function pathCountForLevel(lev) {
+        return Math.min(MARATHON.MAX_PATHS,
+            Math.floor((lev - 1) / MARATHON.TIER_LENGTH) + 1);
+    }
+    // Growth-accumulator steps applied at `lev`: +1 per solve, minus
+    // TIER_DROP for each tier transition crossed. The drop retraces the
+    // FIRST growthSequence entries again, so each tier opens at exactly
+    // the dims the player saw mid-way through the previous tier (rolled
+    // axis entries are pinned — see ensureGrowthSequence).
+    // With TIER_LENGTH 5 / TIER_DROP 3: L1-5 → L-1; L6-10 → L-4;
+    // L11-15 → L-7; L16+ → L-10 (endless growth at MAX_PATHS).
+    function growthStepsForLevel(lev) {
+        return Math.max(0,
+            (lev - 1) - (pathCountForLevel(lev) - 1) * MARATHON.TIER_DROP);
+    }
+    // Path count in effect at `lev` for a decoded type: progressive
+    // types compute it from the level; legacy 2-char types are fixed.
+    function pathCountFor(decoded, lev) {
+        return decoded.progressive ? pathCountForLevel(lev) : decoded.pathCount;
     }
 
-    // Rolls the random per-transition growth axes ('r'/'c') up to level
-    // `lev`. Same behavior for regular and quad — quad just starts smaller
-    // in logical dims (4×4 vs singular's 5×5) since each step adds 2×
-    // sub-tiles per axis. No upper cap.
-    function ensureGrowthSequence(lev) {
-        // Number of transitions needed = lev - 1 (transition index = level - 2).
-        while (growthSequence.length < lev - 1) {
+    // 's'  → { quadMode: false, pathCount: null, progressive: true }
+    // 's3' → { quadMode: false, pathCount: 3,    progressive: false }
+    // Legacy 2-char types survive in old saved runs (loadRunSave) and
+    // PotD's slot ids (which have their own decoder) — the fixed-path
+    // branch keeps those resumable/replayable. For progressive types
+    // pathCount is null; use pathCountFor(decoded, level).
+    function decodeType(t) {
+        const progressive = t.length === 1;
+        return {
+            quadMode:    t[0] === 'q',
+            pathCount:   progressive ? null : parseInt(t[1], 10),
+            progressive: progressive
+        };
+    }
+
+    // Rolls the random growth axes ('r'/'c') until the sequence holds at
+    // least `count` entries. Callers pass growthStepsForLevel(lev) (or
+    // lev-1 for legacy fixed-path types); tier drops re-read the FIRST
+    // entries, which stay pinned once rolled — pre-gen's lookahead and
+    // the retrace-the-same-dims tier behavior both depend on that.
+    // Same behavior for regular and quad (both start 4×4 logical; each
+    // quad step adds 2× sub-tiles per axis). No upper cap.
+    function ensureGrowthSequence(count) {
+        while (growthSequence.length < count) {
             // Random growth axis with a LONG-AXIS-FIRST invariant keyed to
             // the viewport: on landscape screens cols never fall behind
             // rows (grid meanders between square and WIDE), on portrait
@@ -631,19 +693,18 @@ const Marathon = (() => {
             growthSequence.push(longGrown > shortGrown && Math.random() < 0.5 ? shortAxis : longAxis);
         }
     }
-    // pathCount is threaded through to MARATHON.minDimFor in config.js.
-    // Currently a no-op both ways (all quad counts start 4×4 logical, all
-    // singular starts are 5×5) but every caller passes it so any future
-    // per-path-count floor works without touching call sites.
-    function dimsForLevel(lev, quadMode, pathCount) {
-        // Start dims come from MARATHON.startDimsFor (singular: 5×5 for
-        // EVERY path count, in both Zen/Practice and Marathon; quad: the
-        // minDimFor floors) and may be asymmetric; growth then adds one
-        // axis per solve on top of whichever base each axis got.
-        const start = MARATHON.startDimsFor(quadMode, pathCount);
-        ensureGrowthSequence(lev);
+    // Logical dims at `lev` for a decoded type (see decodeType).
+    // Progressive types apply growthStepsForLevel's tier-sawtooth step
+    // count; legacy fixed-path types keep the old monotonic lev-1. The
+    // shared growthSequence prefix means a tier drop retraces earlier
+    // dims exactly.
+    function dimsForLevel(lev, decoded) {
+        const paths = pathCountFor(decoded, lev);
+        const start = MARATHON.startDimsFor(decoded.quadMode, paths);
+        const steps = decoded.progressive ? growthStepsForLevel(lev) : lev - 1;
+        ensureGrowthSequence(steps);
         let rowGrowth = 0, colGrowth = 0;
-        for (let i = 0; i < lev - 1; i++) {
+        for (let i = 0; i < steps; i++) {
             if (growthSequence[i] === 'r') rowGrowth++;
             else                           colGrowth++;
         }
@@ -661,16 +722,24 @@ const Marathon = (() => {
     // Marathon is the active state machine.
     //
     // Returns PHYSICAL dims (×2 in quad mode) so game.js's cacheKey
-    // matches the wantR/wantC it passes to newPuzzle.
+    // matches the wantR/wantC it passes to newPuzzle. Each entry also
+    // carries its OWN pathCount/quadMode: at a tier boundary the next
+    // level's path count differs from the current one, and pre-gen must
+    // build + cache under the future config, not the current globals.
     function upcomingDims(count) {
         if (state !== STATE.PLAYING) return [];
         const decoded = decodeType(activeType);
         const out = [];
         for (let i = 1; i <= count; i++) {
-            const logical  = dimsForLevel(level + i, decoded.quadMode, decoded.pathCount);
+            const lev      = level + i;
+            const logical  = dimsForLevel(lev, decoded);
             const physRows = decoded.quadMode ? logical.rows * 2 : logical.rows;
             const physCols = decoded.quadMode ? logical.cols * 2 : logical.cols;
-            out.push({ rows: physRows, cols: physCols });
+            out.push({
+                rows: physRows, cols: physCols,
+                pathCount: pathCountFor(decoded, lev),
+                quadMode:  decoded.quadMode
+            });
         }
         return out;
     }
@@ -718,7 +787,10 @@ const Marathon = (() => {
             if (!raw) return null;
             const save = JSON.parse(raw);
             if (!save || save.v !== 1) return null;
-            if (typeof save.type !== 'string' || !/^[sq][1-4]$/.test(save.type)) return null;
+            // 's'/'q' = progressive runs; the optional digit keeps saves
+            // from before the progressive revamp (fixed-path 's1'..'q4')
+            // resumable via decodeType's legacy branch.
+            if (typeof save.type !== 'string' || !/^[sq][1-4]?$/.test(save.type)) return null;
             if (!(save.level >= 1)) return null;
             return save;
         } catch (e) { return null; }
@@ -750,8 +822,8 @@ const Marathon = (() => {
             // appeared. Roll both back so the boundary-resume's own
             // startNextPuzzle replays the grant exactly once. (The timer
             // never ticks during a build, so the subtraction is exact.)
-            const logical = dimsForLevel(level, decoded.quadMode, decoded.pathCount);
-            const fresh   = timeForPuzzle(decoded.quadMode, decoded.pathCount, solvedCount, logical);
+            const logical = dimsForLevel(level, decoded);
+            const fresh   = timeForPuzzle(decoded.quadMode, pathCountFor(decoded, level), solvedCount, logical);
             saveLevel     = level - 1;
             saveRemaining = Math.max(0, timeRemaining - fresh);
             if (saveLevel < 1 && solvedCount === 0) return;   // nothing to resume
@@ -849,7 +921,10 @@ const Marathon = (() => {
             showOnly(hudEl);
             const decoded = decodeType(activeType);
             Maze.setQuadMode(decoded.quadMode);
-            Maze.setPathCount(decoded.pathCount);
+            // Progressive types carry no fixed pathCount — derive the
+            // tier's count from the saved level (legacy types pass
+            // through their fixed digit).
+            Maze.setPathCount(pathCountFor(decoded, level));
             Maze.loadSnapshot(save.maze);
             if (save.gates && typeof Gates !== 'undefined' && Gates.restore) {
                 Gates.restore(save.gates);
@@ -894,6 +969,17 @@ const Marathon = (() => {
     // tab (the player's persisted mode pick lands them on the right tab
     // anyway). Static label is data-i18n; the "Puzzle N · type" detail is
     // painted here.
+
+    // i18n key for a run's type label at level `lev`. Legacy fixed-path
+    // types map straight to their marathon.modeS1..modeQ4 key; progressive
+    // types reuse the SAME 8 keys ("Singular · N paths" per language) with
+    // the digit computed from the level's tier — no new translations.
+    // pathCountForLevel clamps at MAX_PATHS, so the digit is always 1-4.
+    function typeLabelKey(type, lev) {
+        if (type.length === 2) return 'marathon.mode' + type.toUpperCase();
+        return 'marathon.mode' + type.toUpperCase() + pathCountForLevel(lev);
+    }
+
     function refreshContinueCards() {
         const picked = (typeof ModePicker !== 'undefined' && ModePicker.getMode)
             ? ModePicker.getMode() : 'practice';
@@ -911,7 +997,7 @@ const Marathon = (() => {
                     const n = save.boundary ? save.level + 1 : save.level;
                     detailEl.textContent =
                         I18n.t('menu.continuePuzzle', { n: n })
-                        + ' · ' + I18n.t('marathon.mode' + save.type.toUpperCase());
+                        + ' · ' + I18n.t(typeLabelKey(save.type, n));
                 }
             }
         }
@@ -1019,7 +1105,7 @@ const Marathon = (() => {
         // still never re-trigger, and the player gets the normal menu on
         // their next load rather than a repeating broken auto-start.
         try { localStorage.setItem(AUTO_START_KEY, '1'); } catch (e) {}
-        startGame('s1', true, true);
+        startGame('s', true, true);
         return true;
     }
 
@@ -1074,15 +1160,17 @@ const Marathon = (() => {
 
         level++;
         const decoded   = decodeType(activeType);
-        const logical   = dimsForLevel(level, decoded.quadMode, decoded.pathCount);
+        const paths     = pathCountFor(decoded, level);
+        const logical   = dimsForLevel(level, decoded);
         const physRows  = decoded.quadMode ? logical.rows * 2 : logical.rows;
         const physCols  = decoded.quadMode ? logical.cols * 2 : logical.cols;
 
         // Carry-over + fresh allotment. solvedCount = (level - 1) here
         // (incremented in onSolve before the player advances). No cap on
         // banking — the running total just grows. `logical` feeds the
-        // singular size cap on fresh time.
-        const fresh = timeForPuzzle(decoded.quadMode, decoded.pathCount, solvedCount, logical);
+        // singular size cap on fresh time. Progressive runs' path-indexed
+        // START_TIME arrays give a natural bump at each tier-up.
+        const fresh = timeForPuzzle(decoded.quadMode, paths, solvedCount, logical);
         timeRemaining = timeRemaining + fresh;
 
         state = STATE.PLAYING;
@@ -1113,7 +1201,7 @@ const Marathon = (() => {
             callbacks.startPuzzle({
                 rows:      physRows,
                 cols:      physCols,
-                pathCount: decoded.pathCount,
+                pathCount: paths,
                 quadMode:  decoded.quadMode
             });
         }
@@ -1342,8 +1430,9 @@ const Marathon = (() => {
         // what startNextPuzzle will grant. No cap on banking — all of
         // leftover carries.
         const decoded     = decodeType(activeType);
-        const nextLogical = dimsForLevel(level + 1, decoded.quadMode, decoded.pathCount);
-        const fresh       = timeForPuzzle(decoded.quadMode, decoded.pathCount, solvedCount, nextLogical);
+        const nextPaths   = pathCountFor(decoded, level + 1);
+        const nextLogical = dimsForLevel(level + 1, decoded);
+        const fresh       = timeForPuzzle(decoded.quadMode, nextPaths, solvedCount, nextLogical);
         const nextStart = timeRemaining + fresh;
         const bankedMs  = timeRemaining;
 
@@ -1352,6 +1441,17 @@ const Marathon = (() => {
         // into the next puzzle.
         if (solveTransitionEl && solveHeadline && solveBanked) {
             solveHeadline.textContent = I18n.t('marathon.solveHeadline', { n: level });
+            // Tier-up cue: the NEXT puzzle steps the path count up (a
+            // progressive-run tier boundary). Announce it on the popup so
+            // the jump doesn't read as a random difficulty spike; hidden
+            // on every ordinary advance and always for legacy runs.
+            if (solveTierUp) {
+                const tierUp = decoded.progressive && nextPaths > pathCountFor(decoded, level);
+                solveTierUp.hidden = !tierUp;
+                if (tierUp) {
+                    solveTierUp.textContent = I18n.t('marathon.solveTierUp', { n: nextPaths });
+                }
+            }
             if (isPractice) {
                 // No clock to bank — just confirm the count and prompt the
                 // player onward. #solveContinue already shows "Tap to continue".
@@ -1470,7 +1570,9 @@ const Marathon = (() => {
 
     function updateHud(logical) {
         if (!hudType) return;
-        hudType.textContent  = I18n.t('marathon.mode' + activeType.toUpperCase());
+        // Progressive runs re-render this on every startNextPuzzle, so the
+        // label's path digit tracks the current tier automatically.
+        hudType.textContent  = I18n.t(typeLabelKey(activeType, level));
         hudLevel.textContent = I18n.t('marathon.hudLevel', { n: level, r: logical.rows, c: logical.cols });
         renderTimer();
     }
@@ -1734,6 +1836,13 @@ const Marathon = (() => {
         // PotD's key is per-date + type so a stale yesterday board
         // doesn't paint over an empty fresh-today one.
         if (mode === 'potd') {
+            // All-time boards are cumulative — no date in the key (a
+            // cached copy is still meaningful tomorrow, unlike the
+            // per-day slot boards where yesterday's cache would paint
+            // over an empty fresh-today board).
+            if (alltimeKind(type)) {
+                return PROJECT_SLUG + '_potd_lb_alltime_' + type;
+            }
             return PROJECT_SLUG + '_potd_lb_' + potdTodayUTC() + '_' + type;
         }
         return PROJECT_SLUG + '_lb_' + type;
@@ -1859,7 +1968,14 @@ const Marathon = (() => {
         const base = apiBase();
         if (!base) throw new Error('No GAME_API configured');
         let url;
-        if (mode === 'potd') {
+        const kind = mode === 'potd' ? alltimeKind(type) : null;
+        if (kind) {
+            // Streak / Career — cumulative boards over the whole
+            // potd_scores history for one tile set ('s' or 'q').
+            url = base + '/potd/alltime?set=' + encodeURIComponent(type[0])
+                + '&kind=' + encodeURIComponent(kind)
+                + '&limit=' + MARATHON.LEADERBOARD_TOP_N;
+        } else if (mode === 'potd') {
             url = base + '/potd/board?date=' + encodeURIComponent(potdTodayUTC())
                 + '&slot=' + encodeURIComponent(type)
                 + '&limit=' + MARATHON.LEADERBOARD_TOP_N;
@@ -2055,11 +2171,16 @@ const Marathon = (() => {
         // travels with the entry from the server), so just skip the
         // cross-ref there.
         const boardType    = getActiveBoardType();
+        const alltime      = mode === 'potd' ? alltimeKind(boardType) : null;
         const ownRecording = mode === 'potd' ? null : loadOwnRecording(boardType);
         let highlightedEl = null;
         board.forEach((entry, i) => {
             const li     = document.createElement('li');
-            if (entryMatchesHighlight(entry)) {
+            // No highlight matching on all-time boards: their entries
+            // carry only {name, value}, so entryMatchesHighlight's
+            // undefined-vs-undefined fallback tuple would false-match
+            // any same-named row when a solve highlight is pending.
+            if (!alltime && entryMatchesHighlight(entry)) {
                 li.classList.add('lbHighlight');
                 highlightedEl = li;
             }
@@ -2071,6 +2192,26 @@ const Marathon = (() => {
             // the run) + a `totalMs` total run time. PotD entries are a
             // single-puzzle solve — `timeMs` is the only metric, no
             // count column.
+            if (alltime) {
+                // Streak / Career rows: rank, name, one value column
+                // (longest streak in days, or total solves). Two padding
+                // spans keep the shared 6-column grid aligned; the value
+                // takes the .lbSolved slot + color since it IS the
+                // primary metric here. No Watch button ever — these
+                // entries aggregate many solves, there's no single
+                // recording to play.
+                li.appendChild(document.createElement('span'));
+                li.appendChild(document.createElement('span'));
+                const n   = (typeof entry.value === 'number') ? entry.value : 0;
+                const val = document.createElement('span');
+                val.className   = 'lbSolved';
+                val.textContent = alltime === 'streak'
+                    ? I18n.t('potd.lb.days',   { n: n, s: n === 1 ? '' : 's' })
+                    : I18n.t('potd.lb.solves', { n: n, s: n === 1 ? '' : 's' });
+                li.appendChild(val);
+                leaderboardEntries.appendChild(li);
+                return;
+            }
             if (mode === 'potd') {
                 // Padding span for the `solved` column — PotD is a
                 // single puzzle, no count to show. (Without the span,

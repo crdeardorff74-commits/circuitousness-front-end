@@ -198,20 +198,22 @@ const MARATHON = {
         }
         return quadMode ? this.MIN_DIM_QUAD : this.MIN_DIM_SINGULAR;
     },
-    // Level-1 start dims as {rows, cols} (cols = width). ALL singular
-    // puzzles start 5×5 — every path count, in BOTH Zen/Practice and
-    // Marathon (history: 1-path went 4×4 → 4×5/5×5 → 6×6 → 5×5, and
+    // Level-1 start dims as {rows, cols} (cols = width). ALL puzzles
+    // start 4×4 logical — singular and quad alike, every path tier, in
+    // BOTH Zen/Practice and Marathon. Singular dropped 5×5 → 4×4 with
+    // the 2026-07 progressive-type revamp: a run now opens on a tiny
+    // 1-path warm-up and the tier ramp does the difficulty work.
+    // (History: singular 1-path went 4×4 → 4×5/5×5 → 6×6 → 5×5 → 4×4;
     // 2/3/4-path sat on the 6/8/10 MIN_DIM floors until Debug-mode
     // testing showed the backtracking 4-path generator is fine on tiny
-    // grids). Quad keeps the minDimFor floors (4 for every count): logical
-    // dims are 2× physical, so quad 4×4 is already an 8×8 maze and 5×5
-    // logical would make quad starts BIGGER, not uniform. The per-solve
-    // row/col growth climbs from here.
+    // grids.) Quad keeps the minDimFor floors (4 for every count):
+    // logical dims are 2× physical, so quad 4×4 is already an 8×8 maze.
+    // The per-solve row/col growth (with tier drops) climbs from here.
     // Callers: marathon.js dimsForLevel (adds growth per level) and
     // game.js STARTER_PLAN (pre-gen at Marathon's level-1 dims).
     startDimsFor: function (quadMode, pathCount) {
         if (!quadMode) {
-            return { rows: 5, cols: 5 };
+            return { rows: 4, cols: 4 };
         }
         const d = this.minDimFor(quadMode, pathCount);
         return { rows: d, cols: d };
@@ -235,8 +237,23 @@ const MARATHON = {
     HINT_PENALTY_FRACTION: 0.25,
     HINT_PENALTY_MIN_MS:   10000,
 
-    // 8 game types: singular/quad × 1..4 paths. Stored as keys 's1'..'s4', 'q1'..'q4'.
-    TYPES: ['s1', 's2', 's3', 's4', 'q1', 'q2', 'q3', 'q4']
+    // Progressive-mode tier tuning. A Zen/Marathon run ramps its path
+    // count 1→MAX_PATHS: every TIER_LENGTH puzzles the path count steps
+    // up and the growth accumulator drops back TIER_DROP steps (so each
+    // tier opens at a size the player already solved — the new path is
+    // the only new difficulty). After MAX_PATHS the growth is endless.
+    // Progression is a pure function of level — see marathon.js
+    // pathCountForLevel / growthStepsForLevel.
+    TIER_LENGTH: 5,
+    TIER_DROP:   3,
+    MAX_PATHS:   4,
+
+    // 2 progressive game types: singular ('s') and quad ('q'). The path
+    // count is no longer part of the type — it ramps within the run (see
+    // the tier constants above). History: was 8 fixed types s1..s4/q1..q4
+    // (singular/quad × 1-4 paths); those ids live on in PotD's slots
+    // (potd.js SLOTS), legacy saved runs, and retired leaderboards.
+    TYPES: ['s', 'q']
 };
 
 /**

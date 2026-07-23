@@ -433,6 +433,17 @@ body.mode-practice #hudTimer { display: none; }
     font-weight: 500;
     color: rgba(230, 240, 255, 0.92);
 }
+/* Tier-up cue on the solve popup (progressive runs only) — same scale
+   as the banked line but in the path-accent cyan so "the game is about
+   to change" reads distinctly from the routine time message. */
+#solveTierUp {
+    font-size: clamp(0.95rem, 2.4vw, 1.3rem);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: rgba(0, 225, 255, 0.95);
+    text-shadow: 0 0 0.8rem rgba(0, 225, 255, 0.4);
+    margin-bottom: 0.3rem;
+}
 html.mode-debug #solveTransition { display: none !important; }
 
 /* PotD solved card — same visual language as #solveTransition (gold border +
@@ -1227,6 +1238,12 @@ body:not(.mode-potd) .menuModeBtn.potd-solved .modeThumb {
 body:not(.mode-potd) .menuModeBtn.potd-solved span {
     color: rgba(220, 240, 255, 0.95);
 }
+/* Mode-collapsed menu cards: PotD keeps the 8 per-slot cards (its badges
+   + slot launching depend on them); Zen/Marathon show only the 2
+   progressive type cards (Singular/Quad — the run ramps path count
+   internally). Exactly one block is visible per mode. */
+body.mode-potd #menuMarathonTypes { display: none; }
+body:not(.mode-potd) .menuSection.menuPotdSlots { display: none; }
 
 #menuLeaderboardBtn {
     margin-top: 0.4rem;
@@ -2924,6 +2941,19 @@ body.credits-rolling #potdSolveTransition.visible {
     gap: 0.3rem;
     width: clamp(20rem, 70vw, 36rem);
 }
+/* The bottom row holds up to 6 chips in PotD mode (4 paths + Streak +
+   Career) — let it wrap rather than crush the labels on narrow phones.
+   The tile row stays nowrap (always exactly 2 chips). */
+#leaderboardPathTabs { flex-wrap: wrap; }
+/* The whole path row is PotD-only: marathon collapsed to one board per
+   tile type ('s'/'q' progressive runs), so its board picker is just the
+   Singular/Quad row above. marathon.js's applyLeaderboardMode stamps
+   .lbModePotd on #leaderboard while the PotD tab is active; its
+   getActiveBoardType never reads the path row in marathon mode. The
+   .lbPotdOnly rule is kept for the Streak/Career chips (they live
+   inside this row, but belt-and-suspenders if markup ever moves). */
+#leaderboard:not(.lbModePotd) #leaderboardPathTabs { display: none; }
+#leaderboard:not(.lbModePotd) .lbSubTab.lbPotdOnly { display: none; }
 .lbSubTab {
     flex: 1;
     padding: clamp(0.15rem, 0.55vh, 0.3rem) 0.4rem;

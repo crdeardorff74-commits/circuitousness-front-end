@@ -126,30 +126,31 @@
         }
 
         // ----- Starter pre-gen -----
-        // Marathon has 8 starting puzzle types (s1..s4, q1..q4). At page load
-        // we kick off background generation for all 8 at their level-1 dims so
-        // that picking ANY mode is instant — no "Building puzzle…" wait on
-        // first launch. Runs even in PotD mode since the player may switch
-        // to Marathon. Cache survives across games + invalidatePreGen calls
-        // (those only wipe lookahead entries built for the previous config).
+        // Marathon/Zen have one starter per progressive type ('s', 'q'),
+        // each at its tier-1 dims (4×4 logical, 1 path). At page load we
+        // kick off background generation for both so picking either mode
+        // is instant — no "Building puzzle…" wait on first launch. Runs
+        // even in PotD mode since the player may switch to Marathon.
+        // Cache survives across games + invalidatePreGen calls (those
+        // only wipe lookahead entries built for the previous config).
         //
-        // STARTER_PLAN derives from MARATHON.TYPES + MIN_DIM_* constants in
-        // config.js so changes to those propagate automatically. Each entry
-        // captures everything the worker needs (physical dims + pathCount +
-        // quadMode) and the cache key the result will land under.
+        // STARTER_PLAN derives from MARATHON.TYPES + startDimsFor in
+        // config.js so changes to those propagate automatically. The
+        // parse below also tolerates legacy 2-char types (digit = path
+        // count); 1-char progressive types fall through to 1 path. Each
+        // entry captures everything the worker needs (physical dims +
+        // pathCount + quadMode) and the cache key the result lands under.
         const STARTER_PLAN = (function () {
             const out = [];
             if (typeof MARATHON !== 'object' || !MARATHON.TYPES) return out;
             for (const type of MARATHON.TYPES) {
                 const quad   = type[0] === 'q';
                 const paths  = parseInt(type[1], 10) || 1;
-                // Start dims from MARATHON.startDimsFor (singular: 5×5 for
-                // every path count; quad: minDimFor floors) — the starter
-                // build must match dimsForLevel(1, ...) exactly or every
-                // game-start misses this cache. Zen/Practice and Marathon
-                // now share identical start dims, so these starters serve
-                // both modes (pre-unification, Zen 2/3-path had its own
-                // smaller dims and deliberately skipped pre-gen).
+                // Start dims from MARATHON.startDimsFor (4×4 logical for
+                // both types) — the starter build must match
+                // dimsForLevel(1, ...) exactly or every game-start misses
+                // this cache. Zen/Practice and Marathon share identical
+                // start dims, so these starters serve both modes.
                 const startDims = MARATHON.startDimsFor(quad, paths);
                 // dimsForLevel(1, ...) returns these logical dims;
                 // upcomingDims/startPuzzle convert ×2 for quad → PHYSICAL dims.
@@ -223,9 +224,11 @@
         //   urgent:    true → worker aborts any in-flight build and races
         //                     to start this one. Used when the player is
         //                     waiting on a build (newPuzzle cache miss).
-        //   pathCount: override the current global pathCount (used by
-        //              starter pre-gen, which queues all 8 starting types
-        //              before any game has set a global config).
+        //   pathCount: override the current global pathCount. Used by
+        //              starter pre-gen (queued before any game has set a
+        //              global config) and by Marathon lookahead, whose
+        //              next-level entries can cross a progressive tier
+        //              boundary onto a different path count.
         //   quadMode:  same as pathCount but for the quad/singular toggle.
         //   purpose:   short string describing why this build was queued,
         //              used in the console log ('starter s2',
@@ -290,9 +293,18 @@
             }
             for (let i = 0; i < upcoming.length; i++) {
                 const dims = upcoming[i];
-                if (!preGenCache.has(cacheKey(dims.rows, dims.cols))) {
+                // Marathon's upcomingDims entries carry their OWN
+                // pathCount/quadMode: under the progressive types the next
+                // level can sit across a tier boundary with a different
+                // path count than the current globals. Key + build with the
+                // entry's config so the advance finds its cache hit. Debug
+                // dims carry neither → cacheKey/requestBuild fall back to
+                // the globals, same as before.
+                if (!preGenCache.has(cacheKey(dims.rows, dims.cols, dims.pathCount, dims.quadMode))) {
                     requestBuild(dims.rows, dims.cols, {
-                        purpose: 'lookahead L+' + (i + 1)
+                        pathCount: dims.pathCount,
+                        quadMode:  dims.quadMode,
+                        purpose:   'lookahead L+' + (i + 1)
                     });
                     return;
                 }
@@ -309,7 +321,8 @@
             }
         }
 
-        // Background pre-gen for the 8 Marathon starting puzzles. Called
+        // Background pre-gen for the Marathon/Zen starter puzzles (one
+        // per progressive type — see STARTER_PLAN above). Called
         // at page load AND chained after every worker response, so any
         // gap in the starter cache (player consumed one, then quit before
         // refill finished) closes on its own as soon as the worker is idle.
@@ -1316,10 +1329,23 @@
                         Render.refit();
                     }
                     if (pathCount !== opts.pathCount || quadMode !== opts.quadMode) {
+                        // Wipe the lookahead only when QUAD flips (a real
+                        // cross-game mode switch). Path-count changes are
+                        // now routine — every progressive tier transition
+                        // raises it — and the correctly-keyed next-tier
+                        // entries fillPreGenQueue just built must survive
+                        // the boundary or every tier-up would show
+                        // "Building puzzle…". Safe because cacheKey fully
+                        // qualifies entries by (dims, paths, quad): a
+                        // stale wrong-path entry can never be RETURNED,
+                        // it just lingers until a wantResize sweep.
+                        const quadChanged = quadMode !== opts.quadMode;
                         pathCount = opts.pathCount;
                         quadMode  = opts.quadMode;
-                        invalidatePreGen();
-                        preGenSize = null;
+                        if (quadChanged) {
+                            invalidatePreGen();
+                            preGenSize = null;
+                        }
                     }
                     await newPuzzle(opts.rows, opts.cols);
                     Marathon.onPuzzleReady();
