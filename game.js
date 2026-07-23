@@ -873,6 +873,52 @@
         // isReplaying lifecycle — replay() flips it per invocation, but
         // replayAll() holds it true across the whole sequence so the
         // gating in handlePointer / hintBtn stays active between puzzles.
+        // Compress a recording's timeline for playback: any inter-move gap
+        // longer than REPLAY_MAX_GAP_MS plays as exactly that long, so a
+        // watcher never sits through a solver's ten-minute think (quit/
+        // resume gaps never reach the recording at all — restoreRecording
+        // rebases them out at resume time; this cap handles in-session
+        // idling, which PotD's uncapped clock makes unbounded). Music
+        // events are remapped through the SAME piecewise map so each song
+        // change still lands beside the move it originally accompanied —
+        // without this, a compressed replay would end before its
+        // soundtrack cues fire. Returns {moves, musicEvents} with shallow
+        // per-entry copies; the source recording is never mutated (the
+        // own-replay button plays the LIVE recording object).
+        function compressReplayTimeline(rec) {
+            const cap    = (typeof REPLAY_MAX_GAP_MS === 'number') ? REPLAY_MAX_GAP_MS : 15000;
+            const moves  = Array.isArray(rec.moves) ? rec.moves : [];
+            const music  = Array.isArray(rec.musicEvents) ? rec.musicEvents : [];
+            // One pass over the moves builds the piecewise anchors:
+            // original t → compressed t at every move.
+            const origT = [0];
+            const compT = [0];
+            let prev = 0, comp = 0;
+            const outMoves = moves.map((m) => {
+                const t = Math.max(prev, m.t || 0);   // guard non-monotonic t
+                comp += Math.min(t - prev, cap);
+                prev = t;
+                origT.push(t);
+                compT.push(comp);
+                return Object.assign({}, m, { t: comp });
+            });
+            // Map a music timestamp through the anchors: find the segment
+            // it falls in, advance by at most the segment's compressed
+            // room. Music events are sparse (a handful per puzzle), so a
+            // linear anchor walk per event is fine.
+            function mapT(t) {
+                let i = origT.length - 1;
+                while (i > 0 && origT[i] > t) i--;
+                const room = (i + 1 < compT.length)
+                    ? compT[i + 1] - compT[i]   // = min(segment gap, cap)
+                    : cap;                       // past the last move
+                return compT[i] + Math.min(Math.max(0, t - origT[i]), room);
+            }
+            const outMusic = music.map((ev) =>
+                Object.assign({}, ev, { t: mapT(ev.t || 0) }));
+            return { moves: outMoves, musicEvents: outMusic };
+        }
+
         async function playOneRecording(rec) {
             if (!rec) return;
             // Recordings may carry a different mode/dims than the current
@@ -905,20 +951,23 @@
             // refresh() would diff against those and could fire spurious
             // applause / leak a stale glitch-loop into the new playback.
             resetSfxBaselines();
+            // Compress dead air out of the timeline (moves AND music
+            // remapped together — see compressReplayTimeline).
+            const timeline = compressReplayTimeline(rec);
             // Hand music control to scripted playback: schedules each
-            // recorded song change at its original timestamp so the
-            // watcher hears the same songs in the same order at the
-            // same offsets the original player heard. Older recordings
+            // recorded song change at its (compressed) timestamp so the
+            // watcher hears the same songs in the same order beside the
+            // same moves the original player heard. Older recordings
             // without musicEvents pass an empty array → no-op (music
             // continues whatever it was already playing). Wrapped in
             // try/finally so a thrown error or cancel still stops the
             // scripted timer chain and returns Music to normal control.
             if (typeof Music !== 'undefined' && Music.startScriptedPlayback) {
-                Music.startScriptedPlayback(rec.musicEvents || []);
+                Music.startScriptedPlayback(timeline.musicEvents);
             }
             try {
                 const start = Date.now();
-                for (const move of (rec.moves || [])) {
+                for (const move of timeline.moves) {
                     if (replayCancelled) break;
                     const wait = Math.max(0, move.t - (Date.now() - start));
                     if (wait > 0) {

@@ -2,6 +2,13 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-22 — Release v0.98 (replay dead-air cap)
+- **Replays cap inter-move dead air at 15s** (`REPLAY_MAX_GAP_MS`, config.js): new `compressReplayTimeline` in game.js runs before `playOneRecording`'s loop — pacing under the cap untouched, gaps beyond it play as exactly 15s. Quit/resume gaps were ALREADY edited out at resume time (`restoreRecording` rebases startTime — v0.93); this cap covers in-session idling, which PotD's uncapped clock makes unbounded.
+- **Why up-front compression, not a wait clamp**: the playback loop schedules against absolute t offsets, so clamping one wait would re-introduce the skipped time on the next move. Also `musicEvents` are remapped through the SAME piecewise map — otherwise song cues would fire after a compressed replay already ended (breaking v0.93's scripted playback on any long-think recording). Source recording never mutated (own-replay button plays the live object).
+- Test recipe: PotD solve with a >15s idle mid-solve → Watch: idle plays as ~15s beat, normal pacing unchanged, song changes land beside the same moves.
+- Supersedes unshipped v0.97 if that zip never went out; v0.96's deploy-order warning (back-end FIRST) still applies.
+- Version bumped 0.97 → 0.98.
+
 ## 2026-07-22 — Release v0.97 (PotD nudge moved to first 3-path solve)
 - **PotD nudge tooltip delayed** (user call): was "as puzzle 3 of the first-visit auto-start run appears"; now fires as the next puzzle appears after the player's FIRST 3-PATH SOLVE — level 12 under current tiers, but derived from `pathCountForLevel(level-1)===3 && pathCountForLevel(level-2)===2` so it tracks any TIER_LENGTH/TIER_DROP retune automatically. Deliberate reach trade: far fewer players see it, but they're the hooked ones; the menu's "📅 Daily & More" HUD button still advertises passively for everyone.
 - Supersedes unshipped v0.96 if that zip never went out — v0.96 entry below has the deploy-order warning (back-end FIRST) that still applies to this release.

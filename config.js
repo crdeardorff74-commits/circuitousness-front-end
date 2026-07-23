@@ -39,6 +39,16 @@ const THUMBNAIL_URL_BASE =
 // early; in PotD it's a fixed pause.
 const SOLVE_REVEAL_DELAY_MS = 1000;
 
+// Leaderboard replay: cap on the dead time played between two recorded
+// moves (ms). Recordings keep the player's REAL timestamps (and quit/
+// resume gaps are already edited out at resume time by
+// Game.restoreRecording), but a player who simply sat and thought for
+// ten minutes mid-solve would otherwise make every watcher sit through
+// those ten minutes. The replay compresses any inter-move gap beyond
+// this to exactly this long — pacing under the cap is untouched, so
+// replays stay faithful except during genuine dead air.
+const REPLAY_MAX_GAP_MS = 15000;
+
 const AppConfig = {
     // TODO: set when back-end is deployed
     GAME_API: 'https://circuitousness-api.onrender.com/api',
