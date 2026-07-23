@@ -2,6 +2,12 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-23 — Release v1.01 (intro restyle: PLAY-first, WARNING demoted)
+- **Why**: admin On-site Intro Funnel (newly windowed — see below) showed the intro leaking hard on recent cold traffic: **7d deduped agree-rate 36.4% (8/22 browsers) vs 70.8% lifetime**, recorded 2026-07-23 as the pre-restyle BASELINE. Compare next week's 7d number against 36.4% to judge this release; if it doesn't move, suspect load time next, not the intro.
+- **Intro restyle**: WARNING demoted from focal (clamp 2.4-7rem red) to wink-size (clamp 1.5-2.6rem; joke text/randomized activity unchanged); agree button is the focal point now — flex-column with big "▶ PLAY" face (new `intro.play` key ×15) + `intro.agree` line as lowercase fine print INSIDE the button. One tap still carries consent flavor + audio/fullscreen user-gesture + first-visit auto-start trigger. intro.js untouched (only wires click on the button id). Landscape-phone block re-tuned.
+- **Companion changes (deployed separately, already live)**: circuitousness-api `/api/admin/visits/stats` gained windowed onsite funnel fields (`onsite_[uniq_]visits/agreed/agree_rate_{24h,7d,30d}`); umbrella admin page's funnel panel now follows the window tabs AND got un-hidden (its container had a lingering inline display:none — renderer never flipped it; that was the "suppressed funnel stats").
+- Version bumped 1.00 → 1.01.
+
 ## 2026-07-22 — Release v1.00 (aspect-ratio growth cap + phone leaderboard width)
 - **Grid growth aspect cap** (user: progressive grids got "too thin" — a 4×12 observed): `MARATHON.MAX_ASPECT_RATIO: 1.3` — before growing the long axis, `ensureGrowthSequence` checks `longDim+1 > shortDim×1.3` and forces the roll onto the short axis instead. Ratio (not fixed units — user revised mid-session from a brief 2-unit version): spread scales with size (4×5 early, 7×9 legal at 1.286, 10×13 late). Per-roll enforcement → every prefix honors it (tier drops replay prefixes); rotation flips + legacy stretched saves converge back via the long-axis-first branch. Quad covered (logical tiles). PotD untouched — its own ranges still allow 6×9 singular (diff 3); user aware, no change requested.
 - **Portrait-phone leaderboards widened**: `width: min(94vw, 32rem)` on tabs/tile-row/path-row/entries in the ≤600px portrait block (~367px at 390px vs ~312px before). End-of-file source order beats the 70vw/80vw rules at equal specificity — same precedence pattern the block documents.
