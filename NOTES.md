@@ -2,6 +2,18 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-23 — Release v1.06 (path quality: bend/interior/crossing floors + inward DFS bias)
+- **Why (two user reports)**: (1) a near-straight border path (3 bends in ~20 cells) played trivially; (2) after the bend floor, two windy-but-still-simple paths — S-curving along the BORDER, crossing nothing — showed the other two easy shapes.
+- **maze.js quality system** (single source — worker imports it, so Zen/Marathon pre-gen + urgent builds + PotD seeding all covered):
+  - Bend floor: ≥25% of a path's cells must be elbows, min 2 (`MIN_BEND_FRACTION`/`MIN_PATH_BENDS`/`pathBendCountIn`).
+  - Interior floor: ≥25% of cells at border-distance ≥2 (`INTERIOR_FRACTION`, `meetsInteriorFloor`); vacuous when the grid has <8 interior cells (`MIN_INTERIOR_AVAILABLE`) so tiny tier-1 boards are untouched.
+  - Crossing preference (paths 2-3, linear mode): candidates sharing ≥1 cross-cell with an earlier path score higher (`pathCrossCountIn`).
+  - Selection is SCORE-BASED, never rejecting: path 1 = bends(2)+interior(2), ties broken by the original length prefs (`betterPath1`); added paths = +crossing(1), early-out at 5. Worst case = best available candidate → build success rates unchanged.
+  - **4-path backtracker exempt** from post-hoc floors (budget spent on fitting 4 paths; rejection risks dropped colors) — it gets quality via the new INWARD DFS BIAS in generateLanes: virgin exits that move deeper are usually tried first (60/40 coin-flip softening). Applies to every mode for free.
+- Tuning knobs: INTERIOR_FRACTION, MIN_INTERIOR_AVAILABLE, MIN_BEND_FRACTION, the 0.6 bias probability (inline in dfs). Watch in testing: center-crowding, and 4-path quad build times staying prompt.
+- NOT node-checked (no JS runtime) / not browser-verified (standing rule). One transient garbled comparison in betterPath1 was introduced and fixed within the session — worth an eyeball that path-1 sizes still prefer the cap correctly.
+- Version bumped 1.05 → 1.06.
+
 ## 2026-07-23 — Release v1.05 (aspect cap loosened 1.3 → 1.5)
 - `MARATHON.MAX_ASPECT_RATIO` 1.3 → 1.5 (user call): grids may now stretch to 1.5× the other dimension before growth is forced back onto the short axis — 4×6 early, 10×15 late. Logic untouched; same per-roll enforcement in ensureGrowthSequence with all its properties (prefix-legal for tier drops, rotation/legacy convergence, logical-tile quad coverage).
 - Version bumped 1.04 → 1.05.

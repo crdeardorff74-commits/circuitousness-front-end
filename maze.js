@@ -276,15 +276,30 @@ const Maze = (() => {
             // before exits that lead into already-visited cells or off-grid.
             // Without this bias the DFS happily heads straight for the exit,
             // producing short, uninteresting paths.
+            // Second-order bias (2026-07-23): among virgin exits, usually
+            // try the ones that move DEEPER into the grid first —
+            // border-hugging paths read as trivial (obvious corridor), and
+            // this shifts every mode's distribution inward for free,
+            // including the 4-path backtracker where the post-hoc quality
+            // floors don't apply. Softened by a coin flip so paths still
+            // vary and the center doesn't congest on dense multi-path
+            // builds; backtracking explores the other orders on failure.
             const candidates = [N, E, S, W].filter((p) => p !== enterPort);
             const virgin = [], rest = [];
+            const deeper = [];
             for (const ep of candidates) {
                 const nr = r + DELTA[ep].dr;
                 const nc = c + DELTA[ep].dc;
-                if (inBounds(nr, nc) && getLanes(nr, nc).length === 0) virgin.push(ep);
-                else rest.push(ep);
+                if (inBounds(nr, nc) && getLanes(nr, nc).length === 0) {
+                    if (borderDist(nr, nc) > borderDist(r, c)) deeper.push(ep);
+                    else virgin.push(ep);
+                } else {
+                    rest.push(ep);
+                }
             }
-            const exits = shuffle(virgin).concat(shuffle(rest));
+            const exits = (Math.random() < 0.6)
+                ? shuffle(deeper).concat(shuffle(virgin)).concat(shuffle(rest))
+                : shuffle(deeper.concat(virgin)).concat(shuffle(rest));
             for (const ep of exits) {
                 if (!canAddLane(r, c, enterPort, ep)) continue;
                 const nr = r + DELTA[ep].dr;
@@ -650,6 +665,92 @@ const Maze = (() => {
     // exit) look degenerate and trivialize that color's puzzle.
     const MIN_PATH_CELLS = 4;
 
+    // Windiness floor: at least this fraction of a path's cells must be
+    // BENDS (elbow lanes), with an absolute minimum. A long path that
+    // hugs the border in near-straight runs passes the length + span
+    // checks yet plays trivially — straights have only two orientations
+    // and the path barely interacts with the rest of the board (user
+    // report 2026-07-23: an 8×7 quad whose yellow path had 3 bends in
+    // ~20 cells). The DFS's virgin-cell bias usually produces windy
+    // paths; this floor culls the unlucky tail. Applied as a PREFERENCE
+    // with a fallback, never a hard gate — a puzzle with one straight
+    // path beats a failed build (and beats silently dropping a path in
+    // multi-path mode).
+    const MIN_BEND_FRACTION = 0.25;
+    const MIN_PATH_BENDS    = 2;
+    function minPathBends(cells) {
+        return Math.max(MIN_PATH_BENDS, Math.round(cells * MIN_BEND_FRACTION));
+    }
+
+    // Count BEND cells for `pathIdx` in `lanes`: a lane [a, b] is a bend
+    // when its ports are not an opposite pair (i.e. it needs an elbow,
+    // not a straight). Cross-tile lanes are opposite pairs and count as
+    // straights, which is right — they don't add orientation ambiguity
+    // for this path.
+    function pathBendCountIn(lanes, pathIdx) {
+        let n = 0;
+        for (const ls of lanes.values()) {
+            for (const [a, b, p] of ls) {
+                if (p === pathIdx && ((a + 2) & 3) !== b) { n++; break; }
+            }
+        }
+        return n;
+    }
+
+    // ── Interior-usage floor + crossing preference ──
+    // Windiness alone doesn't stop the other two "too simple" shapes
+    // (user report 2026-07-23, second round): paths that S-curve along
+    // the BORDER (obvious corridor, wiggles solve tile-by-tile) and
+    // paths that never CROSS another color (solve in total isolation).
+    // Interior floor: a fraction of the path's cells must sit ≥2 cells
+    // from the border — vacuously satisfied on grids too small to have
+    // a meaningful interior. Crossing preference (multi-path only):
+    // prefer candidates sharing ≥1 cross-cell with an earlier path.
+    // Both are PREFERENCES with fallbacks, same philosophy as the bend
+    // floor above.
+    const INTERIOR_FRACTION      = 0.25;
+    const MIN_INTERIOR_AVAILABLE = 8;    // interior cells needed before the floor applies
+    function borderDist(r, c) {
+        return Math.min(r, c, ROWS - 1 - r, COLS - 1 - c);
+    }
+    function interiorCellTotal() {
+        const ir = ROWS - 4, ic = COLS - 4;
+        return (ir > 0 && ic > 0) ? ir * ic : 0;
+    }
+    function minPathInterior(cells) {
+        return Math.max(2, Math.round(cells * INTERIOR_FRACTION));
+    }
+    function pathInteriorCountIn(lanes, pathIdx) {
+        let n = 0;
+        for (const [key, ls] of lanes) {
+            let belongs = false;
+            for (const [, , p] of ls) {
+                if (p === pathIdx) { belongs = true; break; }
+            }
+            if (!belongs) continue;
+            const comma = key.indexOf(',');
+            const r = parseInt(key.slice(0, comma), 10);
+            const c = parseInt(key.slice(comma + 1), 10);
+            if (borderDist(r, c) >= 2) n++;
+        }
+        return n;
+    }
+    function meetsInteriorFloor(lanes, pathIdx, cells) {
+        if (interiorCellTotal() < MIN_INTERIOR_AVAILABLE) return true;
+        return pathInteriorCountIn(lanes, pathIdx) >= minPathInterior(cells);
+    }
+    // Cells where this path shares a cross tile with another path.
+    function pathCrossCountIn(lanes, pathIdx) {
+        let n = 0;
+        for (const ls of lanes.values()) {
+            if (ls.length !== 2) continue;
+            for (const [, , p] of ls) {
+                if (p === pathIdx) { n++; break; }
+            }
+        }
+        return n;
+    }
+
     // Count cells in `lanes` that hold at least one lane tagged with `pathIdx`.
     // For path 1 (no seed), all lane entries belong to path 1, so this equals
     // lanes.size. For paths 2+, the seed map is mixed; only count cells whose
@@ -701,23 +802,37 @@ const Maze = (() => {
         const path1Cap = pathCount > 1
             ? Math.max(minPathLength(), Math.floor(pathCap / pathCount))
             : pathCap;
-        let cellLanes = null;
+        // Shared preference between two candidates (the original selection
+        // rules): under the cap beats over it; both under → longer wins;
+        // both over → closer to the cap wins.
+        function betterPath1(cur, cand) {
+            if (!cur) return true;
+            const curOver = cur.size > path1Cap;
+            const newOver = cand.size > path1Cap;
+            if (curOver && newOver)  return cand.size < cur.size; // both over: prefer closer to cap
+            if (curOver && !newOver) return true;                 // new fits, current overshoots
+            if (!curOver && !newOver) return cand.size > cur.size; // both fit: prefer longer
+            return false;                                          // current fits, new overshoots
+        }
+        // Tiered pick: candidates are scored on the quality floors they
+        // meet (windiness + interior usage — no crossing score for path 1,
+        // there's nothing to cross yet); the highest tier wins, with
+        // betterPath1 breaking ties inside a tier. A run of low-quality
+        // samples still yields a puzzle instead of a failed build — the
+        // floors only ever re-rank, never reject outright.
+        let cellLanes = null, bestQ = -1;
         for (let i = 0; i < MAX_PATH_GEN_TRIES; i++) {
             const lanes = generateLanes();
             if (!lanes) continue;
             if (lanes.size < MIN_PATH_CELLS) continue;
             if (!pathSpansRowsAndCols(lanes, 0)) continue;
-            if (!cellLanes) { cellLanes = lanes; continue; }
-            const curOver = cellLanes.size > path1Cap;
-            const newOver = lanes.size > path1Cap;
-            if (curOver && newOver) {
-                if (lanes.size < cellLanes.size) cellLanes = lanes; // both over: prefer closer to cap
-            } else if (curOver && !newOver) {
-                cellLanes = lanes;                                   // new fits, current overshoots
-            } else if (!curOver && !newOver) {
-                if (lanes.size > cellLanes.size) cellLanes = lanes; // both fit: prefer longer
+            let q = 0;
+            if (pathBendCountIn(lanes, 0) >= minPathBends(lanes.size)) q += 2;
+            if (meetsInteriorFloor(lanes, 0, lanes.size))              q += 2;
+            if (q > bestQ || (q === bestQ && betterPath1(cellLanes, lanes))) {
+                cellLanes = lanes;
+                bestQ = q;
             }
-            // else: !curOver && newOver — keep the one that fits
         }
         if (!cellLanes) return false;
 
@@ -735,18 +850,31 @@ const Maze = (() => {
             const savedEntry = entry, savedExit = exit;
             entry = pair.entry;
             exit  = pair.exit;
-            let result = null;
+            // Scored pick: windiness (2) + interior usage (2) + crosses an
+            // earlier path (1). Highest score wins, early-out on a perfect
+            // candidate; ANY valid candidate is kept as the floor of the
+            // ranking — a plain path still beats dropping the color from
+            // the puzzle entirely. Crossing gets the smallest weight: it's
+            // the cheapest to satisfy incidentally, and a windy interior
+            // path that happens not to cross is still a good puzzle.
+            let best = null, bestScore = -1;
             for (let i = 0; i < MAX_PATH_GEN_TRIES; i++) {
                 const seedCopy = new Map();
                 for (const [k, v] of cellLanes) seedCopy.set(k, v.map((l) => l.slice()));
                 const r = generateLanes(seedCopy, pathIdx);
-                if (r && pathCellCountIn(r, pathIdx) >= MIN_PATH_CELLS && pathSpansRowsAndCols(r, pathIdx)) {
-                    result = r; break;
-                }
+                if (!r) continue;
+                const cells = pathCellCountIn(r, pathIdx);
+                if (cells < MIN_PATH_CELLS || !pathSpansRowsAndCols(r, pathIdx)) continue;
+                let score = 0;
+                if (pathBendCountIn(r, pathIdx) >= minPathBends(cells)) score += 2;
+                if (meetsInteriorFloor(r, pathIdx, cells))              score += 2;
+                if (pathCrossCountIn(r, pathIdx) >= 1)                  score += 1;
+                if (score > bestScore) { best = r; bestScore = score; }
+                if (bestScore === 5) break;
             }
             entry = savedEntry;
             exit  = savedExit;
-            return result;
+            return best;
         }
 
         // Path 2 and 3 are dropped silently if they can't fit (small or
@@ -758,6 +886,13 @@ const Maze = (() => {
         // below — greedy DFS for paths 2/3 often picks routes that box
         // path 4 out of the grid. Backtracking undoes a path and tries a
         // different (pair, route) when a deeper level fails.
+        // The post-hoc quality floors (windiness / interior / crossing)
+        // are DELIBERATELY not applied inside the backtracker: its
+        // generateLanes budget (200 calls) is spent on fitting four
+        // paths at all, and rejecting a fitted route risks trading it
+        // for a dropped path. 4-path boards get their quality push from
+        // the inward exit-ordering bias inside generateLanes' dfs
+        // instead — that one is free and applies to every mode.
         if (pathCount === 4) {
             const initialUsed = new Set();
             initialUsed.add(pair1.entry.row + ',' + pair1.entry.col);
