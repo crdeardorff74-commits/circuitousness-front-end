@@ -4716,15 +4716,19 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
     /* Leaderboard panel: use (nearly) the full phone width. The base /
        short-viewport widths (70vw/80vw with rem floors) leave ~40px of
        dead margin per side at 390px — cramped rows for no benefit.
-       94vw ≈ 367px at 390px; the 32rem cap only matters in theory here
-       (600px × 0.94 < 32rem) but keeps the rule honest if the block's
+       92vw, NOT 94: #leaderboard's own horizontal padding is 3vw per
+       side at phone widths, so its content box is exactly 94vw — a
+       94vw child fits with ZERO slack and sub-pixel rounding tipped it
+       into a horizontal scrollbar (observed on-device). 92vw leaves
+       ~2vw of real slack. The 32rem cap only matters in theory here
+       (600px × 0.92 < 32rem) but keeps the rule honest if the block's
        width gate ever widens. Same width on all four stacked elements
        so the tab rows, sub-tab rows, and list stay edge-aligned. */
     #leaderboardTabs,
     #leaderboardTileTabs,
     #leaderboardPathTabs,
     #leaderboardEntries {
-        width: min(94vw, 32rem);
+        width: min(92vw, 32rem);
     }
     /* Leaderboard rows: at the list's 20rem width floor the 6-column
        grid ran out of room — the 2rem rank column + five 0.8rem gaps
