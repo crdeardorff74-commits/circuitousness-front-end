@@ -2,6 +2,18 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-23 — Release v1.04 (tracking opt-out hardening)
+- **stickyOptOut bug fixed** (tracking.js): the v1.03 version wrapped everything in one try/catch — in contexts where localStorage THROWS (sandboxed/file:// pages, i.e. the editor preview pane), an explicit ?track=false load fell into the catch and tracked anyway. Now the query param decides the current load unconditionally; storage is persistence only.
+- **Back-end belt-and-braces** (deploy circuitousness-api): `_is_localhost_origin` now also drops file:// visits — literal `Origin: null` header or file:-scheme origin/referrer. Real players always carry the site's https origin on these cross-host POSTs; ABSENT Origin is deliberately NOT dropped (curl tests survive). This guard works regardless of any browser's opt-out state — the durable fix for preview-pane pollution.
+- Context: one more (direct) row slipped through on 7/23 — the pane's auto-reopen fired BEFORE the flagged navigate set its sticky flag. Wiped via /api/admin/wipe-session-visits. Preview pane's profile now carries the sticky flag.
+- Version bumped 1.03 → 1.04.
+
+## 2026-07-23 — Release v1.03 (phone leaderboard scrollbar fix + sticky ?track=false)
+- **Portrait leaderboard h-scrollbar fixed**: the v1.00 widening set children to 94vw, but #leaderboard's 3vw-per-side padding makes its content box EXACTLY 94vw — zero slack, sub-pixel rounding spawned a page-wide scrollbar. Now `min(92vw, 32rem)`. User verified the fix on-device (file-only deploy + desktop-mode-toggle refresh trick) BEFORE this bump — this release is what actually delivers it to other players' PWA caches.
+- **Lesson recorded**: file-only Netlify deploys are invisible to phone/PWA clients (service worker serves the APP_VERSION-keyed cache; desktop hard reload bypasses the SW, phones don't) — CSS/JS changes need the version bump to reach devices.
+- **Sticky ?track=false opt-out** (tracking.js): the universal flag now works here AND persists per-browser via localStorage (`_trackOptOut_v1`; ?track=true clears). WHY: this project only honored per-load ?dev=true, and the editor's preview pane auto-reopens index.html WITHOUT params on every edit — a session of those loads posted real "(direct)" desktop/Windows rows on 7/23. Companion back-end endpoint `POST /api/admin/wipe-session-visits {sessionPrefix}` (8+ hex chars) added for surgical cleanup — user wiped the polluted session with it.
+- Version bumped 1.02 → 1.03.
+
 ## 2026-07-23 — Release v1.02 (portrait title sizing pass)
 - **Portrait-phone titles enlarged** (intro + menu, shared rule in the ≤600px portrait block): 6vw → 6.5vw → final `clamp(1.6rem, 8.5vw, 2.8rem)` across two user feedback rounds. **Key correction recorded in the CSS comment**: the wordmark renders at ≈8.8× its font-size in width (MEASURED from screenshot), not the ~14× the old comment claimed — scaleX(0.78) + negative word-margins compress more than assumed. 8.5vw ≈ 75vw title width, safe in the ~94vw box incl. Safari kerning.
 - **C→IRCUIT gap** (portrait-only crowding reported on-device): `margin-right` on `.titleInitial` in the portrait block, user-tuned 0.07em → **0.04em**. Em-scaled; composes with the Safari-only translateX C-shift.

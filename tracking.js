@@ -56,14 +56,25 @@ const Tracking = (function () {
     // per-load ?dev=true. ?track=true clears the flag. Evaluated once
     // at module init; try/catch covers workers/private mode.
     const stickyOptOut = (function () {
-        try {
-            const key = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness')
-                + '_trackOptOut_v1';
-            const t = new URLSearchParams(location.search || '').get('track');
-            if (t === 'false') { localStorage.setItem(key, '1'); return true; }
-            if (t === 'true')  { localStorage.removeItem(key); return false; }
-            return localStorage.getItem(key) === '1';
-        } catch (e) { return false; }
+        const key = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness')
+            + '_trackOptOut_v1';
+        let t = null;
+        try { t = new URLSearchParams(location.search || '').get('track'); } catch (e) {}
+        // The query param decides THIS load unconditionally — storage is
+        // only the persistence layer, so a sandboxed/file:// context
+        // where localStorage throws still honors an explicit
+        // ?track=false (the original version returned false from its
+        // catch, silently tracking exactly the loads that asked not to
+        // be).
+        if (t === 'false') {
+            try { localStorage.setItem(key, '1'); } catch (e) {}
+            return true;
+        }
+        if (t === 'true') {
+            try { localStorage.removeItem(key); } catch (e) {}
+            return false;
+        }
+        try { return localStorage.getItem(key) === '1'; } catch (e) { return false; }
     })();
     function isSuppressed() {
         if (isLocalHost()) return true;
