@@ -244,10 +244,12 @@
                  localStorage. -->
             <div class="menu-mode-tabs" id="modeTabs" role="group" data-i18n-attr="aria-label:menu.mode" aria-label="MODE">
                 <!-- Zen leads: it's the default mode new players land in,
-                     so the selected tab sits where reading starts. -->
+                     so the selected tab sits where reading starts. Order
+                     runs casual → competitive → daily: Zen, Marathon,
+                     PotD (moved to third 2026-07-22 by user preference). -->
                 <button type="button" class="menu-mode-tab" data-mode="practice" data-i18n="mode.practice.name" aria-pressed="false">🧘 Zen</button>
-                <button type="button" class="menu-mode-tab" data-mode="potd" data-i18n="mode.potd.name" aria-pressed="false">📅 Puzzle of the Day</button>
                 <button type="button" class="menu-mode-tab" data-mode="marathon" data-i18n="mode.marathon.name" aria-pressed="false">🏃 Marathon</button>
+                <button type="button" class="menu-mode-tab" data-mode="potd" data-i18n="mode.potd.name" aria-pressed="false">📅 Puzzle of the Day</button>
             </div>
             <p class="menuSubtitle" data-i18n="marathon.subtitle">Solve as many puzzles as you can before time runs out</p>
             <!-- Continue-your-run cards (marathon.js saved-run resume).
