@@ -1817,10 +1817,20 @@ const Marathon = (() => {
             const cur = (typeof PotdStreaks !== 'undefined' && PotdStreaks.getStreaks)
                 ? (PotdStreaks.getStreaks().current || 0)
                 : 0;
-            const lead = cur >= 1
-                ? I18n.t('potd.streak.solveLine', { n: cur })
-                : I18n.t('mode.potd.name');
-            gameOverPotdHook.textContent = lead + ' · ' + I18n.t('potd.countdown', { t: tStr });
+            // Two lines: the mode name ALWAYS leads (a bare "🔥 1-day
+            // streak · new puzzles in …" after a MARATHON run read as a
+            // confusing claim about marathon itself — user caught it);
+            // the sub-line carries the streak (when alive) + countdown.
+            gameOverPotdHook.textContent = '';
+            const mainLine = document.createElement('span');
+            mainLine.className   = 'potdHookMain';
+            mainLine.textContent = I18n.t('mode.potd.name');
+            const subLine = document.createElement('span');
+            subLine.className   = 'potdHookSub';
+            subLine.textContent = (cur >= 1 ? I18n.t('potd.streak.solveLine', { n: cur }) + ' · ' : '')
+                + I18n.t('potd.countdown', { t: tStr });
+            gameOverPotdHook.appendChild(mainLine);
+            gameOverPotdHook.appendChild(subLine);
             gameOverPotdHook.hidden = false;
         }
         gameOverRank.textContent  = '';

@@ -2,6 +2,21 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-23 — Release v1.09 (game-over PotD hook: two-line fix)
+- **v1.08's game-over hook misread after a Marathon run** (user: "why is it telling me about streaks?"): the single-line version REPLACED the mode name with the streak line whenever a streak was alive, so "🔥 1-day streak · new puzzles in…" read as a claim about Marathon itself.
+- Now TWO lines: "📅 Puzzle of the Day" (mode.potd.name) always leads; streak-if-alive + countdown is the smaller/dimmer sub-line (.potdHookMain / .potdHookSub, intro-PLAY-button pattern). Still zero new i18n.
+- The button gained `display:flex` — the `[hidden]{display:none}` override (already present from v1.08) is what keeps it hideable; don't remove it (the .continueRunCard pitfall).
+- Version bumped 1.08 → 1.09.
+
+## 2026-07-23 — Release v1.08 (D1 retention hooks for CG resubmission + cover tool)
+- **Three PotD comeback hooks** (built for the CG resubmission — D1 was the failed metric; covers deep first-timers / shallow quitters / returning players):
+  - In-run nudge MOVED: first 3-path solve (L12) → first 2-path solve (L7). Rationale: the L5 tier-up banner already announces the multi-path mechanic; solving one 2-path proves it landed; L12 filtered out most first sessions. Condition derived from tier math (tracks TIER_* retunes).
+  - Menu pitch on first-run quit (quitToMenu): auto-start players who leave via "📅 Daily & More" get the PotD pitch over the menu — SAME `potdNudge` seen-key as the in-run nudge, so whichever fires first silences the other (nobody sees it twice). Captured pre-teardown; can't false-fire from PotD-mode quits (Marathon state is MENU during PotD play).
+  - Game-over comeback hook (#gameOverPotdHook, gold accent): "🔥 {n}-day streak! · New puzzles in h:mm:ss" when a streak is alive, else "📅 Puzzle of the Day · countdown". Tap → menu with PotD tab active. Composed from EXISTING keys (potd.streak.solveLine / potd.countdown / mode.potd.name) — zero new i18n. Static countdown, no ticker.
+- **cover-art-v2.html** (NOT shipped — added to CLAUDE.md zip exclusions, both prose + $exclude): thumbnail-first cover generator for the 3 CG sizes; renders the REAL maze-O + tiles via Maze.loadSnapshot → Render.renderSnippet (icon-o-tuner pattern), authentic unlit-channel opts for the "wrong tile", bracketed wordmark with real maze-O standing in for the O, live 200px browse-grid previews, seeded randomize, per-size wordmark toggles. Context: first covers' CTR ~0.7% — composed as full scenes, illegible at thumb size.
+- Test recipe: fresh profile → quit auto-start at puzzle 2 (pitch on menu, once ever); another fresh profile → reach puzzle 7 (pitch in-run); Marathon game-over → gold hook line (streak vs invite variants), tap lands on PotD tab.
+- Version bumped 1.07 → 1.08.
+
 ## 2026-07-23 — Release v1.07 (quality floors extended into the 4-path backtracker)
 - **v1.06's backtracker exemption didn't hold**: user deployed, played a 4-path quad board, and HINT-confirmed the intended solution still contained a simple (windy-but-border, crossing-free) path — the inward DFS bias alone shifts odds but the backtracker took the FIRST route that fit.
 - **Budget-gated quality in place()**: while budget.steps > `BT_QUALITY_RESERVE` (80 of 200), a fitted route must score ≥ `BT_QUALITY_MIN` (3) on the shared floors (bends 2 + interior 2 + crossing 1) or it's skipped; once the budget dips into the reserve the gate opens and anything valid is accepted. Guarantees intact: four plain paths still beat three good ones, and worst-case build time is unchanged (same 200-step cap — the gate only changes which routes spend it).

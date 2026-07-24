@@ -710,11 +710,12 @@
             </div>
             <button id="gameOverMenuBtn" type="button" data-i18n="marathon.backToMenu">Back to menu</button>
             <!-- PotD comeback hook (D1 retention): painted by
-                 renderGameOver — "🔥 N-day streak · new puzzles in
-                 h:mm:ss" when a daily streak is alive, else a plain
-                 Puzzle-of-the-Day invite + countdown. Tap → menu with
-                 the PotD tab active. No data-i18n: text is composed in
-                 JS from existing keys. -->
+                 renderGameOver as TWO lines — "📅 Puzzle of the Day"
+                 always leads (a bare streak line after a Marathon run
+                 read as a claim about marathon itself), with the
+                 streak-if-alive + new-puzzles countdown as the sub-line.
+                 Tap → menu with the PotD tab active. No data-i18n: text
+                 is composed in JS from existing keys. -->
             <button id="gameOverPotdHook" type="button" hidden></button>
             <!-- Minimalist share row — same wiring as PotD's row. Single
                  Share module owns both via [data-share-platform]. -->
@@ -1166,7 +1167,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '1.07';</script>
+    <script>var PAGE_VERSION = '1.09';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

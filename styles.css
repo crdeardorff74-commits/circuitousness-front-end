@@ -2256,16 +2256,27 @@ html.mode-debug #settingsOverlay { display: none !important; }
    otherwise defeat it (same pitfall as .continueRunCard — see NOTES
    2026-07-22). */
 #gameOverPotdHook {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
     padding: 0.5rem 1.2rem;
     background: rgba(40, 30, 50, 0.7);
     color: rgba(255, 215, 0, 0.9);
     border: 1px solid rgba(255, 215, 0, 0.45);
     border-radius: 0.4rem;
     font-family: inherit;
-    font-size: clamp(0.85rem, 1.7vw, 1rem);
     font-weight: 600;
     cursor: pointer;
     font-variant-numeric: tabular-nums;
+}
+#gameOverPotdHook .potdHookMain {
+    font-size: clamp(0.9rem, 1.8vw, 1.05rem);
+}
+#gameOverPotdHook .potdHookSub {
+    font-size: clamp(0.72rem, 1.4vw, 0.85rem);
+    font-weight: 500;
+    color: rgba(255, 215, 0, 0.7);
 }
 #gameOverPotdHook[hidden] { display: none; }
 #gameOverPotdHook:hover {
