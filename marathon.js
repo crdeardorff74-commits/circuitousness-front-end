@@ -106,6 +106,7 @@ const Marathon = (() => {
     let hudType, hudLevel, hudTimer, hudQuit, hudHowTo;
     let solveHeadline, solveBanked, solveTierUp;
     let gameOverScore, gameOverTime, gameOverRank, gameOverName, gameOverSave, gameOverMenu, gameOverNameRow;
+    let gameOverPotdHook;
     let leaderboardTileTabsEl, leaderboardPathTabsEl, leaderboardEntries, leaderboardEmpty, leaderboardClose, menuLeaderboardBtn;
     let leaderboardTabsEl;
     let menuCreditsBtn, creditsPopupEl, creditsPopupMenu;
@@ -170,6 +171,14 @@ const Marathon = (() => {
         gameOverSave    = $('gameOverSaveBtn');
         gameOverMenu    = $('gameOverMenuBtn');
         gameOverNameRow = gameOverEl ? gameOverEl.querySelector('.gameOverNameRow') : null;
+        gameOverPotdHook = $('gameOverPotdHook');
+        // PotD comeback hook → menu with the Puzzle of the Day tab live
+        // (slot grid + streak strip visible) rather than launching a slot
+        // directly — game-over is a browsing moment, not a committed one.
+        if (gameOverPotdHook) gameOverPotdHook.addEventListener('click', () => {
+            goToMenu();
+            if (typeof ModePicker !== 'undefined' && ModePicker.setMode) ModePicker.setMode('potd');
+        });
 
         leaderboardTileTabsEl = $('leaderboardTileTabs');
         leaderboardPathTabsEl = $('leaderboardPathTabs');
@@ -1253,26 +1262,28 @@ const Marathon = (() => {
         // above keeps replays (state REPLAYING) from ever reporting.
         if (typeof CgSdk !== 'undefined') CgSdk.gameplayStart();
         // One-time PotD nudge for the first-visit auto-start run: fires as
-        // the next puzzle appears after the player's FIRST 3-PATH SOLVE
-        // (level 12 under TIER_LENGTH 5 — the tier math below derives it,
+        // the next puzzle appears after the player's FIRST 2-PATH SOLVE
+        // (level 7 under TIER_LENGTH 5 — the tier math below derives it,
         // so tuning the tier constants moves the nudge automatically).
         // This is the retention pitch the auto-start otherwise hides (a
         // menu-skipping first-timer never sees the Puzzle of the Day
-        // exists). History: fired at puzzle 3 (after the second solve) —
-        // user moved it deeper (2026-07-22): a player who has climbed to
-        // and cleared a 3-path puzzle has seen the game's real depth, is
-        // demonstrably hooked, and the "📅 Daily & More" button has been
-        // advertising the daily on-screen the whole time regardless. The
-        // action jumps straight into today's 1-path daily: tear the Zen
-        // run down, flip the picker, start the slot. The first-3-path-
-        // solve moment happens once ever in the one auto-start run;
-        // Tooltip.showOnce's seen-flag backstops even that. (level-2 is
-        // safe here: level ≥ 12 by the pathCountForLevel(level-1) === 3
-        // condition, and pathCountForLevel(10) === 2 gates the ready of
-        // 13-15 out — only level 12 passes.)
+        // exists). History: puzzle 3 (2026-07-22 original) → first 3-path
+        // solve, level 12 (user call: let them grasp that paths ramp
+        // too) → first 2-path solve, level 7 (2026-07-23): the tier-up
+        // banner at the L5 solve ANNOUNCES the multi-path mechanic and
+        // solving one 2-path proves it landed — a 3-path solve adds
+        // confirmation, not comprehension, and level 12 filtered out
+        // most first sessions (D1 is the failed CG metric). The shallow-
+        // quit case is covered by the SAME-KEY pitch in quitToMenu —
+        // whichever surface fires first wins, the seen-flag silences the
+        // other. The action jumps straight into today's 1-path daily:
+        // tear the Zen run down, flip the picker, start the slot.
+        // (level-2 is safe: level ≥ 7 by the first condition, and
+        // pathCountForLevel(level-2) === 1 gates levels 8-10 out — only
+        // level 7 passes.)
         if (isFirstRunAutoStart && level > 2
-            && pathCountForLevel(level - 1) === 3
-            && pathCountForLevel(level - 2) === 2
+            && pathCountForLevel(level - 1) === 2
+            && pathCountForLevel(level - 2) === 1
             && typeof Tooltip !== 'undefined' && Tooltip.showOnce) {
             Tooltip.showOnce('potdNudge', I18n.t('tooltip.potdNudge'), {
                 label: I18n.t('mode.potd.name'),
@@ -1569,6 +1580,15 @@ const Marathon = (() => {
     }
 
     function quitToMenu() {
+        // First-run auto-start quit (the "📅 Daily & More" button): the one
+        // graceful exit every SHALLOW first session passes through — the
+        // in-run nudge (onPuzzleReady, first 2-path solve) never fires for
+        // players who leave earlier than that. Capture the state before
+        // the teardown below mutates it; the pitch itself fires after
+        // goToMenu so it overlays the menu. SAME seen-key as the in-run
+        // nudge — whichever surface fires first wins, so no player ever
+        // sees the pitch twice.
+        const pitchOnMenu = isFirstRunAutoStart && state === STATE.PLAYING;
         // Quit no longer abandons the run — checkpoint it first so the
         // menu offers Continue. (No-op unless a run is actually in
         // progress; the auto-start run and zero-progress runs are
@@ -1586,6 +1606,18 @@ const Marathon = (() => {
         // other reason), tear the credits down before returning to menu.
         if (typeof Credits !== 'undefined' && Credits.stop) Credits.stop();
         goToMenu();
+        if (pitchOnMenu && typeof Tooltip !== 'undefined' && Tooltip.showOnce) {
+            Tooltip.showOnce('potdNudge', I18n.t('tooltip.potdNudge'), {
+                label: I18n.t('mode.potd.name'),
+                onClick: function () {
+                    // Already at the menu — just flip the tab and start
+                    // the easiest daily slot (same landing as the in-run
+                    // nudge's action).
+                    if (typeof ModePicker !== 'undefined' && ModePicker.setMode) ModePicker.setMode('potd');
+                    if (typeof Potd !== 'undefined' && Potd.startPuzzle) Potd.startPuzzle('s1');
+                }
+            });
+        }
     }
 
     // ----- Rendering -----
@@ -1767,6 +1799,30 @@ const Marathon = (() => {
     async function renderGameOver() {
         gameOverScore.textContent = I18n.t('marathon.solvedCount', { n: solvedCount, s: solvedCount === 1 ? '' : 's' });
         gameOverTime.textContent  = I18n.t('marathon.totalTime', { t: fmtTimePrecise(totalSolveTime) });
+        // PotD comeback hook (D1 retention) — game-over is the one moment
+        // every Marathon session passes through, and it previously said
+        // nothing about tomorrow. Streak line + next-puzzles countdown
+        // when a daily streak is alive (loss aversion does the work);
+        // plain Puzzle-of-the-Day invite + countdown otherwise. Static
+        // countdown — no ticker; second-precision doesn't matter on this
+        // card. Reuses existing keys (potd.streak.solveLine,
+        // potd.countdown, mode.potd.name) — zero new i18n.
+        if (gameOverPotdHook) {
+            const midnight = Date.parse(potdTodayUTC() + 'T00:00:00Z') + 86400000;
+            const remain   = Math.max(0, midnight - Date.now());
+            const h   = Math.floor(remain / 3600000);
+            const m   = Math.floor((remain % 3600000) / 60000);
+            const sec = Math.floor((remain % 60000) / 1000);
+            const tStr = h + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+            const cur = (typeof PotdStreaks !== 'undefined' && PotdStreaks.getStreaks)
+                ? (PotdStreaks.getStreaks().current || 0)
+                : 0;
+            const lead = cur >= 1
+                ? I18n.t('potd.streak.solveLine', { n: cur })
+                : I18n.t('mode.potd.name');
+            gameOverPotdHook.textContent = lead + ' · ' + I18n.t('potd.countdown', { t: tStr });
+            gameOverPotdHook.hidden = false;
+        }
         gameOverRank.textContent  = '';
         gameOverRank.hidden       = true;
         gameOverName.value        = '';

@@ -2249,6 +2249,30 @@ html.mode-debug #settingsOverlay { display: none !important; }
 }
 #gameOverMenuBtn,
 #potdSolveMenuBtn { margin-top: 1rem; }
+/* PotD comeback hook on the game-over card — gold accent (the menu's
+   leaderboard/CONTINUE family) so it reads as an invitation rather than
+   another navigation button; the [hidden] override is required because
+   renderGameOver toggles the attribute and author display rules would
+   otherwise defeat it (same pitfall as .continueRunCard — see NOTES
+   2026-07-22). */
+#gameOverPotdHook {
+    padding: 0.5rem 1.2rem;
+    background: rgba(40, 30, 50, 0.7);
+    color: rgba(255, 215, 0, 0.9);
+    border: 1px solid rgba(255, 215, 0, 0.45);
+    border-radius: 0.4rem;
+    font-family: inherit;
+    font-size: clamp(0.85rem, 1.7vw, 1rem);
+    font-weight: 600;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+}
+#gameOverPotdHook[hidden] { display: none; }
+#gameOverPotdHook:hover {
+    background: rgba(60, 45, 70, 0.9);
+    border-color: rgba(255, 215, 0, 0.8);
+    color: #ffd700;
+}
 #gameOverSaveBtn:hover,
 #gameOverMenuBtn:hover,
 #potdSolveSaveBtn:hover,

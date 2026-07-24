@@ -709,6 +709,13 @@
                 <button id="gameOverSaveBtn" type="button" data-i18n="marathon.save">Save</button>
             </div>
             <button id="gameOverMenuBtn" type="button" data-i18n="marathon.backToMenu">Back to menu</button>
+            <!-- PotD comeback hook (D1 retention): painted by
+                 renderGameOver — "🔥 N-day streak · new puzzles in
+                 h:mm:ss" when a daily streak is alive, else a plain
+                 Puzzle-of-the-Day invite + countdown. Tap → menu with
+                 the PotD tab active. No data-i18n: text is composed in
+                 JS from existing keys. -->
+            <button id="gameOverPotdHook" type="button" hidden></button>
             <!-- Minimalist share row — same wiring as PotD's row. Single
                  Share module owns both via [data-share-platform]. -->
             <div class="shareRow" id="gameOverShareRow">
