@@ -2,6 +2,13 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-23 — Release v1.12 (game-over PotD hook: save-first fix)
+- **The v1.08 PotD hook was a silent score-discarder for ranking players** (user nearly lost a rank-2 run to it): for top-N players the card deliberately hides Back-to-menu so Save is the ONLY exit — the hook quietly added a second exit that navigated without submitting.
+- Now SAVE-FIRST: when the name row is visible, hook click calls saveScore() (same semantics as Save — input name, empty → Anonymous, name persisted per rule 7a) then navigates to menu + PotD tab. Works because saveScore's synchronous head (read input, persist name, build payload) runs before goToMenu flips state, and its post-submit UI hops are already state-guarded — the POST proceeds in background. Non-ranking/zero-score players (row hidden) get plain navigation — deliberately NO saveScore call, since below-top-20 runs were never submitted and the hook shouldn't create submissions the Save-less card never made.
+- Invariant to protect (noted in the handler comment): any future exit added to the game-over card while the name row is visible must save first.
+- Test: rank on a Marathon board, type a name, click the hook instead of Save → entry appears on the board under that name.
+- Version bumped 1.11 → 1.12.
+
 ## 2026-07-23 — Release v1.11 (replay exit silences SFX)
 - **Quitting a replay left SFX running** (user hit it: quit just as the red-overlap glitch loop kicked in — it played on over the next screen). The replay-end continuation in `startReplayWithEvents` handled the MUSIC handoff only; now it also runs `Sfx.stopAllLoops()` + `Sfx.fadeOneShots()` — same cleanup quitToMenu does for live play.
 - Single choke point covers all four exits (Stop mid-replay, Stop during hold, quit-to-menu, natural finish). Deliberately placed AFTER the finished-replay hold: a natural finish keeps its applause on the lingering solved frame (no loop survives a solve anyway — cleanup is a no-op there).

@@ -175,7 +175,19 @@ const Marathon = (() => {
         // PotD comeback hook → menu with the Puzzle of the Day tab live
         // (slot grid + streak strip visible) rather than launching a slot
         // directly — game-over is a browsing moment, not a committed one.
+        // SAVE-FIRST: when the name row is up (player ranked top-N),
+        // Save is deliberately the only other exit on the card (the menu
+        // button hides in that state) — the hook must not become a
+        // silent score-discarder (user nearly hit this at rank 2). Kick
+        // off the same submit Save would (input name, empty →
+        // 'Anonymous'), THEN navigate: saveScore's post-submit UI hops
+        // are state-guarded, so leaving GAME_OVER immediately just skips
+        // them while the POST proceeds in the background. Non-ranking
+        // players have the row hidden and nothing pending — plain
+        // navigation (calling saveScore for them would CREATE
+        // submissions the Save-less design never made).
         if (gameOverPotdHook) gameOverPotdHook.addEventListener('click', () => {
+            if (gameOverNameRow && !gameOverNameRow.hidden) saveScore();
             goToMenu();
             if (typeof ModePicker !== 'undefined' && ModePicker.setMode) ModePicker.setMode('potd');
         });
