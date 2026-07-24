@@ -2,6 +2,13 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-23 — Release v1.10 (tier retune: 5/3 → 4/1, same-size transitions)
+- **TIER_LENGTH 5→4, TIER_DROP 3→1** (user insight: more paths on a SMALLER grid stacks two easing effects — fewer tiles AND higher path density → fewer filler decoys, more doubly-constrained tiles — so the old +1-path/−2-sizes transition was a difficulty DIP, not a step up). With DROP 1 the accumulator drop cancels the level's +1: each tier opens at the SAME size as the last puzzle solved — "same board, one more color". Size = monotonic difficulty axis; paths = variety axis.
+- New arc: L1-4 1p (4×4→~5×6), L5-8 2p, L9-12 3p, L13+ 4p endless (~8×9 on arrival). 4 paths at puzzle 13 (was 16). PotD nudge auto-moves to level 6 (was 7). If the 4-path arrival feels abrupt: TIER_DROP 2 is the softer variant (noted in config comment).
+- Constants-only change — tier functions/cue/nudge/save-resume/pre-gen all derive. Stale hardcoded-arc comments in marathon.js updated.
+- Test recipe: L4→L5 same dims + second path (tier-up cue on the L4 solve); nudge as puzzle 6 appears on a fresh profile.
+- Version bumped 1.09 → 1.10.
+
 ## 2026-07-23 — Release v1.09 (game-over PotD hook: two-line fix)
 - **v1.08's game-over hook misread after a Marathon run** (user: "why is it telling me about streaks?"): the single-line version REPLACED the mode name with the streak line whenever a streak was alive, so "🔥 1-day streak · new puzzles in…" read as a claim about Marathon itself.
 - Now TWO lines: "📅 Puzzle of the Day" (mode.potd.name) always leads; streak-if-alive + countdown is the smaller/dimmer sub-line (.potdHookMain / .potdHookSub, intro-PLAY-button pattern). Still zero new i18n.

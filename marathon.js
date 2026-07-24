@@ -639,12 +639,14 @@ const Marathon = (() => {
             Math.floor((lev - 1) / MARATHON.TIER_LENGTH) + 1);
     }
     // Growth-accumulator steps applied at `lev`: +1 per solve, minus
-    // TIER_DROP for each tier transition crossed. The drop retraces the
-    // FIRST growthSequence entries again, so each tier opens at exactly
-    // the dims the player saw mid-way through the previous tier (rolled
-    // axis entries are pinned — see ensureGrowthSequence).
-    // With TIER_LENGTH 5 / TIER_DROP 3: L1-5 → L-1; L6-10 → L-4;
-    // L11-15 → L-7; L16+ → L-10 (endless growth at MAX_PATHS).
+    // TIER_DROP for each tier transition crossed. With TIER_DROP 1 the
+    // drop cancels the new level's +1, so each tier opens at the SAME
+    // dims as the last puzzle solved (the retraced growthSequence
+    // prefix is identical — rolled axis entries are pinned, see
+    // ensureGrowthSequence). Rationale for same-size transitions in
+    // config.js's TIER_* comment.
+    // With TIER_LENGTH 4 / TIER_DROP 1: L1-4 → L-1; L5-8 → L-2;
+    // L9-12 → L-3; L13+ → L-4 (endless growth at MAX_PATHS).
     function growthStepsForLevel(lev) {
         return Math.max(0,
             (lev - 1) - (pathCountForLevel(lev) - 1) * MARATHON.TIER_DROP);
@@ -1263,24 +1265,24 @@ const Marathon = (() => {
         if (typeof CgSdk !== 'undefined') CgSdk.gameplayStart();
         // One-time PotD nudge for the first-visit auto-start run: fires as
         // the next puzzle appears after the player's FIRST 2-PATH SOLVE
-        // (level 7 under TIER_LENGTH 5 — the tier math below derives it,
+        // (level 6 under TIER_LENGTH 4 — the tier math below derives it,
         // so tuning the tier constants moves the nudge automatically).
         // This is the retention pitch the auto-start otherwise hides (a
         // menu-skipping first-timer never sees the Puzzle of the Day
         // exists). History: puzzle 3 (2026-07-22 original) → first 3-path
-        // solve, level 12 (user call: let them grasp that paths ramp
-        // too) → first 2-path solve, level 7 (2026-07-23): the tier-up
-        // banner at the L5 solve ANNOUNCES the multi-path mechanic and
-        // solving one 2-path proves it landed — a 3-path solve adds
-        // confirmation, not comprehension, and level 12 filtered out
-        // most first sessions (D1 is the failed CG metric). The shallow-
-        // quit case is covered by the SAME-KEY pitch in quitToMenu —
+        // solve (user call: let them grasp that paths ramp too) → first
+        // 2-path solve (2026-07-23): the tier-up banner at the end of
+        // tier 1 ANNOUNCES the multi-path mechanic and solving one
+        // 2-path proves it landed — a 3-path solve adds confirmation,
+        // not comprehension, and the deeper trigger filtered out most
+        // first sessions (D1 is the failed CG metric). The shallow-quit
+        // case is covered by the SAME-KEY pitch in quitToMenu —
         // whichever surface fires first wins, the seen-flag silences the
         // other. The action jumps straight into today's 1-path daily:
         // tear the Zen run down, flip the picker, start the slot.
-        // (level-2 is safe: level ≥ 7 by the first condition, and
-        // pathCountForLevel(level-2) === 1 gates levels 8-10 out — only
-        // level 7 passes.)
+        // (level-2 is safe: level ≥ 6 by the first condition, and
+        // pathCountForLevel(level-2) === 1 gates the rest of tier 2
+        // out — only the tier's first level passes.)
         if (isFirstRunAutoStart && level > 2
             && pathCountForLevel(level - 1) === 2
             && pathCountForLevel(level - 2) === 1

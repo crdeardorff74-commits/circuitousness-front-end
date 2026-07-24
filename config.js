@@ -249,13 +249,23 @@ const MARATHON = {
 
     // Progressive-mode tier tuning. A Zen/Marathon run ramps its path
     // count 1→MAX_PATHS: every TIER_LENGTH puzzles the path count steps
-    // up and the growth accumulator drops back TIER_DROP steps (so each
-    // tier opens at a size the player already solved — the new path is
-    // the only new difficulty). After MAX_PATHS the growth is endless.
-    // Progression is a pure function of level — see marathon.js
-    // pathCountForLevel / growthStepsForLevel.
-    TIER_LENGTH: 5,
-    TIER_DROP:   3,
+    // up and the growth accumulator drops back TIER_DROP steps. With
+    // DROP 1 the accumulator drop exactly cancels the new level's +1,
+    // so each tier opens at the SAME size as the last puzzle solved —
+    // "same board, one more color". After MAX_PATHS the growth is
+    // endless. Progression is a pure function of level — see
+    // marathon.js pathCountForLevel / growthStepsForLevel.
+    // History: 5/3 originally (each tier opened 2 sizes smaller). User
+    // insight (2026-07-23): more paths on a SMALLER grid stacks two
+    // easing effects — fewer tiles AND higher path density (fewer
+    // filler decoys, more doubly-constrained tiles) — creating a
+    // difficulty dip at every tier boundary. 4/1 makes size the
+    // monotonic difficulty axis and path count the variety axis;
+    // 4 paths arrive at puzzle 13 instead of 16. If the 4-path arrival
+    // (~8×9) feels abrupt in playtesting, the softer variant is
+    // TIER_DROP 2 (a one-size breather per boundary).
+    TIER_LENGTH: 4,
+    TIER_DROP:   1,
     MAX_PATHS:   4,
 
     // Aspect cap on grid growth: neither logical dimension may grow to
