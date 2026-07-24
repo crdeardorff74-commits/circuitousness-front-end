@@ -2596,6 +2596,21 @@ const Marathon = (() => {
             await new Promise((res) => { replayHoldResolve = res; });
         }
 
+        // Kill any replay-driven SFX the moment the replay is over — the
+        // same cleanup quitToMenu does for live play. The overlap-glitch
+        // loop in particular keeps running once refresh() starts it
+        // (user quit a replay right as a red-overlap kicked in and the
+        // loop played on over the next screen); straddling one-shots
+        // fade too. Placed AFTER the hold on purpose: a natural finish
+        // lingers on the solved frame with its applause still part of
+        // the moment, and no loop survives a solve anyway (the solve
+        // diff stops it) — so this is a no-op there and a genuine
+        // silencer on cancels.
+        if (typeof Sfx !== 'undefined') {
+            if (Sfx.stopAllLoops)  Sfx.stopAllLoops();
+            if (Sfx.fadeOneShots)  Sfx.fadeOneShots();
+        }
+
         // Replay's scripted playback stops its scheduled timer chain when the
         // recording ends, but doesn't pause the currently-playing audio — so
         // without this transition, the last replay song bleeds into the

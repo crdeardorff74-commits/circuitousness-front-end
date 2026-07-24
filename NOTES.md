@@ -2,6 +2,12 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-23 — Release v1.11 (replay exit silences SFX)
+- **Quitting a replay left SFX running** (user hit it: quit just as the red-overlap glitch loop kicked in — it played on over the next screen). The replay-end continuation in `startReplayWithEvents` handled the MUSIC handoff only; now it also runs `Sfx.stopAllLoops()` + `Sfx.fadeOneShots()` — same cleanup quitToMenu does for live play.
+- Single choke point covers all four exits (Stop mid-replay, Stop during hold, quit-to-menu, natural finish). Deliberately placed AFTER the finished-replay hold: a natural finish keeps its applause on the lingering solved frame (no loop survives a solve anyway — cleanup is a no-op there).
+- Repro/test: Watch a replay, quit while the red overlap sound plays → silence except menu music.
+- Version bumped 1.10 → 1.11.
+
 ## 2026-07-23 — Release v1.10 (tier retune: 5/3 → 4/1, same-size transitions)
 - **TIER_LENGTH 5→4, TIER_DROP 3→1** (user insight: more paths on a SMALLER grid stacks two easing effects — fewer tiles AND higher path density → fewer filler decoys, more doubly-constrained tiles — so the old +1-path/−2-sizes transition was a difficulty DIP, not a step up). With DROP 1 the accumulator drop cancels the level's +1: each tier opens at the SAME size as the last puzzle solved — "same board, one more color". Size = monotonic difficulty axis; paths = variety axis.
 - New arc: L1-4 1p (4×4→~5×6), L5-8 2p, L9-12 3p, L13+ 4p endless (~8×9 on arrival). 4 paths at puzzle 13 (was 16). PotD nudge auto-moves to level 6 (was 7). If the 4-path arrival feels abrupt: TIER_DROP 2 is the softer variant (noted in config comment).
