@@ -104,6 +104,13 @@ const Tooltip = (function () {
     function processQueue() {
         if (showing || queue.length === 0) return;
         if (!card || !textEl || !gotItBtn) return;  // DOM not ready
+        // Seen-state can change between queueing and display — watching
+        // the How-to-Solve tutorial flips the watched flag that
+        // suppresses lockTile/twinStraightLock, so a tip queued before
+        // (or while) the tutorial was open may be moot by its turn.
+        // Re-check here and drop stale entries instead of showing them.
+        while (queue.length > 0 && isSeen(queue[0].key)) queue.shift();
+        if (queue.length === 0) return;
         const entry = queue[0];   // peek; shift on Got-It dismiss
         textEl.textContent = entry.message;
         // Optional action button — only tips that carry an action show it

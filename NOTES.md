@@ -2,6 +2,12 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-26 — Release v1.14 (circuit wording + lock-tip/tutorial race fix)
+- **tutorial.intro wording**: "close the loop" → "complete the circuit" across all 15 languages, each phrased to match its `tooltip.firstPlay` sibling (de "Stromkreis schließen", ru "замкнуть цепь", etc.) — tooltip and tutorial now use identical vocabulary.
+- **Lock-tip popped up right after finishing the How-to-Solve tutorial** (user hit it): the 30s timer fired under the tutorial overlay (marathon state stays PLAYING there; watched flag only sets at the FINAL step), and `isSeen` was only checked at queue time. Three-layer fix: (1) timer callback bails when `Tutorial.isOpen()`; (2) `Tooltip.processQueue` re-checks `isSeen` at display time and drops stale entries; (3) `Tutorial.close()` calls `Tooltip.dismissActive(false)` so nothing lingers under the overlay — un-seen, so unacknowledged non-tutorial tips still re-queue next puzzle.
+- Test recipe: fresh flags (`_tooltipSeen_lockTile` + `_tutorialWatched`), open tutorial within 30s of a puzzle, dawdle past 30s, finish → no tip on close or later. Early-close variant: X out partway → no tip immediately, but it SHOULD return next puzzle.
+- Version bumped 1.13 → 1.14.
+
 ## 2026-07-26 — Release v1.13 (tracking robustness, first-play tooltip, gate retunes, SW reload veto)
 - **Tracking delivery robustness** (root cause of the admin's all-empty M/S/F iOS rows): funnel milestones now persist to a localStorage queue (`_pendingMilestones_v1`), cleared only on confirmed PATCH delivery; leftovers flush next load to the NEW `POST /api/visit/late-milestones` keyed by a client-minted per-load UUID (+ session_id fallback). `keepalive:true` on the visit POST + all PATCHes. **DEPLOY THE BACK-END FIRST** — until then flush POSTs 404 and their queue entries are lost (status-quo loss, but avoid).
 - **firstPlay tooltip** ("Twist the tiles…", all 15 langs) on the auto-start run, with a How-to-Solve action button (reuses tutorial.menuButton); the in-HUD How-to-Solve button stays hidden until the tip is acknowledged (`Tooltip.showOnce` grew a 4th param `onAcknowledge` — fires on either button, NOT on dismiss-by-transition).

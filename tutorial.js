@@ -543,6 +543,15 @@ const Tutorial = (function () {
         Render.endTutorial();
         if (overlay) overlay.hidden = true;
 
+        // Tear down any tooltip that appeared or queued while this overlay
+        // was up (e.g. the 30s lock tip firing during a slow read — it
+        // used to be sitting there the moment the tutorial closed). NOT
+        // marked seen: a tip the player never acknowledged re-queues on
+        // the next puzzle as designed, and the tutorial-covered ones
+        // (lockTile / twinStraightLock) are suppressed by the watched
+        // flag anyway once the final step was reached.
+        if (typeof Tooltip !== 'undefined' && Tooltip.dismissActive) Tooltip.dismissActive(false);
+
         // Resume the CrazyGames gameplay signal if open() paused it (no-op
         // off-CG and when the tutorial was opened from the menu).
         if (typeof CgSdk !== 'undefined' && CgSdk.overlayResume) CgSdk.overlayResume();

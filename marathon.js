@@ -1386,6 +1386,14 @@ const Marathon = (() => {
             // Re-check the state — the player may have quit between
             // the scheduling and the firing. Only show during PLAYING.
             if (state !== STATE.PLAYING) return;
+            // Never fire under the How-to-Solve overlay: the tutorial is
+            // teaching this exact lesson in richer form RIGHT NOW, and a
+            // tip queued here would greet the player the moment they
+            // close it (seen in the wild 2026-07-26 — the 30s timer beat
+            // a slow read of the tutorial). Finishing the tutorial sets
+            // the watched flag that suppresses this tip for good; an
+            // early close just lets the next puzzle reschedule.
+            if (typeof Tutorial !== 'undefined' && Tutorial.isOpen && Tutorial.isOpen()) return;
             Tooltip.showOnce('lockTile',
                 (typeof I18n !== 'undefined' && I18n.t)
                     ? I18n.t('tooltip.lockTile')
