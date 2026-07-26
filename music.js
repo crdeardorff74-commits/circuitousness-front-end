@@ -374,9 +374,25 @@ const Music = (function () {
 
     // --- Per-player intro progress ------------------------------------
     // The intro plays ONCE per player. State persists across page loads /
-    // sessions via localStorage. Admin reorders restart it for everyone.
+    // sessions via localStorage. Admin edits to the list NO LONGER restart
+    // it (policy dropped 2026-07-26 — every list tweak was resetting the
+    // whole player base to song 1, which is how replay soundtracks kept
+    // sounding like brand-new players). A fingerprint mismatch now
+    // RECONCILES instead: songs the player already heard stay heard,
+    // brand-new songs queue at their curated position, deleted songs
+    // drop, and reorders apply to the unplayed remainder only. The old
+    // fingerprint doubles as the record of which songs existed back then
+    // — in-old-list but not-in-remaining ⇒ played — so no new storage
+    // schema is needed.
     function introFingerprint(songs) {
         return songs.map(function (s) { return s.id; }).join('|');
+    }
+    function readSavedIntroRemaining() {
+        try {
+            const raw = localStorage.getItem(INTRO_REMAIN_KEY);
+            const arr = raw ? JSON.parse(raw) : null;
+            return Array.isArray(arr) ? arr : null;
+        } catch (e) { return null; }
     }
     function syncIntroState() {
         if (introPlaylist.length === 0) {
@@ -386,23 +402,30 @@ const Music = (function () {
         const currentFp = introFingerprint(introPlaylist);
         let savedFp = null;
         try { savedFp = localStorage.getItem(INTRO_FINGER_KEY); } catch (e) {}
-        if (savedFp !== currentFp) {
-            // Order changed (or first time ever) — restart the intro.
-            introRemaining = introPlaylist.map(function (s) { return s.id; });
-            try {
-                localStorage.setItem(INTRO_FINGER_KEY, currentFp);
-                localStorage.setItem(INTRO_REMAIN_KEY, JSON.stringify(introRemaining));
-            } catch (e) {}
+        const saved = readSavedIntroRemaining();
+        if (savedFp === currentFp) {
+            // Unchanged list — restore progress. null = nothing saved yet
+            // under this fingerprint (or unreadable): full intro ahead.
+            introRemaining = (saved !== null)
+                ? saved
+                : introPlaylist.map(function (s) { return s.id; });
             return;
         }
-        // Same fingerprint — restore saved progress.
-        try {
-            const raw = localStorage.getItem(INTRO_REMAIN_KEY);
-            introRemaining = raw ? JSON.parse(raw) : introPlaylist.map(function (s) { return s.id; });
-        } catch (e) {
+        if (savedFp === null) {
+            // First visit ever (or storage wiped) — full intro.
             introRemaining = introPlaylist.map(function (s) { return s.id; });
+        } else {
+            // List edited since this player's last sync — reconcile.
+            // Unreadable remaining (corrupt JSON) errs toward "played":
+            // this path must never force a re-listen.
+            const oldIds = new Set(savedFp.split('|').filter(function (id) { return id; }));
+            const remainIds = new Set(saved || []);
+            introRemaining = introPlaylist
+                .map(function (s) { return s.id; })
+                .filter(function (id) { return remainIds.has(id) || !oldIds.has(id); });
         }
-        if (!Array.isArray(introRemaining)) introRemaining = [];
+        try { localStorage.setItem(INTRO_FINGER_KEY, currentFp); } catch (e) {}
+        persistIntroRemaining();
     }
     function persistIntroRemaining() {
         try { localStorage.setItem(INTRO_REMAIN_KEY, JSON.stringify(introRemaining || [])); }

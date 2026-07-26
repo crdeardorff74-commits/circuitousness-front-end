@@ -990,7 +990,7 @@ const Potd = (() => {
             pristineMazeSnap = Maze.snapshotState();
             if (typeof Gates !== 'undefined') {
                 const stride = cfg.quadMode ? 2 : 1;
-                Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), 4, stride);
+                Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), 3, stride);
                 gatesSnap = Gates.snapshot();
             }
         } finally {
@@ -1030,7 +1030,7 @@ const Potd = (() => {
         let gatesSnap = null;
         if (typeof Gates !== 'undefined') {
             const stride = cfg.quadMode ? 2 : 1;
-            Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), 4, stride);
+            Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), 3, stride);
             gatesSnap = Gates.snapshot();
         }
         return { maze: Maze.snapshotState(), gates: gatesSnap };

@@ -1207,18 +1207,17 @@
             if (typeof Gates !== 'undefined') {
                 const solveCount = (typeof Marathon !== 'undefined' && Marathon.getSolvedCount)
                     ? Marathon.getSolvedCount() : 0;
-                // Gate-count progression (retuned twice, 2026-07-26): a
-                // run's first puzzle gets 1 gate, +1 every 3 solves —
-                // 1,1,1,2,2,2,3,… uncapped, same growth rate the original
-                // flat-4 formula had. History: the original 4 + 1-per-3
-                // opened every run at 4 gates, too many for a brand-new
-                // player's first-ever 1-path puzzle (gates are the
-                // mechanic newcomers find most confusing — they rotate in
-                // unison, opposite of the per-tile lesson being learned);
-                // the interim +1-per-solve ramp to 4 was then still too
-                // quick. PotD is untouched (fixed 4 in potd.js — everyone
-                // plays the same board).
-                const target = 1 + Math.floor(solveCount / 3);
+                // Gate-count progression (retuned thrice, 2026-07-26): a
+                // run's first puzzle gets 1 gate, +1 every 4 solves —
+                // 1,1,1,1,2,2,2,2,3,… uncapped. History: the original
+                // 4 + 1-per-3 opened every run at 4 gates, too many for a
+                // brand-new player's first-ever 1-path puzzle (gates are
+                // the mechanic newcomers find most confusing — they
+                // rotate in unison, opposite of the per-tile lesson being
+                // learned); the interim +1-per-solve ramp to 4 was still
+                // too quick, as was +1 every 3. PotD is separate (fixed
+                // 3 in potd.js — everyone plays the same board).
+                const target = 1 + Math.floor(solveCount / 4);
                 // Quad mode: anchor gates at quad-corners only (every other
                 // sub-tile vertex). The prong is still one sub-tile long.
                 const stride = Maze.quadMode ? 2 : 1;

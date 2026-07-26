@@ -118,8 +118,11 @@ const MUSIC_BASE_URL = MUSIC_HOST + '/Music/';
 // Music playback follows the intro-then-shuffle paradigm (universal rule
 // 7b). Two list knobs from the admin API's `lists.*`:
 //   INTRO   — curated artistic sequence. Plays ONCE per player in position
-//             order, then never replays as a sequence (admin reorders auto-
-//             restart it via fingerprint mismatch).
+//             order, then never replays as a sequence. Admin edits
+//             reconcile against saved per-player progress (new songs
+//             queue in, played songs stay played) — they no longer
+//             restart the sequence for existing players (see music.js
+//             syncIntroState).
 //   SHUFFLE — random pool that plays forever after the intro is exhausted.
 // If SHUFFLE is empty/missing, music.js falls back to shuffling the INTRO
 // list so single-list projects still get post-intro variety.
