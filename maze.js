@@ -665,6 +665,22 @@ const Maze = (() => {
     // exit) look degenerate and trivialize that color's puzzle.
     const MIN_PATH_CELLS = 4;
 
+    // Length floor for ADDED paths (2+), applied as a scored preference
+    // alongside bends/interior/crossing. The hard MIN_PATH_CELLS gate
+    // alone let a ~6-cell squiggle with two bends and two interior cells
+    // score a PERFECT quality tier and win the early-out (user screenshot
+    // 2026-07-26) — length was only ever scored for path 1, via
+    // betterPath1's cap preference. 60% of the path-1 length floor:
+    // added paths legitimately run shorter than path 1 (they thread an
+    // increasingly crowded grid), but must still read as a journey, not
+    // a hop. ≈8 cells on a 6×6, ≈12 on a 9×9. Same fallback philosophy
+    // as the other floors — score pressure, never an outright reject.
+    const ADDED_PATH_LENGTH_FACTOR = 0.6;
+    function addedPathMinCells() {
+        return Math.max(MIN_PATH_CELLS + 2,
+                        Math.round(minPathLength() * ADDED_PATH_LENGTH_FACTOR));
+    }
+
     // Windiness floor: at least this fraction of a path's cells must be
     // BENDS (elbow lanes), with an absolute minimum. A long path that
     // hugs the border in near-straight runs passes the length + span
@@ -850,13 +866,14 @@ const Maze = (() => {
             const savedEntry = entry, savedExit = exit;
             entry = pair.entry;
             exit  = pair.exit;
-            // Scored pick: windiness (2) + interior usage (2) + crosses an
-            // earlier path (1). Highest score wins, early-out on a perfect
-            // candidate; ANY valid candidate is kept as the floor of the
-            // ranking — a plain path still beats dropping the color from
-            // the puzzle entirely. Crossing gets the smallest weight: it's
-            // the cheapest to satisfy incidentally, and a windy interior
-            // path that happens not to cross is still a good puzzle.
+            // Scored pick: length (2) + windiness (2) + interior usage (2)
+            // + crosses an earlier path (1). Highest score wins, early-out
+            // on a perfect candidate; ANY valid candidate is kept as the
+            // floor of the ranking — a plain path still beats dropping the
+            // color from the puzzle entirely. Crossing gets the smallest
+            // weight: it's the cheapest to satisfy incidentally, and a
+            // windy interior path that happens not to cross is still a
+            // good puzzle.
             let best = null, bestScore = -1;
             for (let i = 0; i < MAX_PATH_GEN_TRIES; i++) {
                 const seedCopy = new Map();
@@ -866,11 +883,12 @@ const Maze = (() => {
                 const cells = pathCellCountIn(r, pathIdx);
                 if (cells < MIN_PATH_CELLS || !pathSpansRowsAndCols(r, pathIdx)) continue;
                 let score = 0;
+                if (cells >= addedPathMinCells())                       score += 2;
                 if (pathBendCountIn(r, pathIdx) >= minPathBends(cells)) score += 2;
                 if (meetsInteriorFloor(r, pathIdx, cells))              score += 2;
                 if (pathCrossCountIn(r, pathIdx) >= 1)                  score += 1;
                 if (score > bestScore) { best = r; bestScore = score; }
-                if (bestScore === 5) break;
+                if (bestScore === 7) break;
             }
             entry = savedEntry;
             exit  = savedExit;
@@ -906,15 +924,19 @@ const Maze = (() => {
             const budget = { steps: 200 }; // total generateLanes calls cap
             // Budget-gated quality: while more than RESERVE steps remain,
             // routes must score >= MIN on the shared quality floors
-            // (bends 2 + interior 2 + crossing 1 — see tryAddPath) or
-            // they're skipped; once the budget dips into the reserve the
-            // gate opens and anything valid is accepted. Four plain paths
-            // still beat three good ones, but the search no longer takes
-            // the FIRST route that fits when it can afford to be choosy —
-            // that first-fit behavior is how windy-but-border-hugging,
-            // crossing-free paths kept reaching shipped 4-path boards
-            // (user-confirmed via HINT on v1.06).
-            const BT_QUALITY_MIN     = 3;
+            // (length 2 + bends 2 + interior 2 + crossing 1 — see
+            // tryAddPath) or they're skipped; once the budget dips into
+            // the reserve the gate opens and anything valid is accepted.
+            // Four plain paths still beat three good ones, but the search
+            // no longer takes the FIRST route that fits when it can
+            // afford to be choosy — that first-fit behavior is how
+            // windy-but-border-hugging, crossing-free paths kept reaching
+            // shipped 4-path boards (user-confirmed via HINT on v1.06).
+            // MIN 5 of 7 = at least two of the three 2-point floors, so a
+            // short-but-pretty squiggle (bends+interior, no length) can
+            // no longer pass the gate on its own the way it could when
+            // length wasn't scored at all (MIN was 3 of 5 then).
+            const BT_QUALITY_MIN     = 5;
             const BT_QUALITY_RESERVE = 80;
             const best = {
                 depth: 1, lanes: cellLanes,
@@ -953,6 +975,7 @@ const Maze = (() => {
                         if (!pathSpansRowsAndCols(r, pathIdx)) continue;
                         if (budget.steps > BT_QUALITY_RESERVE) {
                             let q = 0;
+                            if (cells >= addedPathMinCells())                       q += 2;
                             if (pathBendCountIn(r, pathIdx) >= minPathBends(cells)) q += 2;
                             if (meetsInteriorFloor(r, pathIdx, cells))              q += 2;
                             if (pathCrossCountIn(r, pathIdx) >= 1)                  q += 1;
