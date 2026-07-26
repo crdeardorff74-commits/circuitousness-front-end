@@ -701,27 +701,68 @@ const Potd = (() => {
         return last || { ok: false, status: 0 };
     }
 
-    // Inner request: just the POST, no recovery logic. Lets postStart
-    // distinguish a network failure (return null) from a "server says
-    // not_generated" (404 → caller can re-seed and retry).
-    async function attemptPostStart(base, date, slot) {
+    // Timeout + retry for the session-token request. This was the last
+    // PotD network call with a single unbounded, un-retried fetch — and
+    // its failure is the most expensive of the lot: no token means the
+    // solve can NEVER submit, so one transient 5xx (Render's proxy 502s
+    // while a sleeping dyno wakes) or network blip on the day's first
+    // play silently costs the player their leaderboard entry (confirmed
+    // in the wild 2026-07-26: first player of the day solved s1, empty
+    // board, no entry). Escalating per-attempt timeouts rather than the
+    // seed/today [4s,12s] pair because the stakes justify waiting out a
+    // full cold wake: play cannot start until this resolves either way,
+    // and the loading banner is already up. Note a hard-DOWN server
+    // fails fast (connection refused, not a hang), so the worst-case
+    // ~43s applies only to slow-but-alive servers — where the extra
+    // patience is exactly what wins the token.
+    const START_TIMEOUTS_MS    = [5000, 12000, 25000];
+    const START_MAX_ATTEMPTS   = START_TIMEOUTS_MS.length;
+    const START_RETRY_DELAY_MS = 750;
+
+    // Inner request: just the POST, no recovery logic. Lets the retry
+    // loop distinguish a transient failure (network error / timeout /
+    // 5xx → retry) from a "server says not_generated" (404 → caller
+    // re-seeds) and other client errors (terminal).
+    async function attemptPostStart(base, date, slot, timeoutMs) {
+        const ctrl  = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, timeoutMs) : null;
         try {
-            const resp = await fetch(base + '/potd/start', {
+            const resp = await fetch(base + '/potd/start', Object.assign({
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify({ date, slot, sessionId: getSessionId() }),
-            });
+            }, ctrl ? { signal: ctrl.signal } : {}));
             if (resp.ok) return { ok: true, data: await resp.json() };
             return { ok: false, status: resp.status };
         } catch (e) {
-            return { ok: false, status: 0 };
+            return { ok: false, status: 0, reason: e && e.name === 'AbortError'
+                ? 'timeout after ' + timeoutMs + 'ms'
+                : (e && e.message) || String(e) };
+        } finally {
+            if (timer) clearTimeout(timer);
         }
+    }
+    // One full pass of transient-failure retries. Success and 404 are
+    // both terminal here: a 404 means the (date, slot) row is missing,
+    // which retrying can't fix (postStart's re-seed recovery can).
+    // Other 4xx are equally non-transient. Only 5xx / network error /
+    // timeout earn another attempt.
+    async function startWithRetries(base, date, slot) {
+        let last = null;
+        for (let attempt = 1; attempt <= START_MAX_ATTEMPTS; attempt++) {
+            last = await attemptPostStart(base, date, slot, START_TIMEOUTS_MS[attempt - 1]);
+            if (last.ok || (last.status >= 400 && last.status < 500)) return last;
+            if (attempt < START_MAX_ATTEMPTS) {
+                await new Promise(function (res) { setTimeout(res, START_RETRY_DELAY_MS); });
+            }
+        }
+        return last;
     }
     async function postStart(date, slot) {
         const base = apiBase();
         if (!base) return null;
-        const first = await attemptPostStart(base, date, slot);
-        if (first.ok) return first.data;
+        let result = await startWithRetries(base, date, slot);
+        if (result.ok) return result.data;
         // 404 from /potd/start means the server doesn't have a
         // PotdPuzzle row for (date, slot) yet — even though
         // ensurePuzzleAvailable should have seeded it. This is the
@@ -729,10 +770,10 @@ const Potd = (() => {
         // failed silently (server hiccup, transient 5xx), runQueue
         // fell through with a local snap, and now start can't proceed.
         // Recovery: re-seed from the local snap (which we still have in
-        // puzzles.byslot[slot]) and retry start once. Only the 404 path
-        // gets this recovery — other failures (timeout, network) just
-        // return null and let the solve modal show "Offline".
-        if (first.status === 404 && puzzles && puzzles.byslot && puzzles.byslot[slot]) {
+        // puzzles.byslot[slot]) and run the start retries again. Other
+        // terminal failures just return null and let the solve modal
+        // show "Offline".
+        if (result.status === 404 && puzzles && puzzles.byslot && puzzles.byslot[slot]) {
             if (typeof Logger !== 'undefined') {
                 Logger.warn('PotD: /potd/start 404 — re-seeding and retrying', { slot: slot });
             }
@@ -740,9 +781,15 @@ const Potd = (() => {
             // Either we won (201) or someone seeded in the meantime
             // (409) — either way the row should exist now.
             if (seedResult.ok || seedResult.status === 409) {
-                const retry = await attemptPostStart(base, date, slot);
-                if (retry.ok) return retry.data;
+                result = await startWithRetries(base, date, slot);
+                if (result.ok) return result.data;
             }
+        }
+        // Mirror the seed path's loud failure — a silent null here is a
+        // silently lost leaderboard day.
+        if (typeof Logger !== 'undefined') {
+            Logger.warn('PotD: /potd/start failed after retries',
+                { slot: slot, status: result && result.status, reason: result && result.reason });
         }
         return null;
     }
