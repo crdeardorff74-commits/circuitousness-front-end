@@ -2,6 +2,13 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-26 — Release v1.15 (added-path length floor)
+- **Short "squiggle" secondary paths fixed at the ranking level** (user screenshot: ~6-cell yellow path on a multi-path board): added paths (colors 2-4) were scored on bends/interior/crossing but NEVER on length — the only gate was the hard `MIN_PATH_CELLS = 4`, so a tiny path with 2 bends + 2 interior cells scored a PERFECT 5/5 and won `tryAddPath`'s early-out. Path 1 was immune (its cap preference pressures length); the added colors had zero length pressure.
+- New `addedPathMinCells()` = 60% of the path-1 floor (≈8 cells on 6×6, ≈12 on 9×9), scored at weight 2 (max 7, early-out at 7) in linear placement AND in the 4-path backtracker's budget gate (`BT_QUALITY_MIN` 3→5 of 7 = at least two of length/bends/interior). Still preference-with-fallback, never a hard reject — a short path beats dropping the color.
+- Applies to all generation paths (marathon/practice, worker, PotD) — PotD boards already seeded keep their old paths, same rollout shape as the gate-count change.
+- Same session, back-end (deploy pending): CORS regex for `*.game-files.crazygames.com` (CG re-uploads land on random-suffix subdomains; the static env allowlist silently broke PotD sync/tracking/leaderboards on CG — including Recent Visits showing nothing from CG previews).
+- Version bumped 1.14 → 1.15.
+
 ## 2026-07-26 — Release v1.14 (circuit wording + lock-tip/tutorial race fix)
 - **tutorial.intro wording**: "close the loop" → "complete the circuit" across all 15 languages, each phrased to match its `tooltip.firstPlay` sibling (de "Stromkreis schließen", ru "замкнуть цепь", etc.) — tooltip and tutorial now use identical vocabulary.
 - **Lock-tip popped up right after finishing the How-to-Solve tutorial** (user hit it): the 30s timer fired under the tutorial overlay (marathon state stays PLAYING there; watched flag only sets at the FINAL step), and `isSeen` was only checked at queue time. Three-layer fix: (1) timer callback bails when `Tutorial.isOpen()`; (2) `Tooltip.processQueue` re-checks `isSeen` at display time and drops stale entries; (3) `Tutorial.close()` calls `Tooltip.dismissActive(false)` so nothing lingers under the overlay — un-seen, so unacknowledged non-tutorial tips still re-queue next puzzle.
