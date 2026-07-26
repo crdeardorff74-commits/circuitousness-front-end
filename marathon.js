@@ -1312,6 +1312,13 @@ const Marathon = (() => {
         // (in game.js startPuzzle callback) so the new image is visible
         // throughout the "Building puzzle…" wait — not after it.
         // First-play educational tooltips:
+        //   • firstPlay — the goal statement for brand-new players. The
+        //     auto-start run skips the menu AND the tutorial, so without
+        //     this the very first puzzle appears with zero explanation of
+        //     what to do. Queued first so it outranks anything else that
+        //     fires this puzzle; showOnce's seen-flag ends it, and a
+        //     dismiss-by-transition (solve before Got It) re-fires it on
+        //     the next auto-start puzzle by design.
         //   • marathonHint — appears immediately so the player reads it
         //     before they start tapping tiles (the 25%-time penalty info
         //     is most useful BEFORE the timer is ticking on real moves).
@@ -1319,6 +1326,12 @@ const Marathon = (() => {
         //     is mid-solve and has plausibly noticed they want to lock a
         //     tile in place. Cancelled if the puzzle ends first.
         if (typeof Tooltip !== 'undefined') {
+            if (isFirstRunAutoStart) {
+                Tooltip.showOnce('firstPlay',
+                    (typeof I18n !== 'undefined' && I18n.t)
+                        ? I18n.t('tooltip.firstPlay')
+                        : 'Twist the tiles to connect the path and complete the circuit!');
+            }
             // The marathonHint tip is all about the 25%-time penalty, which
             // doesn't exist in Practice (untimed, free hints) — skip it there.
             // The lock tip is still relevant to both modes.

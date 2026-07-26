@@ -140,17 +140,21 @@ const I18n = (() => {
             'potd.lb.days':            '{n} day{s}',
             'potd.lb.solves':          '{n} solve{s}',
             // First-play educational tooltips. tooltip.gotIt is the
-            // shared dismiss button label. potdHint + marathonHint fire
-            // once per mode on first puzzle play; lockTile fires once
-            // ever, 30s into any puzzle; twinStraightLock fires once ever
-            // the first time a player locks a STRAIGHT tile whose twin is
-            // an ELBOW (singular puzzles only). See tooltip.js for the
-            // queue + seen-flag mechanics.
+            // shared dismiss button label. firstPlay fires on the
+            // first-visit auto-start run's puzzles (the goal statement a
+            // menu-skipping brand-new player otherwise never gets);
+            // potdHint + marathonHint fire once per mode on first puzzle
+            // play; lockTile fires once ever, 30s into any puzzle;
+            // twinStraightLock fires once ever the first time a player
+            // locks a STRAIGHT tile whose twin is an ELBOW (singular
+            // puzzles only). See tooltip.js for the queue + seen-flag
+            // mechanics.
             'tooltip.gotIt':           'Got it!',
             'tooltip.potdHint':        'Using HINT will hurt your rank on the Puzzle of the Day leaderboards',
             'tooltip.marathonHint':    'Use HINT for help strategically, as it will cost you 25% of your remaining time every time you use it',
             'tooltip.lockTile':        'If you are sure that a tile is rotated correctly, you can press and hold to lock it in place (along with its twin, if it has one)',
             'tooltip.twinStraightLock': 'Be careful when locking straight tiles that have an elbow twin! You could be locking the twin in the wrong orientation.',
+            'tooltip.firstPlay':       'Twist the tiles to connect the path and complete the circuit!',
             'tutorial.menuButton':     '❓ How to Solve',
             'tutorial.title':          'How to Solve',
             'tutorial.intro':          'Twist the tiles to join the path and close the loop:',
@@ -326,6 +330,7 @@ const I18n = (() => {
             'tooltip.marathonHint':    'Usa PISTA estratégicamente, ya que te costará el 25 % del tiempo restante cada vez que la uses',
             'tooltip.lockTile':        'Si estás seguro de que una pieza está girada correctamente, puedes mantener presionado para bloquearla (junto con su gemela, si tiene una)',
             'tooltip.twinStraightLock': '¡Ten cuidado al bloquear piezas rectas que tienen una gemela en codo! Podrías estar bloqueando la gemela en la orientación incorrecta.',
+            'tooltip.firstPlay':       '¡Gira las piezas para conectar el camino y completar el circuito!',
             'tutorial.menuButton':     '❓ Cómo resolver',
             'tutorial.title':          'Cómo resolver',
             'tutorial.intro':          'Gira las piezas para unir el camino y cerrar el circuito:',
@@ -617,6 +622,7 @@ const I18n = (() => {
             'tooltip.marathonHint':    'Utilisez INDICE stratégiquement, car cela vous coûtera 25 % de votre temps restant à chaque utilisation',
             'tooltip.lockTile':        'Si vous êtes sûr qu\'une tuile est correctement orientée, vous pouvez appuyer longuement pour la verrouiller (avec sa jumelle, le cas échéant)',
             'tooltip.twinStraightLock': 'Faites attention en verrouillant des tuiles droites qui ont une jumelle en coude ! Vous pourriez verrouiller la jumelle dans le mauvais sens.',
+            'tooltip.firstPlay':       'Tournez les tuiles pour relier le chemin et compléter le circuit !',
             'tutorial.menuButton':     '❓ Comment résoudre',
             'tutorial.title':          'Comment résoudre',
             'tutorial.intro':          'Tournez les tuiles pour relier le chemin et fermer la boucle :',
@@ -908,6 +914,7 @@ const I18n = (() => {
             'tooltip.marathonHint':    'Verwende TIPP strategisch, denn es kostet dich bei jeder Verwendung 25 % deiner verbleibenden Zeit',
             'tooltip.lockTile':        'Wenn du sicher bist, dass eine Kachel richtig gedreht ist, kannst du sie gedrückt halten, um sie zu sperren (zusammen mit ihrem Zwilling, falls sie einen hat)',
             'tooltip.twinStraightLock': 'Sei vorsichtig beim Sperren gerader Kacheln, die einen Winkel-Zwilling haben! Du könntest den Zwilling in der falschen Ausrichtung sperren.',
+            'tooltip.firstPlay':       'Drehe die Kacheln, um den Pfad zu verbinden und den Stromkreis zu schließen!',
             'tutorial.menuButton':     '❓ So wird gelöst',
             'tutorial.title':          'So wird gelöst',
             'tutorial.intro':          'Drehe die Kacheln, um den Pfad zu verbinden und die Schleife zu schließen:',
@@ -1198,6 +1205,7 @@ const I18n = (() => {
             'tooltip.marathonHint':    'Use DICA estrategicamente, pois custará 25 % do seu tempo restante cada vez que usar',
             'tooltip.lockTile':        'Se você tem certeza de que uma peça está girada corretamente, pode pressionar e segurar para bloqueá-la (junto com sua gêmea, se tiver uma)',
             'tooltip.twinStraightLock': 'Tenha cuidado ao bloquear peças retas que têm uma gêmea em cotovelo! Você pode estar bloqueando a gêmea na orientação errada.',
+            'tooltip.firstPlay':       'Gire as peças para conectar o caminho e completar o circuito!',
             'tutorial.menuButton':     '❓ Como resolver',
             'tutorial.title':          'Como resolver',
             'tutorial.intro':          'Gire as peças para unir o caminho e fechar o circuito:',
@@ -1488,6 +1496,7 @@ const I18n = (() => {
             'tooltip.marathonHint':    'ヒントは戦略的に使用してください。使用するたびに残り時間の25%を消費します',
             'tooltip.lockTile':        'タイルの回転が正しいと確信したら、長押ししてロックできます（ツインがある場合は一緒に）',
             'tooltip.twinStraightLock': 'L字のツインを持つストレートタイルをロックするときは注意してください！ツインを間違った向きでロックしてしまうかもしれません。',
+            'tooltip.firstPlay':       'タイルを回して道をつなぎ、回路を完成させましょう！',
             'tutorial.menuButton':     '❓ 解き方',
             'tutorial.title':          '解き方',
             'tutorial.intro':          'タイルを回して道をつなぎ、ループを閉じましょう：',
@@ -1777,6 +1786,7 @@ const I18n = (() => {
             'tooltip.marathonHint':    '힌트는 전략적으로 사용하세요. 사용할 때마다 남은 시간의 25%가 소모됩니다',
             'tooltip.lockTile':        '타일이 올바르게 회전되었다고 확신하면 길게 눌러 잠글 수 있습니다 (쌍이 있는 경우 함께)',
             'tooltip.twinStraightLock': '꺾인 모양의 쌍이 있는 직선 타일을 잠글 때는 주의하세요! 쌍을 잘못된 방향으로 잠글 수 있습니다.',
+            'tooltip.firstPlay':       '타일을 돌려 경로를 잇고 회로를 완성하세요!',
             'tutorial.menuButton':     '❓ 푸는 방법',
             'tutorial.title':          '푸는 방법',
             'tutorial.intro':          '타일을 돌려 경로를 잇고 고리를 닫으세요:',
@@ -2066,6 +2076,7 @@ const I18n = (() => {
             'tooltip.marathonHint':    '请策略性地使用提示，每次使用会消耗您剩余时间的25%',
             'tooltip.lockTile':        '如果您确定方块旋转正确，可以长按以锁定它（如果有孪生方块，将一起锁定）',
             'tooltip.twinStraightLock': '锁定带有弯角孪生方块的直线方块时请小心！您可能会把孪生方块锁定在错误的方向上。',
+            'tooltip.firstPlay':       '转动方块以连接路径并完成回路！',
             'tutorial.menuButton':     '❓ 解谜方法',
             'tutorial.title':          '解谜方法',
             'tutorial.intro':          '转动方块以连接路径并闭合回路：',
@@ -2355,6 +2366,7 @@ const I18n = (() => {
             'tooltip.marathonHint':    'Используйте ПОДСКАЗКУ стратегически — она отнимает 25 % оставшегося времени при каждом использовании',
             'tooltip.lockTile':        'Если вы уверены, что плитка повёрнута правильно, нажмите и удерживайте, чтобы зафиксировать её (вместе с её двойником, если он есть)',
             'tooltip.twinStraightLock': 'Будьте осторожны, фиксируя прямые плитки, у которых есть двойник-уголок! Вы можете зафиксировать двойник в неправильной ориентации.',
+            'tooltip.firstPlay':       'Поворачивайте плитки, чтобы соединить путь и замкнуть цепь!',
             'tutorial.menuButton':     '❓ Как решать',
             'tutorial.title':          'Как решать',
             'tutorial.intro':          'Поворачивайте плитки, чтобы соединить путь и замкнуть контур:',
@@ -2645,6 +2657,7 @@ const I18n = (() => {
             'tooltip.marathonHint':    'Usa SUGGERIMENTO strategicamente: ti costerà il 25 % del tempo rimanente ogni volta che lo usi',
             'tooltip.lockTile':        'Se sei sicuro che un tassello è ruotato correttamente, puoi tenerlo premuto per bloccarlo (insieme al suo gemello, se ne ha uno)',
             'tooltip.twinStraightLock': 'Fai attenzione quando blocchi tasselli dritti che hanno un gemello a gomito! Potresti bloccare il gemello nell\'orientamento sbagliato.',
+            'tooltip.firstPlay':       'Ruota i tasselli per collegare il percorso e completare il circuito!',
             'tutorial.menuButton':     '❓ Come risolvere',
             'tutorial.title':          'Come risolvere',
             'tutorial.intro':          'Ruota i tasselli per unire il percorso e chiudere il circuito:',
@@ -2934,6 +2947,7 @@ const I18n = (() => {
             'tooltip.marathonHint':    'Gebruik HINT strategisch — het kost je elke keer 25 % van je resterende tijd',
             'tooltip.lockTile':        'Als je zeker weet dat een tegel correct is gedraaid, kun je hem ingedrukt houden om hem te vergrendelen (samen met zijn tweelingbroer, als die er is)',
             'tooltip.twinStraightLock': 'Wees voorzichtig bij het vergrendelen van rechte tegels die een elleboog-tweeling hebben! Je vergrendelt de tweeling mogelijk in de verkeerde stand.',
+            'tooltip.firstPlay':       'Draai de tegels om het pad te verbinden en het circuit te voltooien!',
             'tutorial.menuButton':     '❓ Zo los je het op',
             'tutorial.title':          'Zo los je het op',
             'tutorial.intro':          'Draai de tegels om het pad te verbinden en de lus te sluiten:',
@@ -3223,6 +3237,7 @@ const I18n = (() => {
             'tooltip.marathonHint':    'Używaj WSKAZÓWKI strategicznie — kosztuje 25 % pozostałego czasu za każdym razem',
             'tooltip.lockTile':        'Jeśli masz pewność, że płytka jest poprawnie obrócona, możesz nacisnąć i przytrzymać, aby ją zablokować (wraz z jej bliźniaczką, jeśli ją ma)',
             'tooltip.twinStraightLock': 'Uważaj przy blokowaniu prostych płytek, które mają bliźniaczkę w kształcie kolanka! Możesz zablokować bliźniaczkę w niewłaściwej orientacji.',
+            'tooltip.firstPlay':       'Obracaj płytki, aby połączyć ścieżkę i zamknąć obwód!',
             'tutorial.menuButton':     '❓ Jak rozwiązać',
             'tutorial.title':          'Jak rozwiązać',
             'tutorial.intro':          'Obracaj płytki, aby połączyć ścieżkę i zamknąć pętlę:',
@@ -3512,6 +3527,7 @@ const I18n = (() => {
             'tooltip.marathonHint':    'İPUCUNU stratejik kullanın — her kullanımda kalan sürenizin %25\'ine mal olur',
             'tooltip.lockTile':        'Bir karonun doğru döndürüldüğünden eminseniz, kilitlemek için basılı tutabilirsiniz (varsa ikiziyle birlikte)',
             'tooltip.twinStraightLock': 'Dirsek ikizine sahip düz karoları kilitlerken dikkatli olun! İkizi yanlış yönde kilitliyor olabilirsiniz.',
+            'tooltip.firstPlay':       'Yolu birleştirmek ve devreyi tamamlamak için karoları döndürün!',
             'tutorial.menuButton':     '❓ Nasıl çözülür',
             'tutorial.title':          'Nasıl çözülür',
             'tutorial.intro':          'Yolu birleştirmek ve döngüyü kapatmak için karoları döndürün:',
@@ -3801,6 +3817,7 @@ const I18n = (() => {
             'tooltip.marathonHint':    'استخدم تلميح بشكل استراتيجي — فسيكلفك 25٪ من وقتك المتبقي في كل مرة تستخدمه',
             'tooltip.lockTile':        'إذا كنت متأكدًا من أن البلاطة مدورة بشكل صحيح، يمكنك الضغط مطولاً لقفلها (مع توأمها، إن وجد)',
             'tooltip.twinStraightLock': 'كن حذرًا عند قفل البلاطات المستقيمة التي لها توأم على شكل كوع! قد تقفل التوأم في الاتجاه الخطأ.',
+            'tooltip.firstPlay':       'أدر البلاطات لربط المسار وإكمال الدائرة!',
             'tutorial.menuButton':     '❓ كيفية الحل',
             'tutorial.title':          'كيفية الحل',
             'tutorial.intro':          'أدر البلاطات لربط المسار وإغلاق الحلقة:',
@@ -4090,6 +4107,7 @@ const I18n = (() => {
             'tooltip.marathonHint':    'संकेत का रणनीतिक रूप से उपयोग करें, क्योंकि हर बार उपयोग करने पर यह आपके शेष समय का 25% खर्च करेगा',
             'tooltip.lockTile':        'यदि आप सुनिश्चित हैं कि एक टाइल सही ढंग से घुमाई गई है, तो आप उसे लॉक करने के लिए दबाकर रख सकते हैं (यदि उसका जुड़वां है, तो उसके साथ)',
             'tooltip.twinStraightLock': 'ऐसी सीधी टाइलों को लॉक करते समय सावधान रहें जिनका कोहनी जैसा जुड़वां हो! आप जुड़वां को गलत दिशा में लॉक कर सकते हैं।',
+            'tooltip.firstPlay':       'पथ को जोड़ने और सर्किट पूरा करने के लिए टाइलों को घुमाएँ!',
             'tutorial.menuButton':     '❓ हल कैसे करें',
             'tutorial.title':          'हल कैसे करें',
             'tutorial.intro':          'पथ को जोड़ने और लूप बंद करने के लिए टाइलों को घुमाएँ:',
