@@ -2,11 +2,17 @@
  * tooltip.js — once-each first-play educational tooltips.
  *
  * Public API:
- *   Tooltip.showOnce(key, message, action?)
+ *   Tooltip.showOnce(key, message, action?, onAcknowledge?)
  *     action — optional { label, onClick }: renders a second button beside
  *     Got It (e.g. the first-run PotD nudge's "jump into today's puzzle").
  *     Clicking it marks the tip seen, dismisses, THEN runs onClick — that
  *     order lets onClick tear game state down without racing the card.
+ *     onAcknowledge — optional callback fired once when the player
+ *     acknowledges the tip via EITHER button (Got It or the action), right
+ *     after the seen-flag persists and before the action's onClick. NOT
+ *     fired on a dismiss-by-transition (markAsSeen=false) — the tip will
+ *     re-queue and the callback gets its chance on the real acknowledgment.
+ *     (e.g. the firstPlay tip revealing the in-HUD How-to-Solve button.)
  *   Tooltip.cancelPending(key)   — remove a queued (but not-yet-shown) tip
  *
  * Each `key` corresponds to a localStorage flag (`<slug>_tooltipSeen_<key>`)
@@ -70,12 +76,17 @@ const Tooltip = (function () {
     // Public — schedule a tooltip if it hasn't been seen and isn't
     // already in the queue (dedupe by key so repeated calls during a
     // single play don't stack duplicates).
-    function showOnce(key, message, action) {
+    function showOnce(key, message, action, onAcknowledge) {
         if (isSeen(key)) return;
         for (const entry of queue) {
             if (entry.key === key) return;
         }
-        queue.push({ key: key, message: message, action: action || null });
+        queue.push({
+            key:           key,
+            message:       message,
+            action:        action || null,
+            onAcknowledge: onAcknowledge || null,
+        });
         processQueue();
     }
 
@@ -158,7 +169,17 @@ const Tooltip = (function () {
         card.hidden = true;
         showing = false;
         if (markAsSeen) {
-            if (activeEntry) markSeen(activeEntry.key);
+            if (activeEntry) {
+                markSeen(activeEntry.key);
+                // Acknowledgment hook — after the seen-flag persists, before
+                // the queue drains (and, on the action path, before the
+                // action's onClick runs — dismissActive is called first
+                // there). Guarded so a callback failure can't break the
+                // queue.
+                if (typeof activeEntry.onAcknowledge === 'function') {
+                    try { activeEntry.onAcknowledge(); } catch (err) { /* keep draining */ }
+                }
+            }
             queue.shift();
             // Drain anything that queued behind the dismissed tip.
             processQueue();

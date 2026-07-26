@@ -1207,7 +1207,20 @@
             if (typeof Gates !== 'undefined') {
                 const solveCount = (typeof Marathon !== 'undefined' && Marathon.getSolvedCount)
                     ? Marathon.getSolvedCount() : 0;
-                const target = 4 + Math.floor(solveCount / 3);
+                // Gate-count on-ramp (replaced the original flat 4 + 1-per-
+                // 3-solves, 2026-07-26): a run's first puzzle gets 1 gate,
+                // +1 per solve up to the full density of 4 by puzzle 4.
+                // Four gates on a brand-new player's first-ever 1-path
+                // puzzle was too many — gates are the mechanic newcomers
+                // find most confusing (they rotate in unison, opposite of
+                // the per-tile lesson being learned), and one gate teaches
+                // it just as well. The established +1-per-3-solves growth
+                // resumes after the ramp completes — offset so the
+                // sequence never jumps a value (1,2,3,4,4,4,5,5,5,6…).
+                // PotD is untouched (fixed 4 in potd.js — everyone plays
+                // the same board).
+                const ramp = Math.min(4, 1 + solveCount);
+                const target = ramp + Math.floor(Math.max(0, solveCount - 3) / 3);
                 // Quad mode: anchor gates at quad-corners only (every other
                 // sub-tile vertex). The prong is still one sub-tile long.
                 const stride = Maze.quadMode ? 2 : 1;

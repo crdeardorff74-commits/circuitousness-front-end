@@ -1229,7 +1229,15 @@ const Marathon = (() => {
         // HUD (the player never saw the menu's one). It occupies the timer's
         // center slot — always free here because the auto-start run is
         // Practice, and Practice hides #hudTimer (body.mode-practice CSS).
-        if (hudHowTo) hudHowTo.hidden = !isFirstRunAutoStart;
+        // Held back until the firstPlay tip has been acknowledged — the tip
+        // carries its own How-to-Solve action button, and its onAcknowledge
+        // hook (see onPuzzleReady) reveals this one the moment the tip is
+        // dismissed. Without the gate, both would be on-screen at once and
+        // the HUD button would upstage the tip that's introducing it.
+        // Tooltip-less fallback (stale cached page): button shows as before.
+        const firstPlayAcked = (typeof Tooltip === 'undefined') || !Tooltip.isSeen
+            || Tooltip.isSeen('firstPlay');
+        if (hudHowTo) hudHowTo.hidden = !isFirstRunAutoStart || !firstPlayAcked;
         // Same run: "Quit" would read as "leave the game" to a player who
         // doesn't know a menu exists — relabel it to advertise that the
         // menu (PotD / Marathon / quad types) is behind it. The data-i18n
@@ -1327,10 +1335,30 @@ const Marathon = (() => {
         //     tile in place. Cancelled if the puzzle ends first.
         if (typeof Tooltip !== 'undefined') {
             if (isFirstRunAutoStart) {
+                // Action button opens the How-to-Solve tutorial straight
+                // from the tip (label reuses the tutorial.menuButton key —
+                // same wording as the HUD button it previews). The
+                // onAcknowledge hook reveals the in-HUD How-to-Solve
+                // button the moment EITHER button dismisses the tip — the
+                // button stays hidden until then (see the hudHowTo gating
+                // in the HUD-setup block above) so the tip is the one
+                // thing introducing it.
                 Tooltip.showOnce('firstPlay',
                     (typeof I18n !== 'undefined' && I18n.t)
                         ? I18n.t('tooltip.firstPlay')
-                        : 'Twist the tiles to connect the path and complete the circuit!');
+                        : 'Twist the tiles to connect the path and complete the circuit!',
+                    {
+                        label: (typeof I18n !== 'undefined' && I18n.t)
+                            ? I18n.t('tutorial.menuButton')
+                            : '❓ How to Solve',
+                        onClick: function () {
+                            if (inTransition) return;
+                            if (typeof Tutorial !== 'undefined' && Tutorial.open) Tutorial.open();
+                        }
+                    },
+                    function () {
+                        if (hudHowTo && isFirstRunAutoStart) hudHowTo.hidden = false;
+                    });
             }
             // The marathonHint tip is all about the 25%-time penalty, which
             // doesn't exist in Practice (untimed, free hints) — skip it there.
