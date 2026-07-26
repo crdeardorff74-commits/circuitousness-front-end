@@ -18,9 +18,9 @@
  *     solved path. For each interior vertex, the set of directions whose
  *     edge isn't in solutionEdges = the gate's safe set. Each placed gate
  *     gets a random safeDir as its solutionDir. No two gates land on
- *     orthogonally adjacent vertices (see the spacing skip in the
- *     placement loop). delta is randomized so the player doesn't start
- *     at the solved gate state.
+ *     adjacent vertices, orthogonal or diagonal (see the spacing skip in
+ *     the placement loop). delta is randomized so the player doesn't
+ *     start at the solved gate state.
  *
  * Walk integration:
  *   Gates.edgeBlocked(r1, c1, r2, c2) — true if a gate currently blocks the
@@ -140,14 +140,15 @@ const Gates = (() => {
             const j = Math.floor(Math.random() * (i + 1));
             const tmp = candidates[i]; candidates[i] = candidates[j]; candidates[j] = tmp;
         }
-        // Greedy pick from the shuffled order, skipping any candidate a
-        // single unit from an already-placed gate (orthogonally adjacent
-        // vertices, Manhattan distance 1). A gate's prong spans exactly
-        // one edge, so a unit-apart pair can have one's tip touching the
-        // other's base — visually mushed together. Diagonal neighbors
-        // (√2 apart) stay legal: prongs travel edges, so they can never
-        // touch. Quad mode's stride-2 candidates are ≥2 apart and never
-        // trigger the skip. Dense targets on small boards may place
+        // Greedy pick from the shuffled order, skipping any candidate
+        // adjacent to an already-placed gate — orthogonally OR diagonally
+        // (Chebyshev distance 1, i.e. the 8 surrounding vertices). A
+        // gate's prong spans exactly one edge, so an orthogonal pair can
+        // have one's tip touching the other's base, and a diagonal pair's
+        // perpendicular prongs can form a near-touching L around the
+        // shared cell (seen in the wild 2026-07-26) — both read as one
+        // mushed shape. Quad mode's stride-2 candidates are ≥2 apart and
+        // never trigger the skip. Dense targets on small boards may place
         // fewer than `target` — same graceful degradation as the
         // candidate cap above.
         const count = Math.min(target, candidates.length);
@@ -155,7 +156,7 @@ const Gates = (() => {
             const c = candidates[i];
             let tooClose = false;
             for (const g of list) {
-                if (Math.abs(g.vr - c.vr) + Math.abs(g.vc - c.vc) === 1) {
+                if (Math.abs(g.vr - c.vr) <= 1 && Math.abs(g.vc - c.vc) <= 1) {
                     tooClose = true;
                     break;
                 }
