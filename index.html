@@ -1488,6 +1488,24 @@
         // shows up as a "flash" mid-page-load.
         var wasControlled = !!navigator.serviceWorker.controller;
 
+        // ANY user interaction permanently vetoes the auto-reload for this
+        // page load — the update then simply applies on the next natural
+        // load. This is the guard the old comment ("if user hasn't started
+        // anything yet") claimed but never implemented: an SW update used
+        // to reload the page even mid-solve (observed 2026-07-26 — a
+        // deploy tripped the update flow via changed importScripts bytes
+        // and wiped a live PotD attempt back to the intro screen).
+        // pointerdown/keydown/touchstart cover mouse, keyboard, and touch;
+        // gamepadconnected covers pad players (gamepad input is polled, so
+        // it never fires DOM input events — and Chrome only surfaces a pad
+        // after a button press, so connection ≈ first press; Firefox fires
+        // it on plug-in, which vetoes a bit early — conservative is fine).
+        var userInteracted = false;
+        ['pointerdown', 'keydown', 'touchstart', 'gamepadconnected'].forEach(function (evt) {
+            window.addEventListener(evt, function () { userInteracted = true; },
+                { capture: true, passive: true, once: true });
+        });
+
         function handleUpdate(version) {
             if (updateHandled) return;
             updateHandled = true;
@@ -1500,8 +1518,12 @@
             }
             console.log('PWA: New version available' + (version ? ' (v' + version + ')' : ''));
 
-            // Auto-refresh once per session if user hasn't started anything yet.
-            // Guard with sessionStorage to prevent infinite reload loops when
+            if (userInteracted) {
+                console.log('PWA: User has interacted — deferring update to next page load');
+                return;
+            }
+            // Auto-refresh once per session on an untouched page. Guard with
+            // sessionStorage to prevent infinite reload loops when
             // stale-while-revalidate keeps serving the old PAGE_VERSION.
             // PROJECT_SLUG comes from config.js (loaded above).
             var refreshKey = PROJECT_SLUG + '_sw_refreshed';
@@ -1509,8 +1531,18 @@
                 console.log('PWA: Already refreshed this session, skipping');
                 return;
             }
-            sessionStorage.setItem(refreshKey, '1');
-            setTimeout(function() { window.location.reload(); }, 1000);
+            setTimeout(function() {
+                // Re-check: the first interaction may have landed during the
+                // grace second. The refresh flag is only set when we truly
+                // reload, so a vetoed update doesn't burn the once-per-
+                // session slot.
+                if (userInteracted) {
+                    console.log('PWA: User interacted during reload grace — deferring update');
+                    return;
+                }
+                sessionStorage.setItem(refreshKey, '1');
+                window.location.reload();
+            }, 1000);
         }
 
         navigator.serviceWorker.addEventListener('message', function(event) {
