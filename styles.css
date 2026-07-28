@@ -877,7 +877,7 @@ html.is-crazygames .cg-only { display: revert !important; }
        keeps its height and only its position changes. em-scaled, so it
        tracks the title at every clamp size. Single knob — raise to drop
        the brackets further, set to 0 for the original alignment. */
-    --bracketDrop: 0.05em;
+    --bracketDrop: 0.025em;
 }
 .titleFrame .bracket {
     position: absolute;
