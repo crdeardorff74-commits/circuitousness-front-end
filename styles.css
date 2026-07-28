@@ -870,6 +870,14 @@ html.is-crazygames .cg-only { display: revert !important; }
     margin-bottom: 0.6rem;
     line-height: 1;
     font-size: clamp(2rem, 6vw, 3.6rem);
+    /* Vertical nudge for all four corner brackets — the wordmark's glyphs
+       sit slightly high inside the frame's line box, so an unshifted
+       viewfinder reads as riding above the text. Top and bottom brackets
+       both move DOWN by this amount (see the offsets below), so the frame
+       keeps its height and only its position changes. em-scaled, so it
+       tracks the title at every clamp size. Single knob — raise to drop
+       the brackets further, set to 0 for the original alignment. */
+    --bracketDrop: 0.05em;
 }
 .titleFrame .bracket {
     position: absolute;
@@ -887,11 +895,16 @@ html.is-crazygames .cg-only { display: revert !important; }
    wide edges and look stranded outside the text. Right side uses a
    smaller inset (0.08em) — visually the trailing S in USNESS doesn't
    reach as close to its bracket as the leading C reaches to its,
-   so a symmetric 0.12em looked too tight on the right. */
-.titleFrame .bracket-tl { top: 0; left:  0.12em; border-top-width: 0.095em; border-left-width:  0.095em; }
-.titleFrame .bracket-tr { top: 0; right: 0.08em; border-top-width: 0.095em; border-right-width: 0.095em; }
-.titleFrame .bracket-bl { bottom: 0; left:  0.12em; border-bottom-width: 0.095em; border-left-width:  0.095em; }
-.titleFrame .bracket-br { bottom: 0; right: 0.08em; border-bottom-width: 0.095em; border-right-width: 0.095em; }
+   so a symmetric 0.12em looked too tight on the right.
+
+   Vertically, all four shift down by --bracketDrop: the top pair moves
+   its `top` inset positive, the bottom pair moves its `bottom` inset
+   negative by the same amount, so the frame translates rather than
+   stretching. */
+.titleFrame .bracket-tl { top: var(--bracketDrop); left:  0.12em; border-top-width: 0.095em; border-left-width:  0.095em; }
+.titleFrame .bracket-tr { top: var(--bracketDrop); right: 0.08em; border-top-width: 0.095em; border-right-width: 0.095em; }
+.titleFrame .bracket-bl { bottom: calc(-1 * var(--bracketDrop)); left:  0.12em; border-bottom-width: 0.095em; border-left-width:  0.095em; }
+.titleFrame .bracket-br { bottom: calc(-1 * var(--bracketDrop)); right: 0.08em; border-bottom-width: 0.095em; border-right-width: 0.095em; }
 /* WebKit-only overrides. Safari (desktop + iOS) kerns the condensed
    scaleX(0.78) title font tighter than Chrome/Edge/Firefox, so:
      - the leading C visually overlaps the I in IRCUIT — fixed by
