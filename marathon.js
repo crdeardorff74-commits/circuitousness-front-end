@@ -1622,9 +1622,10 @@ const Marathon = (() => {
     // Twists-vs-minimum stats for the Zen solve popup. Player count =
     // every committed action that physically twisted the board: tile and
     // gate rotations, undos (an undo spins the board back — rotating a
-    // wrong tile and taking it back cost two twists), and hints that
-    // rotated a tile (zero-turn hints just lock, so they're free — as are
-    // pure lock moves). The floor comes from the recording (game.js
+    // wrong tile and taking it back cost two twists). Pure lock moves are
+    // free. Hints don't count as twists — they VOID the stat: any hint in
+    // the recording hides the line entirely (see below). The floor comes
+    // from the recording (game.js
     // stamps minMoves at startRecording) so it survives the saved-run
     // resume round-trip. Returns null — caller hides the line — when
     // either side is unavailable (e.g. a run saved before the feature).
@@ -1633,8 +1634,15 @@ const Marathon = (() => {
         if (!rec || typeof rec.minMoves !== 'number' || rec.minMoves <= 0) return null;
         let moves = 0;
         for (const m of rec.moves) {
+            // ANY hint use suppresses the whole line (return null →
+            // caller hides it): the twists-vs-minimum stat is a measure
+            // of the player's own solving, and a hint-assisted puzzle
+            // isn't that — hint-spamming to the solution used to print
+            // "Perfect — solved in the minimum twists!" (user-reported).
+            // Deliberately includes 0-turn hints: the tile was already
+            // right, but the player didn't know that without help.
+            if (m.type === 'hint') return null;
             if (m.type === 'rotate' || m.type === 'gate' || m.type === 'undo') moves++;
-            else if (m.type === 'hint' && (m.turns | 0) > 0) moves++;
         }
         if (moves <= 0) return null;
         return { moves, min: rec.minMoves };
