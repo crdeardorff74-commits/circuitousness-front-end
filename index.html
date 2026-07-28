@@ -1067,6 +1067,14 @@
                 <button class="lbSubTab" type="button" data-paths="2" data-i18n="marathon.path2">2 paths</button>
                 <button class="lbSubTab" type="button" data-paths="3" data-i18n="marathon.path3">3 paths</button>
                 <button class="lbSubTab" type="button" data-paths="4" data-i18n="marathon.path4">4 paths</button>
+                <!-- Flex line-break: on portrait phones the row wraps
+                     awkwardly (4 paths + Streak on line 1, Career alone
+                     full-width on line 2). This activates via CSS at the
+                     portrait-phone breakpoint to force the wrap BEFORE
+                     Streak instead, giving path chips / Streak+Career
+                     lines. Inert (display:none) everywhere else; not a
+                     .lbSubTab so marathon.js's wiring never sees it. -->
+                <span class="lbPathBreak" aria-hidden="true"></span>
                 <button class="lbSubTab lbPotdOnly" type="button" data-paths="streak" data-i18n="potd.lb.streak">Streak</button>
                 <button class="lbSubTab lbPotdOnly" type="button" data-paths="career" data-i18n="potd.lb.career">Career</button>
             </div>

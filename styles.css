@@ -3072,6 +3072,11 @@ body.credits-rolling #potdSolveTransition.visible {
    Career) — let it wrap rather than crush the labels on narrow phones.
    The tile row stays nowrap (always exactly 2 chips). */
 #leaderboardPathTabs { flex-wrap: wrap; }
+/* Flex line-break element before the Streak chip (see index.html).
+   Inert by default; the portrait-phone block activates it so the row
+   wraps into [1-4 paths] / [Streak · Career] instead of stranding
+   Career alone on its own line (user request 2026-07-28). */
+.lbPathBreak { display: none; }
 /* The whole path row is PotD-only: marathon collapsed to one board per
    tile type ('s'/'q' progressive runs), so its board picker is just the
    Singular/Quad row above. marathon.js's applyLeaderboardMode stamps
@@ -4802,22 +4807,39 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
         padding: 0.4rem 0.7rem;
         font-size: 0.78rem;
     }
-    /* Leaderboard panel: use (nearly) the full phone width. The base /
+    /* Leaderboard panel: use the full phone width. The base /
        short-viewport widths (70vw/80vw with rem floors) leave ~40px of
        dead margin per side at 390px — cramped rows for no benefit.
-       92vw, NOT 94: #leaderboard's own horizontal padding is 3vw per
-       side at phone widths, so its content box is exactly 94vw — a
-       94vw child fits with ZERO slack and sub-pixel rounding tipped it
-       into a horizontal scrollbar (observed on-device). 92vw leaves
-       ~2vw of real slack. The 32rem cap only matters in theory here
-       (600px × 0.92 < 32rem) but keeps the rule honest if the block's
-       width gate ever widens. Same width on all four stacked elements
-       so the tab rows, sub-tab rows, and list stay edge-aligned. */
+       100%, NOT a vw value: this rule's history is two scrollbar bugs.
+       94vw fit with zero slack and sub-pixel rounding spawned an
+       h-scrollbar (v1.03); its replacement 92vw assumed the panel's
+       padding scales with vw, but #leaderboard's padding is
+       clamp(1rem, 4vw, 3rem) — below a 400px window the 1REM FLOOR
+       wins, the content box drops to 100vw − 2rem, and 92vw overflows
+       it by a couple px again (v1.18, user screenshot at ~375px).
+       100% resolves against the flex container's actual content box —
+       padding changes, rem floors, even a vertical scrollbar stealing
+       width can never overflow it. The 32rem cap keeps the rule honest
+       if the block's width gate ever widens. Same width on all four
+       stacked elements so the tab rows, sub-tab rows, and list stay
+       edge-aligned. */
     #leaderboardTabs,
     #leaderboardTileTabs,
     #leaderboardPathTabs,
     #leaderboardEntries {
-        width: min(92vw, 32rem);
+        width: min(100%, 32rem);
+    }
+    /* PotD path row: force the flex wrap BEFORE the Streak chip so the
+       6-chip row breaks into [1-4 paths] / [Streak · Career]. Without
+       this the natural wrap point lands after Streak, stranding Career
+       alone full-width on line 2 (user phone screenshot). A zero-height
+       100%-basis item is a hard line break in a wrapping flexbox; the
+       two all-time chips then flex: 1 into equal halves of line 2. Only
+       meaningful in PotD mode — marathon hides the whole row. */
+    .lbPathBreak {
+        display: block;
+        flex-basis: 100%;
+        height: 0;
     }
     /* Leaderboard rows: at the list's 20rem width floor the 6-column
        grid ran out of room — the 2rem rank column + five 0.8rem gaps
