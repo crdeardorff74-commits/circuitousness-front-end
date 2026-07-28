@@ -4859,6 +4859,13 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
         font-size: 0.85rem;
     }
     #leaderboardEntries li .lbHints { white-space: nowrap; }
+    /* Watch button goes glyph-only ("▶") on portrait phones — the text
+       label is the row's widest flexible chunk after the name, and
+       hiding it hands its width to the name's 1fr column (names were
+       ellipsizing at ~6 chars, user screenshot). The span split lives
+       in marathon.js's renderLeaderboard; an aria-label keeps the
+       button named for screen readers. */
+    #leaderboardEntries li .lbWatch .lbWatchLabel { display: none; }
     #leaderboardEntries li .lbName {
         min-width: 0;
         overflow: hidden;

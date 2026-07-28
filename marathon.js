@@ -2617,7 +2617,17 @@ const Marathon = (() => {
                 const watch = document.createElement('button');
                 watch.className   = 'lbWatch';
                 watch.type        = 'button';
-                watch.textContent = '▶ ' + I18n.t('marathon.watch');
+                // Glyph + label as SEPARATE nodes: portrait phones hide
+                // the .lbWatchLabel span via CSS (glyph-only button frees
+                // row width for player names — user request 2026-07-28).
+                // The aria-label keeps the button named when the visible
+                // text is just "▶".
+                watch.textContent = '▶ ';
+                const watchLabel = document.createElement('span');
+                watchLabel.className   = 'lbWatchLabel';
+                watchLabel.textContent = I18n.t('marathon.watch');
+                watch.appendChild(watchLabel);
+                watch.setAttribute('aria-label', I18n.t('marathon.watch'));
                 // Resolve the launch action for this entry's recording
                 // source: own/local events play directly; server-backed
                 // entries fetch first, via the PotD- or marathon-specific
