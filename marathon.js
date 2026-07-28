@@ -1437,19 +1437,13 @@ const Marathon = (() => {
         //   • lockTile — scheduled 30s in so it appears once the player
         //     is mid-solve and has plausibly noticed they want to lock a
         //     tile in place. Cancelled if the puzzle ends first.
-        // Quad-tiles explainer, fired on the FIRST quad puzzle of a run
-        // that reached quad from singular (the fast-track hand-off). The
-        // tutorial teaches on a singular grid and can't demonstrate this,
-        // so the teaching happens here, at the moment of need — and it's
-        // needed: nine puzzles of singular play establish "tap a tile, it
-        // spins in place", and a quad tap moves four sub-tiles to new
-        // POSITIONS. Without a word of warning that reads as a bug.
-        // showOnce's seen-flag means it never repeats, including for
-        // players who later pick quad from the menu.
-        if (typeof Tooltip !== 'undefined' && Tooltip.showOnce && Maze.quadMode
-            && (level <= 1 || !levelConfig(level - 1).quadMode)) {
-            Tooltip.showOnce('quadTiles', I18n.t('tooltip.quadTiles'));
-        }
+        // (A quad-tiles explainer tooltip briefly lived here — fired on
+        // the first quad puzzle after the fast-track hand-off. Removed by
+        // user call 2026-07-28: conceptually the player is still twisting
+        // one unified tile, and describing the four sub-tiles' position
+        // shuffle explains the implementation, not the experience. The
+        // solve-card's "New tile type" cue is announcement enough; don't
+        // re-add without a rethink.)
         if (typeof Tooltip !== 'undefined') {
             if (isFirstRunAutoStart) {
                 // Action button opens the How-to-Solve tutorial straight
