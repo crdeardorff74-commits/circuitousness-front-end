@@ -271,6 +271,36 @@ const MARATHON = {
     TIER_DROP:   1,
     MAX_PATHS:   4,
 
+    // Compressed tier ladder for the FIRST-VISIT auto-start Zen run only
+    // (marathon.js autoStartFirstPractice → levelConfig). Entry i = how
+    // many puzzles that run spends at (i+1) paths before stepping up, so
+    // [3,2,2,2] means 3 one-path puzzles, then 2 each at 2/3/4 paths —
+    // 9 puzzles total, after which the run switches to QUAD tiles and
+    // resets to 1 path (FIRST_RUN_QUAD_RESET_PATHS).
+    //
+    // Why a separate ladder: a first session that only ever shows
+    // singular tiles teaches "this game is bigger grids", which is a thin
+    // reason to return (D1 was the failed CrazyGames metric). Reaching
+    // quad inside one session shows there's a second mechanic. The
+    // compression is on the VARIETY axis only — growth steps still
+    // accrue one per solve with the usual TIER_DROP, so grid size climbs
+    // exactly as it always did and each tier still opens at the size of
+    // the last puzzle solved.
+    //
+    // The quad hand-off deliberately resets to 1 path: a 4-path quad
+    // would stack the hardest generator, the least familiar mechanic and
+    // 3 gates all at once, AND it's the slowest build in the game. At 1
+    // path / 4×4 logical the first quad board is exactly the pre-built
+    // 'q' STARTER (game.js STARTER_PLAN), which invalidatePreGen
+    // preserves — so the reveal is instant instead of showing
+    // "Building puzzle…" at the worst possible moment.
+    //
+    // Sum is the knob that matters: raise entries to delay the quad
+    // reveal, lower them to pull it in. Setting this to null disables
+    // the fast track entirely (first run falls back to normal tiers).
+    FIRST_RUN_TIERS: [3, 2, 2, 2],
+    FIRST_RUN_QUAD_RESET_PATHS: 1,
+
     // Aspect cap on grid growth: neither logical dimension may grow to
     // MORE than this ratio × the other. Growth still favors the
     // viewport's long axis (landscape runs wide, portrait runs tall),

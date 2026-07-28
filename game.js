@@ -1224,7 +1224,20 @@
                 // learned); the interim +1-per-solve ramp to 4 was still
                 // too quick, as was +1 every 3. PotD is separate (fixed
                 // 3 in potd.js — everyone plays the same board).
-                const target = 1 + Math.floor(solveCount / 4);
+                // Zen opens GATE-FREE for its first two puzzles. Gates are
+                // the mechanic newcomers find most confusing — they rotate
+                // in unison, the opposite of the per-tile lesson a first
+                // puzzle is teaching — and Zen is where brand-new players
+                // land (the first-visit auto-start run is a Zen run). Let
+                // the tile mechanic land on its own first; gates arrive on
+                // puzzle 3. Marathon is untouched: it's the mode players
+                // choose deliberately, and its clock makes an easier
+                // opening a scoring advantage rather than a kindness.
+                // solveCount is puzzles solved BEFORE this one, so < 2
+                // covers exactly puzzles 1 and 2.
+                const zenOpening = (typeof Marathon !== 'undefined' && Marathon.isZenRun
+                                    && Marathon.isZenRun() && solveCount < 2);
+                const target = zenOpening ? 0 : 1 + Math.floor(solveCount / 4);
                 // Quad mode: anchor gates at quad-corners only (every other
                 // sub-tile vertex). The prong is still one sub-tile long.
                 const stride = Maze.quadMode ? 2 : 1;

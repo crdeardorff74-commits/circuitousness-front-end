@@ -450,6 +450,15 @@ body.mode-practice #hudTimer { display: none; }
     text-shadow: 0 0 0.8rem rgba(0, 225, 255, 0.4);
     margin-bottom: 0.3rem;
 }
+/* Quad hand-off cue — shares the tier-up slot but announces a whole new
+   tile type rather than one more path, so it runs a step larger and in
+   violet to separate it from the routine cyan tier-up. Only the
+   first-run fast track reaches this today. */
+#solveTierUp.quadReveal {
+    font-size: clamp(1.05rem, 2.7vw, 1.45rem);
+    color: rgba(203, 148, 255, 0.98);
+    text-shadow: 0 0 0.9rem rgba(186, 122, 255, 0.5);
+}
 /* Zen moves-feedback line (practice solves only) — twists made vs the
    scramble's minimum. A step down from the solved-count line in size and
    brightness; the .perfect variant (player matched the minimum) goes gold

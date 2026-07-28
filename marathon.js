@@ -651,23 +651,108 @@ const Marathon = (() => {
         return Math.min(MARATHON.MAX_PATHS,
             Math.floor((lev - 1) / MARATHON.TIER_LENGTH) + 1);
     }
-    // Growth-accumulator steps applied at `lev`: +1 per solve, minus
-    // TIER_DROP for each tier transition crossed. With TIER_DROP 1 the
-    // drop cancels the new level's +1, so each tier opens at the SAME
-    // dims as the last puzzle solved (the retraced growthSequence
-    // prefix is identical — rolled axis entries are pinned, see
-    // ensureGrowthSequence). Rationale for same-size transitions in
-    // config.js's TIER_* comment.
+    // Growth-accumulator steps at `lev` given the path count in effect
+    // there: +1 per solve, minus TIER_DROP for each tier transition
+    // crossed. With TIER_DROP 1 the drop cancels the new level's +1, so
+    // each tier opens at the SAME dims as the last puzzle solved (the
+    // retraced growthSequence prefix is identical — rolled axis entries
+    // are pinned, see ensureGrowthSequence). Rationale for same-size
+    // transitions in config.js's TIER_* comment.
+    //
+    // Taking `paths` as a parameter (rather than reading
+    // pathCountForLevel) is what lets the first-run fast track reuse
+    // this: its tiers are shorter, but the same "one step per solve,
+    // minus one per tier crossed" arithmetic applies, so the size curve
+    // and the same-size tier openings are identical to a normal run.
+    function growthStepsFor(lev, paths) {
+        return Math.max(0, (lev - 1) - (paths - 1) * MARATHON.TIER_DROP);
+    }
     // With TIER_LENGTH 4 / TIER_DROP 1: L1-4 → L-1; L5-8 → L-2;
     // L9-12 → L-3; L13+ → L-4 (endless growth at MAX_PATHS).
     function growthStepsForLevel(lev) {
-        return Math.max(0,
-            (lev - 1) - (pathCountForLevel(lev) - 1) * MARATHON.TIER_DROP);
+        return growthStepsFor(lev, pathCountForLevel(lev));
     }
     // Path count in effect at `lev` for a decoded type: progressive
     // types compute it from the level; legacy 2-char types are fixed.
     function pathCountFor(decoded, lev) {
         return decoded.progressive ? pathCountForLevel(lev) : decoded.pathCount;
+    }
+
+    // ----- First-visit fast track -----
+    // The auto-start run (autoStartFirstPractice) walks a compressed
+    // ladder — MARATHON.FIRST_RUN_TIERS puzzles per path count — and then
+    // hands off to QUAD tiles at 1 path. Rationale + tuning notes live on
+    // the constant in config.js. Everything here is inert (falsy tiers →
+    // normal progression) for every other run.
+    function firstRunTiers() {
+        const t = MARATHON.FIRST_RUN_TIERS;
+        return (Array.isArray(t) && t.length) ? t : null;
+    }
+    // Last level of the fast track's singular phase; quad begins at +1.
+    function firstRunSingularLevels() {
+        const tiers = firstRunTiers();
+        if (!tiers) return 0;
+        return tiers.reduce(function (n, count) { return n + count; }, 0);
+    }
+    function firstRunPathCount(lev) {
+        const tiers = firstRunTiers();
+        let acc = 0;
+        for (let i = 0; i < tiers.length; i++) {
+            acc += tiers[i];
+            if (lev <= acc) return i + 1;
+        }
+        return MARATHON.MAX_PATHS;
+    }
+    // True while the ACTIVE run is the fast-tracked first-visit one.
+    // Legacy fixed-path types are excluded: the fast track only makes
+    // sense over a progressive ladder, and the auto-start always starts
+    // 's' anyway — the guard just keeps a resumed legacy save safe.
+    function onFirstRunFastTrack() {
+        return isFirstRunAutoStart && !!firstRunTiers()
+            && decodeType(activeType).progressive;
+    }
+
+    // The single source of truth for "what does level `lev` of the
+    // CURRENT run look like": { quadMode, pathCount, growthSteps }.
+    // Replaces the old decodeType-plus-pathCountFor pairs at every call
+    // site, because on the fast track quadMode varies BY LEVEL rather
+    // than being fixed by the type string.
+    function levelConfig(lev) {
+        const decoded = decodeType(activeType);
+        if (!onFirstRunFastTrack()) {
+            const paths = pathCountFor(decoded, lev);
+            return {
+                quadMode:    decoded.quadMode,
+                pathCount:   paths,
+                growthSteps: decoded.progressive ? growthStepsFor(lev, paths) : lev - 1,
+                progressive: decoded.progressive
+            };
+        }
+        const singularLevels = firstRunSingularLevels();
+        if (lev <= singularLevels) {
+            const paths = firstRunPathCount(lev);
+            return {
+                quadMode:    false,
+                pathCount:   paths,
+                growthSteps: growthStepsFor(lev, paths),
+                progressive: true
+            };
+        }
+        // Quad phase. The run restarts the NORMAL progressive ladder in
+        // quad mode from its own level 1, so the hand-off puzzle is a
+        // 1-path 4×4-logical quad (the pre-built 'q' starter) and the
+        // pace reverts to standard tiers from there — the fast track's
+        // job (show every kind of play) is done by this point, and a
+        // player still going at puzzle 20 wants the real game's cadence.
+        const qLev  = lev - singularLevels;
+        const paths = Math.max(MARATHON.FIRST_RUN_QUAD_RESET_PATHS || 1,
+                               pathCountForLevel(qLev));
+        return {
+            quadMode:    true,
+            pathCount:   paths,
+            growthSteps: growthStepsFor(qLev, paths),
+            progressive: true
+        };
     }
 
     // 's'  → { quadMode: false, pathCount: null, progressive: true }
@@ -743,15 +828,15 @@ const Marathon = (() => {
             growthSequence.push(axis);
         }
     }
-    // Logical dims at `lev` for a decoded type (see decodeType).
-    // Progressive types apply growthStepsForLevel's tier-sawtooth step
-    // count; legacy fixed-path types keep the old monotonic lev-1. The
-    // shared growthSequence prefix means a tier drop retraces earlier
-    // dims exactly.
-    function dimsForLevel(lev, decoded) {
-        const paths = pathCountFor(decoded, lev);
-        const start = MARATHON.startDimsFor(decoded.quadMode, paths);
-        const steps = decoded.progressive ? growthStepsForLevel(lev) : lev - 1;
+    // Logical dims at `lev` for a level config (see levelConfig), which
+    // has already resolved the tier sawtooth for progressive types and
+    // the monotonic lev-1 for legacy fixed-path ones. The shared
+    // growthSequence prefix means a tier drop retraces earlier dims
+    // exactly — and, on the fast track, that the quad phase re-reads the
+    // same rolled axes from the start.
+    function dimsForLevel(lev, cfg) {
+        const start = MARATHON.startDimsFor(cfg.quadMode, cfg.pathCount);
+        const steps = cfg.growthSteps;
         ensureGrowthSequence(steps);
         let rowGrowth = 0, colGrowth = 0;
         for (let i = 0; i < steps; i++) {
@@ -778,17 +863,21 @@ const Marathon = (() => {
     // build + cache under the future config, not the current globals.
     function upcomingDims(count) {
         if (state !== STATE.PLAYING) return [];
-        const decoded = decodeType(activeType);
         const out = [];
         for (let i = 1; i <= count; i++) {
             const lev      = level + i;
-            const logical  = dimsForLevel(lev, decoded);
-            const physRows = decoded.quadMode ? logical.rows * 2 : logical.rows;
-            const physCols = decoded.quadMode ? logical.cols * 2 : logical.cols;
+            // Per-level config, not a once-per-call decode: on the
+            // first-run fast track quadMode flips partway through the
+            // lookahead window, and pre-gen must build each entry under
+            // the config that level will actually run with.
+            const cfg      = levelConfig(lev);
+            const logical  = dimsForLevel(lev, cfg);
+            const physRows = cfg.quadMode ? logical.rows * 2 : logical.rows;
+            const physCols = cfg.quadMode ? logical.cols * 2 : logical.cols;
             out.push({
                 rows: physRows, cols: physCols,
-                pathCount: pathCountFor(decoded, lev),
-                quadMode:  decoded.quadMode
+                pathCount: cfg.pathCount,
+                quadMode:  cfg.quadMode
             });
         }
         return out;
@@ -862,7 +951,6 @@ const Marathon = (() => {
         const rec = (typeof Game !== 'undefined') ? Game.recording : null;
         if (solvedCount === 0 && !(rec && Array.isArray(rec.moves) && rec.moves.length > 0)) return;
 
-        const decoded = decodeType(activeType);
         let saveLevel     = level;
         let saveRemaining = timeRemaining;
         const midPuzzle   = puzzleLive && !inTransition;
@@ -872,8 +960,9 @@ const Marathon = (() => {
             // appeared. Roll both back so the boundary-resume's own
             // startNextPuzzle replays the grant exactly once. (The timer
             // never ticks during a build, so the subtraction is exact.)
-            const logical = dimsForLevel(level, decoded);
-            const fresh   = timeForPuzzle(decoded.quadMode, pathCountFor(decoded, level), solvedCount, logical);
+            const cfg     = levelConfig(level);
+            const logical = dimsForLevel(level, cfg);
+            const fresh   = timeForPuzzle(cfg.quadMode, cfg.pathCount, solvedCount, logical);
             saveLevel     = level - 1;
             saveRemaining = Math.max(0, timeRemaining - fresh);
             if (saveLevel < 1 && solvedCount === 0) return;   // nothing to resume
@@ -969,12 +1058,14 @@ const Marathon = (() => {
             state = STATE.PLAYING;
             puzzleLive = true;
             showOnly(hudEl);
-            const decoded = decodeType(activeType);
-            Maze.setQuadMode(decoded.quadMode);
-            // Progressive types carry no fixed pathCount — derive the
-            // tier's count from the saved level (legacy types pass
-            // through their fixed digit).
-            Maze.setPathCount(pathCountFor(decoded, level));
+            // Progressive types carry no fixed pathCount — derive both
+            // the tier's count and the mode from the saved level (legacy
+            // types pass through their fixed digit). Resumed runs are
+            // never the auto-start one (it doesn't save), so levelConfig
+            // takes its normal-progression branch here.
+            const cfg = levelConfig(level);
+            Maze.setQuadMode(cfg.quadMode);
+            Maze.setPathCount(cfg.pathCount);
             Maze.loadSnapshot(save.maze);
             if (save.gates && typeof Gates !== 'undefined' && Gates.restore) {
                 Gates.restore(save.gates);
@@ -993,8 +1084,8 @@ const Marathon = (() => {
                 if (Game.restoreRecording)  Game.restoreRecording(save.recording || null);
             }
             const logical = {
-                rows: decoded.quadMode ? save.maze.rows / 2 : save.maze.rows,
-                cols: decoded.quadMode ? save.maze.cols / 2 : save.maze.cols,
+                rows: cfg.quadMode ? save.maze.rows / 2 : save.maze.rows,
+                cols: cfg.quadMode ? save.maze.cols / 2 : save.maze.cols,
             };
             updateHud(logical);
             if (hudHowTo) hudHowTo.hidden = true;
@@ -1025,9 +1116,17 @@ const Marathon = (() => {
     // types reuse the SAME 8 keys ("Singular · N paths" per language) with
     // the digit computed from the level's tier — no new translations.
     // pathCountForLevel clamps at MAX_PATHS, so the digit is always 1-4.
-    function typeLabelKey(type, lev) {
+    // `cfg` (optional) = the levelConfig of the run actually in play. Pass
+    // it for the LIVE run: the first-run fast track walks its own path
+    // ladder and switches to quad tiles mid-run while activeType stays
+    // 's', so neither the letter nor the digit can be read off the type
+    // string there. Omit it for saved runs (refreshContinueCards), which
+    // are never fast-tracked and whose level alone determines the tier.
+    function typeLabelKey(type, lev, cfg) {
         if (type.length === 2) return 'marathon.mode' + type.toUpperCase();
-        return 'marathon.mode' + type.toUpperCase() + pathCountForLevel(lev);
+        const letter = cfg ? (cfg.quadMode ? 'Q' : 'S') : type.toUpperCase();
+        const paths  = cfg ? cfg.pathCount : pathCountForLevel(lev);
+        return 'marathon.mode' + letter + paths;
     }
 
     function refreshContinueCards() {
@@ -1209,18 +1308,18 @@ const Marathon = (() => {
         puzzleLive = false;
 
         level++;
-        const decoded   = decodeType(activeType);
-        const paths     = pathCountFor(decoded, level);
-        const logical   = dimsForLevel(level, decoded);
-        const physRows  = decoded.quadMode ? logical.rows * 2 : logical.rows;
-        const physCols  = decoded.quadMode ? logical.cols * 2 : logical.cols;
+        const cfg       = levelConfig(level);
+        const paths     = cfg.pathCount;
+        const logical   = dimsForLevel(level, cfg);
+        const physRows  = cfg.quadMode ? logical.rows * 2 : logical.rows;
+        const physCols  = cfg.quadMode ? logical.cols * 2 : logical.cols;
 
         // Carry-over + fresh allotment. solvedCount = (level - 1) here
         // (incremented in onSolve before the player advances). No cap on
         // banking — the running total just grows. `logical` feeds the
         // singular size cap on fresh time. Progressive runs' path-indexed
         // START_TIME arrays give a natural bump at each tier-up.
-        const fresh = timeForPuzzle(decoded.quadMode, paths, solvedCount, logical);
+        const fresh = timeForPuzzle(cfg.quadMode, paths, solvedCount, logical);
         timeRemaining = timeRemaining + fresh;
 
         state = STATE.PLAYING;
@@ -1260,7 +1359,7 @@ const Marathon = (() => {
                 rows:      physRows,
                 cols:      physCols,
                 pathCount: paths,
-                quadMode:  decoded.quadMode
+                quadMode:  cfg.quadMode
             });
         }
         // Timer starts when puzzle is actually on-screen (onPuzzleReady).
@@ -1304,9 +1403,13 @@ const Marathon = (() => {
         // (level-2 is safe: level ≥ 6 by the first condition, and
         // pathCountForLevel(level-2) === 1 gates the rest of tier 2
         // out — only the tier's first level passes.)
+        // levelConfig (not pathCountForLevel) so the trigger tracks the
+        // ladder the run is ACTUALLY walking — the first-run fast track
+        // reaches its first 2-path solve earlier than the normal tiers
+        // would, and this condition has to move with it.
         if (isFirstRunAutoStart && level > 2
-            && pathCountForLevel(level - 1) === 2
-            && pathCountForLevel(level - 2) === 1
+            && levelConfig(level - 1).pathCount === 2
+            && levelConfig(level - 2).pathCount === 1
             && typeof Tooltip !== 'undefined' && Tooltip.showOnce) {
             Tooltip.showOnce('potdNudge', I18n.t('tooltip.potdNudge'), {
                 label: I18n.t('mode.potd.name'),
@@ -1334,6 +1437,19 @@ const Marathon = (() => {
         //   • lockTile — scheduled 30s in so it appears once the player
         //     is mid-solve and has plausibly noticed they want to lock a
         //     tile in place. Cancelled if the puzzle ends first.
+        // Quad-tiles explainer, fired on the FIRST quad puzzle of a run
+        // that reached quad from singular (the fast-track hand-off). The
+        // tutorial teaches on a singular grid and can't demonstrate this,
+        // so the teaching happens here, at the moment of need — and it's
+        // needed: nine puzzles of singular play establish "tap a tile, it
+        // spins in place", and a quad tap moves four sub-tiles to new
+        // POSITIONS. Without a word of warning that reads as a bug.
+        // showOnce's seen-flag means it never repeats, including for
+        // players who later pick quad from the menu.
+        if (typeof Tooltip !== 'undefined' && Tooltip.showOnce && Maze.quadMode
+            && (level <= 1 || !levelConfig(level - 1).quadMode)) {
+            Tooltip.showOnce('quadTiles', I18n.t('tooltip.quadTiles'));
+        }
         if (typeof Tooltip !== 'undefined') {
             if (isFirstRunAutoStart) {
                 // Action button opens the How-to-Solve tutorial straight
@@ -1560,10 +1676,11 @@ const Marathon = (() => {
         // cap; dimsForLevel is deterministic, so this projection matches
         // what startNextPuzzle will grant. No cap on banking — all of
         // leftover carries.
-        const decoded     = decodeType(activeType);
-        const nextPaths   = pathCountFor(decoded, level + 1);
-        const nextLogical = dimsForLevel(level + 1, decoded);
-        const fresh       = timeForPuzzle(decoded.quadMode, nextPaths, solvedCount, nextLogical);
+        const curCfg      = levelConfig(level);
+        const nextCfg     = levelConfig(level + 1);
+        const nextPaths   = nextCfg.pathCount;
+        const nextLogical = dimsForLevel(level + 1, nextCfg);
+        const fresh       = timeForPuzzle(nextCfg.quadMode, nextPaths, solvedCount, nextLogical);
         const nextStart = timeRemaining + fresh;
         const bankedMs  = timeRemaining;
 
@@ -1577,9 +1694,19 @@ const Marathon = (() => {
             // the jump doesn't read as a random difficulty spike; hidden
             // on every ordinary advance and always for legacy runs.
             if (solveTierUp) {
-                const tierUp = decoded.progressive && nextPaths > pathCountFor(decoded, level);
-                solveTierUp.hidden = !tierUp;
-                if (tierUp) {
+                // Two mutually-exclusive cues share this slot. The quad
+                // hand-off (fast track only) takes precedence and is
+                // checked first: at that boundary the path count RESETS
+                // to 1, so the tier-up test below is false anyway — but
+                // the switch to a brand-new mechanic is the bigger news
+                // and must be announced, or the next board looks broken.
+                const quadUp = nextCfg.quadMode && !curCfg.quadMode;
+                const tierUp = !quadUp && nextCfg.progressive && nextPaths > curCfg.pathCount;
+                solveTierUp.hidden = !(quadUp || tierUp);
+                solveTierUp.classList.toggle('quadReveal', quadUp);
+                if (quadUp) {
+                    solveTierUp.textContent = I18n.t('marathon.solveQuadUp');
+                } else if (tierUp) {
                     solveTierUp.textContent = I18n.t('marathon.solveTierUp', { n: nextPaths });
                 }
             }
@@ -1751,7 +1878,7 @@ const Marathon = (() => {
         if (!hudType) return;
         // Progressive runs re-render this on every startNextPuzzle, so the
         // label's path digit tracks the current tier automatically.
-        hudType.textContent  = I18n.t(typeLabelKey(activeType, level));
+        hudType.textContent  = I18n.t(typeLabelKey(activeType, level, levelConfig(level)));
         hudLevel.textContent = I18n.t('marathon.hudLevel', { n: level, r: logical.rows, c: logical.cols });
         renderTimer();
     }
@@ -2814,5 +2941,8 @@ const Marathon = (() => {
              // setup; teardown is parameterless (the keyboard owner is
              // tracked internally).
              setupMobileKeyboard, teardownMobileKeyboard, isStandaloneIos,
-             getSolvedCount: () => solvedCount };
+             getSolvedCount: () => solvedCount,
+             // Zen (untimed, no leaderboard) vs Marathon. Read by game.js
+             // to hold gates back on a Zen run's opening puzzles.
+             isZenRun: () => isPractice };
 })();
