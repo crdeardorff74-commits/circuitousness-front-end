@@ -2690,9 +2690,19 @@ html.mode-debug #settingsOverlay { display: none !important; }
 .credits-content {
     padding: 20px;
     text-align: center;
-    max-width: 36%;
-    /* Let the title (and any other content) render outside the 34%-wide
-       content box without being clipped by an ancestor. Default is already
+    /* Width: 36% of the viewport on very wide screens, but FLOORED at
+       47rem — the two credit columns (.credits-role 420px + gap 40px +
+       .credits-name 250px = 710px) need ~712px of content box to render
+       without flex-shrink squashing them into word-wrapped stacks. A bare
+       36% only supplies that on ~2000px+ viewports; the CrazyGames iframe
+       (and any mid-width window) collapsed it to ~300-400px, wrapping
+       every name ("C. Ryan / Deardorff", user screenshot 2026-07-28).
+       94vw caps the floor on windows too narrow to grant it (phones),
+       where the columns shrink as before — just from a far less brutal
+       starting width than 36%-of-390px. */
+    max-width: min(max(36%, 47rem), 94vw);
+    /* Let the title (and any other content) render outside the content
+       box without being clipped by an ancestor. Default is already
        `visible`, but set it explicitly so any future ancestor `overflow:
        hidden` doesn't quietly start cropping the credits again. */
     overflow: visible;
