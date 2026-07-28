@@ -681,6 +681,26 @@ const Maze = (() => {
                         Math.round(minPathLength() * ADDED_PATH_LENGTH_FACTOR));
     }
 
+    // How many DIFFERENT endpoint pairs to sample before settling for the
+    // best route found. All the other floors re-rank ROUTES within one
+    // pair; this is the only lever that can escape a pair whose geometry
+    // makes every route bad (see addPathWithPairRetry's comment). Cost is
+    // bounded: each attempt is one tryAddPath (≤ MAX_PATH_GEN_TRIES DFS
+    // runs) and the loop stops the moment a route clears the shape
+    // floors, so a healthy grid usually pays for exactly one.
+    const MAX_PAIR_ATTEMPTS = 3;
+    // "Good enough to stop looking for a better pair." Deliberately below
+    // the 7-point maximum: crossing (the 7th point) depends on where the
+    // EARLIER paths happen to run and can be genuinely unavailable, so
+    // requiring it would burn every attempt on boards where it's
+    // impossible. 6 = length + bends + interior, i.e. all three
+    // properties that describe the path's own shape.
+    const ADDED_PATH_GOOD_SCORE = 6;
+    // Path 1's counterpart: bends (2) + interior (2), the whole of its
+    // scale. There's no length term (betterPath1's cap preference already
+    // pressures length) and no crossing term (nothing to cross yet).
+    const PATH1_GOOD_SCORE = 4;
+
     // Windiness floor: at least this fraction of a path's cells must be
     // BENDS (elbow lanes), with an absolute minimum. A long path that
     // hugs the border in near-straight runs passes the length + span
@@ -836,21 +856,52 @@ const Maze = (() => {
         // betterPath1 breaking ties inside a tier. A run of low-quality
         // samples still yields a puzzle instead of a failed build — the
         // floors only ever re-rank, never reject outright.
-        let cellLanes = null, bestQ = -1;
-        for (let i = 0; i < MAX_PATH_GEN_TRIES; i++) {
-            const lanes = generateLanes();
-            if (!lanes) continue;
-            if (lanes.size < MIN_PATH_CELLS) continue;
-            if (!pathSpansRowsAndCols(lanes, 0)) continue;
-            let q = 0;
-            if (pathBendCountIn(lanes, 0) >= minPathBends(lanes.size)) q += 2;
-            if (meetsInteriorFloor(lanes, 0, lanes.size))              q += 2;
-            if (q > bestQ || (q === bestQ && betterPath1(cellLanes, lanes))) {
-                cellLanes = lanes;
-                bestQ = q;
+        //
+        // Pair-retry, same as the added paths (see addPathWithPairRetry):
+        // the inner loop samples routes for ONE endpoint pair, so a pair
+        // whose geometry forces every route along a border can only ever
+        // yield border-hugging candidates. Re-pick the pair and try again
+        // until one clears both shape floors. `pair1` is attempt 0 so the
+        // common case costs exactly what it did before.
+        //
+        // Note the tie-break makes a bad pair worse, which is why the
+        // retry matters here too: when every candidate scores 0,
+        // betterPath1 falls through to "prefer the longest", and a
+        // dead-straight run along a full border is about the longest
+        // thing the DFS can produce.
+        let cellLanes = null, bestQ = -1, bestPair = pair1;
+        for (let attempt = 0; attempt < MAX_PAIR_ATTEMPTS; attempt++) {
+            const pair = (attempt === 0) ? pair1 : pickFarPair();
+            if (!pair) break;
+            entry = pair.entry;
+            exit  = pair.exit;
+            for (let i = 0; i < MAX_PATH_GEN_TRIES; i++) {
+                const lanes = generateLanes();
+                if (!lanes) continue;
+                if (lanes.size < MIN_PATH_CELLS) continue;
+                if (!pathSpansRowsAndCols(lanes, 0)) continue;
+                let q = 0;
+                if (pathBendCountIn(lanes, 0) >= minPathBends(lanes.size)) q += 2;
+                if (meetsInteriorFloor(lanes, 0, lanes.size))              q += 2;
+                // Cross-pair comparison is by quality first; betterPath1
+                // only breaks ties WITHIN a quality tier, so a longer
+                // border-hugger can't displace a shorter windy route.
+                if (q > bestQ || (q === bestQ && betterPath1(cellLanes, lanes))) {
+                    cellLanes = lanes;
+                    bestQ     = q;
+                    bestPair  = pair;
+                }
             }
+            if (bestQ >= PATH1_GOOD_SCORE) break;
         }
         if (!cellLanes) return false;
+        // Re-pin the module-level endpoints to whichever pair produced the
+        // winning route — the loop above leaves them on the LAST pair
+        // tried, which isn't necessarily the best one.
+        entry = bestPair.entry;
+        exit  = bestPair.exit;
+        pair1.entry = bestPair.entry;
+        pair1.exit  = bestPair.exit;
 
         // Multi-path mode: generate additional paths that share the grid
         // with path 1 via cross tiles. Each new path's DFS is seeded with
@@ -862,6 +913,11 @@ const Maze = (() => {
         entry3 = null; exit3 = null;
         entry4 = null; exit4 = null;
 
+        // Returns { lanes, score } for the best route found between this
+        // pair's endpoints, or null if none was valid. The SCORE is
+        // returned (not just the lanes) so the caller can tell a good
+        // route from a best-of-a-bad-lot one and retry with a different
+        // endpoint pair — see addPathWithPairRetry.
         function tryAddPath(pair, pathIdx) {
             const savedEntry = entry, savedExit = exit;
             entry = pair.entry;
@@ -892,7 +948,43 @@ const Maze = (() => {
             }
             entry = savedEntry;
             exit  = savedExit;
-            return best;
+            return best ? { lanes: best, score: bestScore } : null;
+        }
+
+        // Endpoint-pair retry — the fix for border-hugging paths that the
+        // route-level floors couldn't catch (user screenshot 2026-07-28: a
+        // gold path running dead straight along the top row, 2 bends and
+        // ZERO interior cells, on a 3-path board).
+        //
+        // Why the floors missed it: tryAddPath samples MAX_PATH_GEN_TRIES
+        // routes, but every one of them runs between the SAME two
+        // endpoints. pickFarPair ranks pairs by Manhattan distance alone,
+        // which is blind to border-hugging — a West-row-0 → East-row-1
+        // pair on an 8-wide grid scores 1+7=8, high enough to win, while
+        // pinning both ends to the top border. Every route between those
+        // two points hugs that border, so all the scoring could do was
+        // pick the least-bad of a uniformly bad pool, and it never
+        // rejects outright. The pair, not the route, was the problem.
+        //
+        // So: give the floors the power to reject a PAIR. Sample several
+        // pairs, keep the best-scoring route across all of them, and stop
+        // early as soon as one clears the shape floors. Still never fails
+        // a path — the best-so-far is returned however poor it is, so a
+        // hard-to-route grid drops a color exactly as rarely as before.
+        function addPathWithPairRetry(used, pathIdx) {
+            let best = null, bestScore = -1, bestPair = null;
+            for (let attempt = 0; attempt < MAX_PAIR_ATTEMPTS; attempt++) {
+                const pair = pickFarPair(used);
+                if (!pair) break;
+                const res = tryAddPath(pair, pathIdx);
+                if (res && res.score > bestScore) {
+                    best      = res.lanes;
+                    bestScore = res.score;
+                    bestPair  = pair;
+                }
+                if (bestScore >= ADDED_PATH_GOOD_SCORE) break;
+            }
+            return best ? { lanes: best, pair: bestPair } : null;
         }
 
         // Path 2 and 3 are dropped silently if they can't fit (small or
@@ -1015,14 +1107,11 @@ const Maze = (() => {
                 const used = new Set();
                 used.add(pair1.entry.row + ',' + pair1.entry.col);
                 used.add(pair1.exit.row  + ',' + pair1.exit.col);
-                const pair2 = pickFarPair(used);
-                if (pair2) {
-                    const r2 = tryAddPath(pair2, 1);
-                    if (r2) {
-                        cellLanes = r2;
-                        entry2 = pair2.entry;
-                        exit2  = pair2.exit;
-                    }
+                const r2 = addPathWithPairRetry(used, 1);
+                if (r2) {
+                    cellLanes = r2.lanes;
+                    entry2 = r2.pair.entry;
+                    exit2  = r2.pair.exit;
                 }
             }
             if (pathCount >= 3 && entry2) {
@@ -1031,14 +1120,11 @@ const Maze = (() => {
                 used.add(pair1.exit.row  + ',' + pair1.exit.col);
                 used.add(entry2.row + ',' + entry2.col);
                 used.add(exit2.row  + ',' + exit2.col);
-                const pair3 = pickFarPair(used);
-                if (pair3) {
-                    const r3 = tryAddPath(pair3, 2);
-                    if (r3) {
-                        cellLanes = r3;
-                        entry3 = pair3.entry;
-                        exit3  = pair3.exit;
-                    }
+                const r3 = addPathWithPairRetry(used, 2);
+                if (r3) {
+                    cellLanes = r3.lanes;
+                    entry3 = r3.pair.entry;
+                    exit3  = r3.pair.exit;
                 }
             }
         }
