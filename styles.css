@@ -390,6 +390,12 @@ body.mode-practice #hudTimer { display: none; }
     transform: translate(-50%, -50%) scale(0.9);
     z-index: 28;
     padding: 1.2rem 2.4rem;
+    /* The card sizes to its content, and the Zen moves line ("Twists: 34 ·
+       minimum: 26 = 76% solve rate") is the longest string it carries —
+       long enough to push the card past a narrow portrait viewport. Cap
+       the width so it wraps instead; the translate(-50%) centering keeps
+       it centered at any width. */
+    max-width: min(90vw, 34rem);
     background: rgba(20, 24, 40, 0.92);
     border: 1px solid rgba(255, 215, 0, 0.6);
     border-radius: 0.6rem;

@@ -1600,9 +1600,17 @@ const Marathon = (() => {
                     if (stats) {
                         const perfect = stats.moves <= stats.min;
                         solveMoves.classList.toggle('perfect', perfect);
+                        // Solve rate = minimum / twists, so fewer wasted
+                        // twists reads as a higher score. The perfect line
+                        // omits it — it's 100% by definition, and beating
+                        // the floor would print an odd >100%.
                         solveMoves.textContent = perfect
                             ? I18n.t('marathon.solveMovesPerfect', { m: stats.moves })
-                            : I18n.t('marathon.solveMoves', { m: stats.moves, b: stats.min });
+                            : I18n.t('marathon.solveMoves', {
+                                  m: stats.moves,
+                                  b: stats.min,
+                                  p: Math.round(stats.min / stats.moves * 100)
+                              });
                     }
                 }
             } else {
