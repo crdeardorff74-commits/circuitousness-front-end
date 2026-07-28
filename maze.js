@@ -635,8 +635,21 @@ const Maze = (() => {
         // Sample several endpoint configs and return the farthest valid pair.
         // `avoidCells` (optional Set of "r,c") excludes cells that already
         // have endpoints from a previous path.
+        //
+        // Distance FLOOR (2026-07-28, user screenshot: two ~5-cell corner
+        // hops on a shipped 4-path board): farthest-of-N alone has no
+        // lower bound — samples that collide with avoidCells are
+        // discarded, and late in a multi-path build (6 used perimeter
+        // cells) enough samples die that a corner-adjacent pair can win
+        // by default. Endpoints that close can ONLY yield hop paths, so
+        // no downstream route scoring can save the pair. When the base
+        // batch comes up short of the floor, keep sampling (up to 3× the
+        // base count); the best pair found is returned regardless, so
+        // this never fails a build that would have succeeded.
+        const minDist = Math.max(4, Math.round((ROWS + COLS) / 3));
         let entrySide, exitSide, entryCell, exitCell, bestDist = -1;
-        for (let i = 0; i < ENDPOINT_SAMPLES; i++) {
+        for (let i = 0; i < ENDPOINT_SAMPLES * 3; i++) {
+            if (i >= ENDPOINT_SAMPLES && bestDist >= minDist) break;
             const sides = shuffle([N, E, S, W]);
             const ec = randomCellOnEdge(sides[0]);
             const xc = randomCellOnEdge(sides[1]);
@@ -1014,22 +1027,32 @@ const Maze = (() => {
             const MAX_BT_PAIRS  = 4;     // endpoint configs to try per level
             const MAX_BT_ROUTES = 6;     // DFS routes to try per pair
             const budget = { steps: 200 }; // total generateLanes calls cap
-            // Budget-gated quality: while more than RESERVE steps remain,
-            // routes must score >= MIN on the shared quality floors
-            // (length 2 + bends 2 + interior 2 + crossing 1 — see
-            // tryAddPath) or they're skipped; once the budget dips into
-            // the reserve the gate opens and anything valid is accepted.
-            // Four plain paths still beat three good ones, but the search
-            // no longer takes the FIRST route that fits when it can
-            // afford to be choosy — that first-fit behavior is how
-            // windy-but-border-hugging, crossing-free paths kept reaching
-            // shipped 4-path boards (user-confirmed via HINT on v1.06).
-            // MIN 5 of 7 = at least two of the three 2-point floors, so a
-            // short-but-pretty squiggle (bends+interior, no length) can
-            // no longer pass the gate on its own the way it could when
-            // length wasn't scored at all (MIN was 3 of 5 then).
+            // Budget-gated quality, in LAYERS (was a single binary gate):
+            //   steps > QUALITY_RESERVE (80):  route must score >= MIN 5
+            //     of 7 on the shared floors (length 2 + bends 2 +
+            //     interior 2 + crossing 1 — see tryAddPath).
+            //   QUALITY_RESERVE >= steps > LENGTH_RESERVE (40):  only the
+            //     length floor (cells >= addedPathMinCells) — shape
+            //     niceties are negotiable now, but a path must still
+            //     read as a journey.
+            //   steps <= LENGTH_RESERVE:  anything valid — the original
+            //     accept-all emergency lane, so four plain paths still
+            //     beat three good ones and no color is ever dropped that
+            //     the old search could place.
+            // History: the single gate (v1.07) opened at 80 steps and
+            // accepted FIRST-FIT from there — deep 4-path searches
+            // routinely burn into the reserve, which is how two ~5-cell
+            // corner hops shipped on one board (user screenshot
+            // 2026-07-28; their corner-adjacent endpoint pairs are
+            // separately blocked by pickFarPair's new distance floor).
+            // Before that, first-fit with no gate at all let windy-but-
+            // border-hugging paths through (v1.06, user-confirmed via
+            // HINT). MIN 5 of 7 = at least two of the three 2-point
+            // floors, so a short-but-pretty squiggle can't pass on
+            // bends+interior alone.
             const BT_QUALITY_MIN     = 5;
             const BT_QUALITY_RESERVE = 80;
+            const BT_LENGTH_RESERVE  = 40;
             const best = {
                 depth: 1, lanes: cellLanes,
                 e2: null, x2: null, e3: null, x3: null, e4: null, x4: null
@@ -1072,6 +1095,9 @@ const Maze = (() => {
                             if (meetsInteriorFloor(r, pathIdx, cells))              q += 2;
                             if (pathCrossCountIn(r, pathIdx) >= 1)                  q += 1;
                             if (q < BT_QUALITY_MIN) continue;
+                        } else if (budget.steps > BT_LENGTH_RESERVE) {
+                            // Middle layer: shape floors waived, length kept.
+                            if (cells < addedPathMinCells()) continue;
                         }
                         const oldE2 = entry2, oldX2 = exit2;
                         const oldE3 = entry3, oldX3 = exit3;
