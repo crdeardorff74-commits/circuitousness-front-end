@@ -243,7 +243,18 @@ const Marathon = (() => {
         // goToMenu already tears the credits roll down (Credits.stop) and
         // restarts menu music — the popup's exit needs nothing extra.
         if (creditsPopupMenu)   creditsPopupMenu.addEventListener('click', goToMenu);
-        if (hudQuit)            hudQuit.addEventListener('click', quitToMenu);
+        if (hudQuit)            hudQuit.addEventListener('click', () => {
+            // First-time-player funnel: on the auto-start run this button
+            // reads "📅 Daily & More" — record the click HERE, not inside
+            // quitToMenu, because the in-run PotD nudge's action also
+            // routes through quitToMenu and must not count as a
+            // Daily-&-More click.
+            if (isFirstRunAutoStart && typeof Tracking !== 'undefined'
+                && Tracking.firstRunDailyMoreClicked) {
+                Tracking.firstRunDailyMoreClicked();
+            }
+            quitToMenu();
+        });
         // In-HUD tutorial entry — only ever visible during the first-visit
         // auto-started Practice run (see isFirstRunAutoStart). Tutorial.open
         // snapshots + restores the live Maze/Gates around the teaching
@@ -1051,6 +1062,9 @@ const Marathon = (() => {
         // visit's funnel needs its own "chose to play" milestone.
         if (typeof Tracking !== 'undefined' && Tracking.recordStart) {
             Tracking.recordStart(isPractice ? 'practice' : 'marathon', activeType);
+            // First-time-player funnel: the auto-start run never saves,
+            // so any resumed run is by definition outside it.
+            if (Tracking.firstRunOutsideStart) Tracking.firstRunOutsideStart();
         }
 
         if (save.boundary || !save.maze) {
@@ -1211,6 +1225,10 @@ const Marathon = (() => {
                 deferredStartTracking = { mode: isPractice ? 'practice' : 'marathon', gameType: type };
             } else {
                 Tracking.recordStart(isPractice ? 'practice' : 'marathon', type);
+                // First-time-player funnel: a menu-chosen start is play
+                // OUTSIDE the initial auto-start run (no-op unless this
+                // browser was a tracked first-timer).
+                if (Tracking.firstRunOutsideStart) Tracking.firstRunOutsideStart();
             }
         }
         // Fire-and-forget: ask the server for a cheat-proof timing token.
@@ -1257,6 +1275,14 @@ const Marathon = (() => {
         // still never re-trigger, and the player gets the normal menu on
         // their next load rather than a repeating broken auto-start.
         try { localStorage.setItem(AUTO_START_KEY, '1'); } catch (e) {}
+        // First-time-player funnel: this is the ONE moment we know the
+        // browser is brand new, so open its FirstRunStats row now — a
+        // player who bails without touching anything should still count
+        // (as 0 initial-run puzzles), unlike the deferred recordStart
+        // below which deliberately requires an interaction.
+        if (typeof Tracking !== 'undefined' && Tracking.firstRunBegin) {
+            Tracking.firstRunBegin();
+        }
         startGame('s', true, true);
         return true;
     }
@@ -1417,6 +1443,10 @@ const Marathon = (() => {
             Tooltip.showOnce('potdNudge', I18n.t('tooltip.potdNudge'), {
                 label: I18n.t('mode.potd.name'),
                 onClick: function () {
+                    // First-time-player funnel: the nudge converted.
+                    if (typeof Tracking !== 'undefined' && Tracking.firstRunNudgeClicked) {
+                        Tracking.firstRunNudgeClicked();
+                    }
                     quitToMenu();
                     if (typeof ModePicker !== 'undefined' && ModePicker.setMode) ModePicker.setMode('potd');
                     if (typeof Potd !== 'undefined' && Potd.startPuzzle) Potd.startPuzzle('s1');
@@ -1634,6 +1664,19 @@ const Marathon = (() => {
         totalSolveTime += elapsed;
         solvedCount++;
 
+        // First-time-player funnel: a solve inside the auto-start run
+        // advances the initial-run puzzle count; any other run's solve is
+        // "outside the initial run" (both calls no-op unless this browser
+        // was a tracked first-timer — see tracking.js). PotD solves make
+        // the matching outside call in potd.js onSolve.
+        if (typeof Tracking !== 'undefined') {
+            if (isFirstRunAutoStart) {
+                if (Tracking.firstRunPuzzleSolved) Tracking.firstRunPuzzleSolved();
+            } else if (Tracking.firstRunOutsideSolve) {
+                Tracking.firstRunOutsideSolve();
+            }
+        }
+
         // Practice never reaches gameOver() (it's untimed and ends only on
         // Quit), so the engagement funnel's "finished" milestone — which
         // Marathon fires from gameOver() — would otherwise never fire for the
@@ -1846,6 +1889,13 @@ const Marathon = (() => {
             Tooltip.showOnce('potdNudge', I18n.t('tooltip.potdNudge'), {
                 label: I18n.t('mode.potd.name'),
                 onClick: function () {
+                    // First-time-player funnel: the nudge converted (menu
+                    // pitch variant — same flag as the in-run variant,
+                    // they're mutually exclusive per player via the
+                    // shared seen-key).
+                    if (typeof Tracking !== 'undefined' && Tracking.firstRunNudgeClicked) {
+                        Tracking.firstRunNudgeClicked();
+                    }
                     // Already at the menu — just flip the tab and start
                     // the easiest daily slot (same landing as the in-run
                     // nudge's action).

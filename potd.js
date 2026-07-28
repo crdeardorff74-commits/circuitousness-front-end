@@ -110,6 +110,16 @@ const Potd = (() => {
     // `eligible` (older policy was "hint = disqualified"); the run
     // still posts to the leaderboard, just at a worse rank.
     let hintsUsed    = 0;
+    // Hard cap on hints per PotD attempt (added 2026-07-28, alongside
+    // the Streak/Career all-time boards): with unlimited hints a player
+    // could brute-force every daily slot to farm streak/career credit —
+    // ineligible retries tick this same counter and count for streaks,
+    // so the cap deliberately applies to them too. PotD only: Marathon
+    // hints already cost 25% of remaining time, and Zen is deliberately
+    // pressure-free. Enforced at game.js handleHintClick (the single
+    // entry point for all hint input) via hintsRemaining(); the HUD
+    // button disables at 0 as the visible signal.
+    const MAX_HINTS  = 5;
     let puzzleStartMs = 0;
     let displayInterval = null;
 
@@ -214,6 +224,12 @@ const Potd = (() => {
     function showMenu() {
         if (hudEl)  hudEl.classList.remove('visible');
         if (menuEl) menuEl.classList.add('visible');
+        // Restore the shared HUD HINT button to its uncapped form (plain
+        // label, enabled) — every PotD exit passes through here except
+        // quitToLeaderboard, which makes its own call. Without this a
+        // capped-out attempt would leak "Hint 0/5" + disabled into the
+        // player's next Marathon/Zen run.
+        refreshHintButton();
         // Wipe the finished puzzle from the canvas so it doesn't linger
         // behind the translucent menu (body background image untouched —
         // it lives on documentElement, not the canvas). Mirrors
@@ -1429,6 +1445,10 @@ const Potd = (() => {
         // (s1..s4, q1..q4) goes into the gameType column so the admin
         // breakdown can distinguish PotD plays of each type.
         if (typeof Tracking !== 'undefined' && Tracking.recordStart) Tracking.recordStart('potd', slot);
+        // First-time-player funnel: PotD is always outside the initial
+        // auto-start run (no-op unless this browser was a tracked
+        // first-timer — see tracking.js).
+        if (typeof Tracking !== 'undefined' && Tracking.firstRunOutsideStart) Tracking.firstRunOutsideStart();
 
         // Hide menu first (showHud removes .visible from menuEl), THEN hide
         // the banner. Reverse order would briefly expose the menu in the
@@ -1436,6 +1456,9 @@ const Potd = (() => {
         showHud();
         hideBanner();
         state = STATE.PLAYING;
+        // Paint the hint cap onto the HUD button ("Hint 5/5") now that
+        // the attempt is live. hintsUsed was reset above.
+        refreshHintButton();
         // CrazyGames engagement signal (no-op off-CG). Real plays only —
         // replay-watching never routes through this block (it goes via the
         // leaderboard's replay flow), matching how Tracking.recordStart
@@ -1453,7 +1476,7 @@ const Potd = (() => {
             Tooltip.showOnce('potdHint',
                 (typeof I18n !== 'undefined' && I18n.t)
                     ? I18n.t('tooltip.potdHint')
-                    : 'Using HINT for help will disqualify you for the Puzzle of the Day leaderboards');
+                    : 'Using HINT will hurt your rank on the Puzzle of the Day leaderboards — max 5 per puzzle');
             scheduleLockTip();
         }
     }
@@ -1515,10 +1538,17 @@ const Potd = (() => {
         // This visit's funnel gets its own "chose to play" milestone —
         // same call the marathon resume makes.
         if (typeof Tracking !== 'undefined' && Tracking.recordStart) Tracking.recordStart('potd', slot);
+        // First-time-player funnel: same outside-the-initial-run call as
+        // startPuzzle — a resumed attempt is still voluntary PotD play.
+        if (typeof Tracking !== 'undefined' && Tracking.firstRunOutsideStart) Tracking.firstRunOutsideStart();
 
         showHud();
         hideBanner();
         state = STATE.PLAYING;
+        // Restored hintsUsed (possibly non-zero — the cap survives a
+        // quit/resume; a pre-cap save with more than MAX_HINTS simply
+        // resumes at 0 remaining). Repaint the button to match.
+        refreshHintButton();
         if (typeof CgSdk !== 'undefined') CgSdk.gameplayStart();
         if (typeof Tooltip !== 'undefined') scheduleLockTip();
     }
@@ -1628,6 +1658,9 @@ const Potd = (() => {
                 (typeof Sfx   !== 'undefined' && Sfx.isEffectivelyMuted)   ? !Sfx.isEffectivelyMuted()   : false
             );
         }
+        // First-time-player funnel: a PotD solve is a solve outside the
+        // initial auto-start run.
+        if (typeof Tracking !== 'undefined' && Tracking.firstRunOutsideSolve) Tracking.firstRunOutsideSolve();
 
         // Submit. The events payload is the current recording from Game.
         let recording = null;
@@ -1781,6 +1814,37 @@ const Potd = (() => {
         // wins ahead of faster time). Sanity-capped server-side, but
         // no need to clamp here.
         hintsUsed += 1;
+        refreshHintButton();
+    }
+
+    // How many of the MAX_HINTS per-attempt hints are left. game.js
+    // handleHintClick consults this BEFORE executing a PotD hint and
+    // no-ops at 0 — the authoritative gate; the disabled button below
+    // is just its visible reflection.
+    function hintsRemaining() {
+        return Math.max(0, MAX_HINTS - hintsUsed);
+    }
+
+    // Keep the shared HUD HINT button honest about the PotD cap: during
+    // PotD play it reads "Hint n/5" (count is numeric — no new i18n
+    // needed) and disables at 0; every non-PotD state restores the plain
+    // translated label + enabled, since Marathon/Zen have no cap. Called
+    // at puzzle entry (startPuzzle / resumeAttempt), on each hint, and
+    // from the exit paths (showMenu / quitToLeaderboard) so the button
+    // can never carry stale PotD state into a Marathon run. A language
+    // switch mid-attempt repaints the plain label (i18n's translatePage
+    // owns the textContent then) — self-heals on the next refresh call.
+    function refreshHintButton() {
+        const btn = hudHintBtn || document.getElementById('hudHintBtn');
+        if (!btn) return;
+        const label = (typeof I18n !== 'undefined' && I18n.t) ? I18n.t('hint.button') : 'Hint';
+        if (state === STATE.PLAYING) {
+            btn.textContent = label + ' ' + hintsRemaining() + '/' + MAX_HINTS;
+            btn.disabled = hintsRemaining() <= 0;
+        } else {
+            btn.textContent = label;
+            btn.disabled = false;
+        }
     }
 
     function isEligible() {
@@ -2040,6 +2104,9 @@ const Potd = (() => {
         currentSlot = null;
         sessionToken = null;
         cancelLockTip();
+        // This exit skips showMenu (it lands on the leaderboard view), so
+        // it restores the shared HINT button itself — see showMenu.
+        refreshHintButton();
         // Defensive — onSolve already dismisses, but this path can also
         // be reached from Marathon.showPotdLeaderboard (cross-module
         // entry), so we cover it directly.
@@ -2334,6 +2401,7 @@ const Potd = (() => {
         guardWatch,
         confirmHintUse,
         noteHintUsed,
+        hintsRemaining,
         refreshMenuIndicators,
         devReset,
         devSeedAllSlots,

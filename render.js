@@ -1669,7 +1669,7 @@ const Render = (() => {
     // the lane is still physically present and renderable from the
     // post-rotation grid state.
     const FLASH_BEFORE_FADE_MS = 200;
-    const BROKEN_FADE_MS       = 1500;
+    const BROKEN_FADE_MS       = 750;
     const FADE_LIFE_MS         = FLASH_BEFORE_FADE_MS + BROKEN_FADE_MS;
     const fadingLanes = [];   // [{ r, c, a, b, pathIdx, startTime }]
 

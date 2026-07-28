@@ -454,12 +454,145 @@ const Tracking = (function () {
         });
     }
 
+    // ---- First-time-player funnel ----------------------------------
+    // Answers, per NEW player (per browser): how many puzzles did their
+    // initial auto-start run last, did they open How-to-Solve (and watch
+    // it through), did the PotD-nudge tooltip or the "📅 Daily & More"
+    // button get clicked, and did any of it convert into puzzles started
+    // / solved OUTSIDE that initial run — that same sitting or any later
+    // visit.
+    //
+    // Design differs from the per-visit milestones above because the row
+    // spans the browser's whole life, not one page load:
+    //   - State lives in localStorage (`_firstRunStats_v1`) and is
+    //     created ONLY by firstRunBegin(), which marathon.js calls when
+    //     the first-visit auto-start fires — the one moment we know the
+    //     browser is brand new. No state → every other firstRun* call is
+    //     a silent no-op, so pre-feature players and replayed events
+    //     never produce data.
+    //   - Delivery is whole-state sync (POST /api/first-run/sync), and
+    //     the server merges with max/OR — fully idempotent, so the retry
+    //     policy can be dumb: mark dirty on every change, clear dirty
+    //     only on a confirmed ok, re-send on the next page load if the
+    //     page died first. `rev` guards the clear against a mutation
+    //     that lands while a sync is in flight.
+    //   - Syncs use raw fetch + keepalive with NO abort timeout (the
+    //     silentFetch 5s abort would kill exactly the cold-dyno first
+    //     sync that creates the row — same rationale as
+    //     _flushStaleMilestones).
+    const FIRSTRUN_KEY = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness')
+        + '_firstRunStats_v1';
+    let frSyncTimer = null;
+    function _frRead() {
+        try {
+            const st = JSON.parse(localStorage.getItem(FIRSTRUN_KEY) || 'null');
+            return (st && typeof st === 'object') ? st : null;
+        } catch (e) { return null; }
+    }
+    function _frWrite(st) {
+        try { localStorage.setItem(FIRSTRUN_KEY, JSON.stringify(st)); } catch (e) {}
+    }
+    function _frSyncNow() {
+        if (isSuppressed()) return;
+        const base = apiBase();
+        if (!base) return;
+        const st = _frRead();
+        if (!st || !st.dirty) return;
+        const sid = _persistentSessionId();
+        if (!sid) return;
+        const sentRev = st.rev || 0;
+        try {
+            fetch(base + '/first-run/sync', {
+                method:    'POST',
+                headers:   { 'Content-Type': 'application/json' },
+                keepalive: true,
+                body: JSON.stringify({
+                    sessionId:         sid,
+                    puzzles:           st.p || 0,
+                    howtoClicked:      !!st.howto,
+                    tutorialCompleted: !!st.tut,
+                    nudgeClicked:      !!st.nudge,
+                    dailyMoreClicked:  !!st.daily,
+                    outsideStarted:    !!st.oStart,
+                    outsideSolved:     !!st.oSolve,
+                }),
+            }).then(function (r) {
+                if (!r || !r.ok) return;
+                // Only clear dirty if nothing mutated while this sync was
+                // in flight — a newer rev means there's newer state the
+                // server hasn't seen yet.
+                const cur = _frRead();
+                if (cur && cur.dirty && (cur.rev || 0) === sentRev) {
+                    cur.dirty = 0;
+                    _frWrite(cur);
+                }
+            }).catch(function () {});
+        } catch (e) {}
+    }
+    // Short debounce so a burst (nudge click → PotD start) ships as one
+    // sync instead of racing two.
+    function _frScheduleSync() {
+        if (frSyncTimer) return;
+        frSyncTimer = setTimeout(function () {
+            frSyncTimer = null;
+            _frSyncNow();
+        }, 400);
+    }
+    // Shared mutate-persist-sync path. `mutator` returns false for
+    // "already recorded" so settled booleans cost no storage writes and
+    // no network.
+    function _frUpdate(mutator) {
+        if (isSuppressed()) return;
+        const st = _frRead();
+        if (!st) return;   // not a tracked first-time browser
+        if (!mutator(st)) return;
+        st.rev   = (st.rev || 0) + 1;
+        st.dirty = 1;
+        _frWrite(st);
+        _frScheduleSync();
+    }
+    // Called by marathon.js autoStartFirstPractice — begins tracking for
+    // this browser. One-shot: an existing state object (even a fully
+    // synced one) is never reset.
+    function firstRunBegin() {
+        if (isSuppressed()) return;
+        if (_frRead()) return;
+        _frWrite({ p: 0, howto: 0, tut: 0, nudge: 0, daily: 0,
+                   oStart: 0, oSolve: 0, rev: 1, dirty: 1 });
+        // If localStorage is unavailable the write silently failed and
+        // _frRead stays null — the whole feature is inert, matching the
+        // auto-start itself (which also bails without storage).
+        _frScheduleSync();
+    }
+    function firstRunPuzzleSolved() {
+        _frUpdate(function (st) { st.p = (st.p || 0) + 1; return true; });
+    }
+    // Boolean setters — one tiny factory, all identical semantics.
+    function _frFlag(field) {
+        return function () {
+            _frUpdate(function (st) {
+                if (st[field]) return false;
+                st[field] = 1;
+                return true;
+            });
+        };
+    }
+    const firstRunHowToClicked       = _frFlag('howto');
+    const firstRunTutorialCompleted  = _frFlag('tut');
+    const firstRunNudgeClicked       = _frFlag('nudge');
+    const firstRunDailyMoreClicked   = _frFlag('daily');
+    const firstRunOutsideStart       = _frFlag('oStart');
+    const firstRunOutsideSolve       = _frFlag('oSolve');
+
     // Flush any milestones stranded by previous loads. 1.5s delay: clears
     // the initial load burst, and guarantees DevMode (a later script tag)
     // exists for _flushStaleMilestones's isSuppressed check. Window guard
-    // keeps a worker context (importScripts) inert.
+    // keeps a worker context (importScripts) inert. The first-run sync
+    // retry rides the same schedule (slightly later so the two POSTs
+    // don't contend on a cold dyno's first connection).
     if (typeof window !== 'undefined') {
         setTimeout(_flushStaleMilestones, 1500);
+        setTimeout(_frSyncNow, 2000);
     }
 
     return {
@@ -471,6 +604,16 @@ const Tracking = (function () {
         recordShare:        recordShare,
         recordCreditsClick: recordCreditsClick,
         recordDonateClick:  recordDonateClick,
+        // First-time-player funnel — see the section comment above. All
+        // no-ops unless firstRunBegin has created state in this browser.
+        firstRunBegin:              firstRunBegin,
+        firstRunPuzzleSolved:       firstRunPuzzleSolved,
+        firstRunHowToClicked:       firstRunHowToClicked,
+        firstRunTutorialCompleted:  firstRunTutorialCompleted,
+        firstRunNudgeClicked:       firstRunNudgeClicked,
+        firstRunDailyMoreClicked:   firstRunDailyMoreClicked,
+        firstRunOutsideStart:       firstRunOutsideStart,
+        firstRunOutsideSolve:       firstRunOutsideSolve,
         // Exposed for diagnostics — admin/dev can paste
         // `Tracking.visitId()` in the console to see what they were
         // tagged with this session.

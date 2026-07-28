@@ -158,9 +158,12 @@ body {
     transform: translateY(1px);
 }
 
-/* Nothing to undo → dim + non-interactive (applies to both Undo buttons). */
+/* Nothing to undo → dim + non-interactive (applies to both Undo buttons).
+   #hudHintBtn joins the list for the PotD hint cap — potd.js disables it
+   when the attempt's 5 hints are spent. */
 #undoBtn:disabled,
-#hudUndoBtn:disabled {
+#hudUndoBtn:disabled,
+#hudHintBtn:disabled {
     opacity: 0.35;
     cursor: default;
     pointer-events: none;

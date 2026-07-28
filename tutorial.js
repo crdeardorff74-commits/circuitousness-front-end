@@ -458,6 +458,12 @@ const Tutorial = (function () {
 
     function markWatched() {
         try { localStorage.setItem(WATCHED_KEY, '1'); } catch (e) { /* private mode */ }
+        // First-time-player funnel: the player stepped the tutorial all
+        // the way to its final step — the "watched it through" answer to
+        // the howto_clicked question. Idempotent on rewatch.
+        if (typeof Tracking !== 'undefined' && Tracking.firstRunTutorialCompleted) {
+            Tracking.firstRunTutorialCompleted();
+        }
     }
 
     // ---- open / close -----------------------------------------------------
@@ -466,6 +472,15 @@ const Tutorial = (function () {
         if (!overlay) init();
         if (!overlay) return;
         isOpen = true;
+
+        // First-time-player funnel: every entry point into the tutorial
+        // is a user click on a "How to Solve" control (first-play tooltip
+        // action, in-HUD button, menu button), so this single hook covers
+        // them all. After the early-outs above, so a failed open doesn't
+        // count. No-op unless this browser was a tracked first-timer.
+        if (typeof Tracking !== 'undefined' && Tracking.firstRunHowToClicked) {
+            Tracking.firstRunHowToClicked();
+        }
 
         // Snapshot whatever Maze/Gates state exists so we can restore it.
         saved = {

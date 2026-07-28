@@ -1895,6 +1895,11 @@
             // Potd.noteHintUsed still ticks the counter, harmless
             // since no submit will fire for those runs anyway.
             if (typeof Potd !== 'undefined' && Potd.isPlaying && Potd.isPlaying()) {
+                // Hard cap: MAX_HINTS per PotD attempt (see potd.js).
+                // The HUD button disables at 0, but this guard is the
+                // authoritative gate — it covers any path into this
+                // handler (e.g. the debug-mode #hintBtn).
+                if (Potd.hintsRemaining && Potd.hintsRemaining() <= 0) return;
                 if (Potd.noteHintUsed) Potd.noteHintUsed();
             }
             const pick = Maze.hint();
