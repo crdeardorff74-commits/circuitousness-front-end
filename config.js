@@ -186,20 +186,21 @@ const MARATHON = {
     // Logical dims — quad mode's underlying maze is 2× per axis. No
     // upper cap.
     MIN_DIM_SINGULAR: 8,
-    MIN_DIM_QUAD:    4,
+    MIN_DIM_QUAD:    3,
     // Per-path-count minimum-dim override. Both are now effectively dead
     // knobs kept as documented fallbacks: startDimsFor (below) pins ALL
-    // singular starts to 5×5, and QUAD_4PATH now equals the plain quad
-    // floor — q4 starts 4×4 logical like every other quad count
-    // (2026-07-16; was 8, then 6). Rationale: 4×4 logical is ALREADY an
-    // 8×8 physical maze — more room than the 5×5 the singular 4-path
+    // singular starts to 4×4, and QUAD_4PATH equals the plain quad
+    // floor — q4 starts 3×3 logical like every other quad count
+    // (2026-07-16: 8 → 6 → 4; 2026-07-28: 3 with the quad-start shrink).
+    // Rationale: even 3×3 logical is a 6×6 physical maze — more room
+    // than the 4×4 the singular 4-path
     // generator handles fine. SINGULAR_4PATH's 10 dates from the ORIGINAL
     // linear placement that couldn't reliably fit 4 paths even at 8×8;
     // the backtracking `place()` search in maze.js (which undoes paths
     // 2/3 when path 4 gets boxed out) made 4-path builds succeed even on
     // tiny grids — worst case a few seconds of retries in the strict loop.
     MIN_DIM_SINGULAR_4PATH: 10,
-    MIN_DIM_QUAD_4PATH:      4,
+    MIN_DIM_QUAD_4PATH:      3,
     // Min logical dim for THIS (quadMode, pathCount). Since the 5×5
     // singular unification only the quad branch is reachable via
     // startDimsFor, but the function is kept whole as the documented
@@ -211,16 +212,19 @@ const MARATHON = {
         }
         return quadMode ? this.MIN_DIM_QUAD : this.MIN_DIM_SINGULAR;
     },
-    // Level-1 start dims as {rows, cols} (cols = width). ALL puzzles
-    // start 4×4 logical — singular and quad alike, every path tier, in
-    // BOTH Zen/Practice and Marathon. Singular dropped 5×5 → 4×4 with
+    // Level-1 start dims as {rows, cols} (cols = width). Singular starts
+    // 4×4 logical, quad 3×3 logical (= 6×6 physical) — every path tier,
+    // in BOTH Zen/Practice and Marathon. Singular dropped 5×5 → 4×4 with
     // the 2026-07 progressive-type revamp: a run now opens on a tiny
-    // 1-path warm-up and the tier ramp does the difficulty work.
+    // 1-path warm-up and the tier ramp does the difficulty work. Quad
+    // dropped 4×4 → 3×3 logical 2026-07-28 (user call): 4×4 logical is
+    // already a 64-sub-tile board — a big first bite, especially at the
+    // first-run fast track's quad hand-off.
     // (History: singular 1-path went 4×4 → 4×5/5×5 → 6×6 → 5×5 → 4×4;
     // 2/3/4-path sat on the 6/8/10 MIN_DIM floors until Debug-mode
     // testing showed the backtracking 4-path generator is fine on tiny
-    // grids.) Quad keeps the minDimFor floors (4 for every count):
-    // logical dims are 2× physical, so quad 4×4 is already an 8×8 maze.
+    // grids.) Quad keeps the minDimFor floors (3 for every count):
+    // logical dims are 2× physical, so quad 3×3 is still a 6×6 maze.
     // The per-solve row/col growth (with tier drops) climbs from here.
     // Callers: marathon.js dimsForLevel (adds growth per level) and
     // game.js STARTER_PLAN (pre-gen at Marathon's level-1 dims).
@@ -289,11 +293,11 @@ const MARATHON = {
     //
     // The quad hand-off deliberately resets to 1 path: a 4-path quad
     // would stack the hardest generator, the least familiar mechanic and
-    // 3 gates all at once, AND it's the slowest build in the game. At 1
-    // path / 4×4 logical the first quad board is exactly the pre-built
-    // 'q' STARTER (game.js STARTER_PLAN), which invalidatePreGen
-    // preserves — so the reveal is instant instead of showing
-    // "Building puzzle…" at the worst possible moment.
+    // extra gates all at once, AND it's the slowest build in the game.
+    // At 1 path / 3×3 logical the first quad board is exactly the
+    // pre-built 'q' STARTER (game.js STARTER_PLAN), which
+    // invalidatePreGen preserves — so the reveal is instant instead of
+    // showing "Building puzzle…" at the worst possible moment.
     //
     // Sum is the knob that matters: raise entries to delay the quad
     // reveal, lower them to pull it in. Setting this to null disables

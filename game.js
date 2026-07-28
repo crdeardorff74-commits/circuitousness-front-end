@@ -127,7 +127,8 @@
 
         // ----- Starter pre-gen -----
         // Marathon/Zen have one starter per progressive type ('s', 'q'),
-        // each at its tier-1 dims (4×4 logical, 1 path). At page load we
+        // each at its tier-1 dims ('s' 4×4, 'q' 3×3 logical, 1 path). At
+        // page load we
         // kick off background generation for both so picking either mode
         // is instant — no "Building puzzle…" wait on first launch. Runs
         // even in PotD mode since the player may switch to Marathon.
@@ -146,8 +147,8 @@
             for (const type of MARATHON.TYPES) {
                 const quad   = type[0] === 'q';
                 const paths  = parseInt(type[1], 10) || 1;
-                // Start dims from MARATHON.startDimsFor (4×4 logical for
-                // both types) — the starter build must match
+                // Start dims from MARATHON.startDimsFor ('s' 4×4, 'q' 3×3
+                // logical) — the starter build must match
                 // dimsForLevel(1, ...) exactly or every game-start misses
                 // this cache. Zen/Practice and Marathon share identical
                 // start dims, so these starters serve both modes.
@@ -1214,16 +1215,36 @@
             if (typeof Gates !== 'undefined') {
                 const solveCount = (typeof Marathon !== 'undefined' && Marathon.getSolvedCount)
                     ? Marathon.getSolvedCount() : 0;
-                // Gate-count progression (retuned thrice, 2026-07-26): a
-                // run's first puzzle gets 1 gate, +1 every 4 solves —
-                // 1,1,1,1,2,2,2,2,3,… uncapped. History: the original
-                // 4 + 1-per-3 opened every run at 4 gates, too many for a
-                // brand-new player's first-ever 1-path puzzle (gates are
-                // the mechanic newcomers find most confusing — they
-                // rotate in unison, opposite of the per-tile lesson being
-                // learned); the interim +1-per-solve ramp to 4 was still
-                // too quick, as was +1 every 3. PotD is separate (fixed
-                // 3 in potd.js — everyone plays the same board).
+                // Gate-count progression: 1 gate on a start-size board,
+                // +1 for every 4 SUB-TILE units of growth past it, where a
+                // unit is +1 physical row or column. Size-based (was
+                // solve-count-based until 2026-07-28) so both modes ride
+                // one density curve: singular grows 1 unit per solve →
+                // +1 gate per 4 solves, exactly the old rate; quad grows
+                // 2 units per solve (each logical step is 2 sub-tiles) →
+                // +1 gate per 2 solves — same rate per sub-tile. This
+                // also makes the first-run fast track's quad hand-off
+                // open at exactly 1 gate (its board is start-size), where
+                // the solve-count formula would have carried the singular
+                // phase's 9 solves in and opened at 3. Side effect,
+                // accepted: gate count now dips with the tier-drop
+                // sawtooth (same board size = same gate count) instead of
+                // climbing monotonically.
+                // History of the solve-count era: 4 + 1-per-3 (too many
+                // for newcomers — gates rotate in unison, opposite of the
+                // per-tile lesson being learned) → +1-per-solve → 1 +
+                // 1-per-4. PotD is separate (fixed 3 in potd.js —
+                // everyone plays the same board).
+                // Start baseline from MARATHON.startDimsFor (logical, ×2
+                // for quad physical): singular 4+4=8, quad (3+3)×2=12.
+                // Legacy fixed-path resumes (s4 starts 10×10) inherit
+                // proportionally more gates — those runs are
+                // UI-unreachable and were mid-ramp anyway.
+                const startL = (typeof MARATHON === 'object' && MARATHON.startDimsFor)
+                    ? MARATHON.startDimsFor(Maze.quadMode, 1)
+                    : { rows: 4, cols: 4 };
+                const startSum = (startL.rows + startL.cols) * (Maze.quadMode ? 2 : 1);
+                const growthUnits = Math.max(0, Maze.ROWS + Maze.COLS - startSum);
                 // Zen opens GATE-FREE for its first two puzzles. Gates are
                 // the mechanic newcomers find most confusing — they rotate
                 // in unison, the opposite of the per-tile lesson a first
@@ -1234,10 +1255,12 @@
                 // choose deliberately, and its clock makes an easier
                 // opening a scoring advantage rather than a kindness.
                 // solveCount is puzzles solved BEFORE this one, so < 2
-                // covers exactly puzzles 1 and 2.
+                // covers exactly puzzles 1 and 2. Run-level on purpose:
+                // the fast track's quad hand-off is NOT an opening (the
+                // player has 9 solves behind them), so it gets its 1 gate.
                 const zenOpening = (typeof Marathon !== 'undefined' && Marathon.isZenRun
                                     && Marathon.isZenRun() && solveCount < 2);
-                const target = zenOpening ? 0 : 1 + Math.floor(solveCount / 4);
+                const target = zenOpening ? 0 : 1 + Math.floor(growthUnits / 4);
                 // Quad mode: anchor gates at quad-corners only (every other
                 // sub-tile vertex). The prong is still one sub-tile long.
                 const stride = Maze.quadMode ? 2 : 1;
@@ -1283,10 +1306,13 @@
             invalidatePreGen();
             preGenSize = null;
             // When toggling quad mode, the current dims may not even be
-            // valid (quad mode requires even dims). Snap to a sane default
-            // (4×4 logical = 8×8 physical when on, or 4×4 physical when off).
-            const logicalSide = 4;
-            const physicalSide = next ? logicalSide * 2 : logicalSide;
+            // valid (quad mode requires even physical dims). Snap to each
+            // mode's start size (MARATHON.startDimsFor: quad 3×3 logical
+            // = 6×6 physical, singular 4×4).
+            const snap = (typeof MARATHON === 'object' && MARATHON.startDimsFor)
+                ? MARATHON.startDimsFor(next, 1).rows
+                : (next ? 3 : 4);
+            const physicalSide = next ? snap * 2 : snap;
             await newPuzzle(physicalSide, physicalSide);
         }
 

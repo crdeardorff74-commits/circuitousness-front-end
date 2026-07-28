@@ -740,7 +740,7 @@ const Marathon = (() => {
         }
         // Quad phase. The run restarts the NORMAL progressive ladder in
         // quad mode from its own level 1, so the hand-off puzzle is a
-        // 1-path 4×4-logical quad (the pre-built 'q' starter) and the
+        // 1-path 3×3-logical quad (the pre-built 'q' starter) and the
         // pace reverts to standard tiers from there — the fast track's
         // job (show every kind of play) is done by this point, and a
         // player still going at puzzle 20 wants the real game's cadence.
@@ -775,8 +775,8 @@ const Marathon = (() => {
     // lev-1 for legacy fixed-path types); tier drops re-read the FIRST
     // entries, which stay pinned once rolled — pre-gen's lookahead and
     // the retrace-the-same-dims tier behavior both depend on that.
-    // Same behavior for regular and quad (both start 4×4 logical; each
-    // quad step adds 2× sub-tiles per axis). No upper cap.
+    // Same behavior for regular and quad (singular starts 4×4 logical,
+    // quad 3×3; each quad step adds 2× sub-tiles per axis). No upper cap.
     function ensureGrowthSequence(count) {
         while (growthSequence.length < count) {
             // Random growth axis with a LONG-AXIS-FIRST invariant keyed to
@@ -805,9 +805,12 @@ const Marathon = (() => {
             // FORCED onto the short axis — no more ribbon grids, with the
             // allowed spread scaling as the grid grows (at the current
             // 1.5: 4×6 early, 10×15 late). Dims here = square start base
-            // + grown counts; both
-            // progressive types start 4×4 logical (startDimsFor), and
-            // growing the short axis can never violate the cap at base ≥4.
+            // + grown counts, keyed to the SINGULAR base (4) on purpose:
+            // the sequence is shared across modes (the fast track replays
+            // its prefix in quad, which starts 3×3), so one base must
+            // govern every roll — the ~1-unit skew this gives quad's cap
+            // math is within the cap's aesthetic tolerance. Growing the
+            // short axis can never violate the cap at base ≥3.
             // Enforced per roll, so every prefix of the sequence honors
             // the cap too (tier drops replay prefixes). After a device
             // rotation flips the long axis (or on a legacy pre-cap
