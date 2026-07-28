@@ -104,7 +104,7 @@ const Marathon = (() => {
     // DOM refs (populated in init)
     let menuEl, hudEl, gameOverEl, leaderboardEl, solveTransitionEl, replayHudEl;
     let hudType, hudLevel, hudTimer, hudQuit, hudHowTo;
-    let solveHeadline, solveBanked, solveTierUp;
+    let solveHeadline, solveBanked, solveTierUp, solveMoves;
     let gameOverScore, gameOverTime, gameOverRank, gameOverName, gameOverSave, gameOverMenu, gameOverNameRow;
     let gameOverPotdHook;
     let leaderboardTileTabsEl, leaderboardPathTabsEl, leaderboardEntries, leaderboardEmpty, leaderboardClose, menuLeaderboardBtn;
@@ -163,6 +163,7 @@ const Marathon = (() => {
         solveHeadline = $('solveHeadline');
         solveBanked   = $('solveBanked');
         solveTierUp   = $('solveTierUp');
+        solveMoves    = $('solveMoves');
 
         gameOverScore   = $('gameOverScore');
         gameOverTime    = $('gameOverTime');
@@ -1475,6 +1476,27 @@ const Marathon = (() => {
         setTimeout(() => { if (float.parentNode) float.remove(); }, 1200);
     }
 
+    // Twists-vs-minimum stats for the Zen solve popup. Player count =
+    // every committed action that physically twisted the board: tile and
+    // gate rotations, undos (an undo spins the board back — rotating a
+    // wrong tile and taking it back cost two twists), and hints that
+    // rotated a tile (zero-turn hints just lock, so they're free — as are
+    // pure lock moves). The floor comes from the recording (game.js
+    // stamps minMoves at startRecording) so it survives the saved-run
+    // resume round-trip. Returns null — caller hides the line — when
+    // either side is unavailable (e.g. a run saved before the feature).
+    function solveMoveStats() {
+        const rec = (typeof Game !== 'undefined') ? Game.recording : null;
+        if (!rec || typeof rec.minMoves !== 'number' || rec.minMoves <= 0) return null;
+        let moves = 0;
+        for (const m of rec.moves) {
+            if (m.type === 'rotate' || m.type === 'gate' || m.type === 'undo') moves++;
+            else if (m.type === 'hint' && (m.turns | 0) > 0) moves++;
+        }
+        if (moves <= 0) return null;
+        return { moves, min: rec.minMoves };
+    }
+
     function onSolve() {
         if (state !== STATE.PLAYING) return;
         if (inTransition) return;     // refresh() can fire again on a re-rotate after the win
@@ -1565,7 +1587,26 @@ const Marathon = (() => {
                 // No clock to bank — just confirm the count and prompt the
                 // player onward. #solveContinue already shows "Tap to continue".
                 solveBanked.textContent = I18n.t('marathon.solvePractice', { n: solvedCount });
+                // Zen moves feedback: twists made vs the scramble's floor.
+                // Game.recording is still the just-solved puzzle's here —
+                // the next startRecording only fires in startNextPuzzle.
+                // "moves <= min" (not ===) counts as perfect: beating the
+                // floor is only possible via an alternate completion the
+                // generator failed to suppress, and that deserves the
+                // gold line, not a broken-looking "24 · minimum: 26".
+                if (solveMoves) {
+                    const stats = solveMoveStats();
+                    solveMoves.hidden = !stats;
+                    if (stats) {
+                        const perfect = stats.moves <= stats.min;
+                        solveMoves.classList.toggle('perfect', perfect);
+                        solveMoves.textContent = perfect
+                            ? I18n.t('marathon.solveMovesPerfect', { m: stats.moves })
+                            : I18n.t('marathon.solveMoves', { m: stats.moves, b: stats.min });
+                    }
+                }
             } else {
+                if (solveMoves) solveMoves.hidden = true;
                 const tStr = fmtTime(nextStart);
                 const bSec = Math.floor(bankedMs / 1000);
                 if (bSec > 0) {

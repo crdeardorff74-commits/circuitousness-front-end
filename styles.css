@@ -444,6 +444,22 @@ body.mode-practice #hudTimer { display: none; }
     text-shadow: 0 0 0.8rem rgba(0, 225, 255, 0.4);
     margin-bottom: 0.3rem;
 }
+/* Zen moves-feedback line (practice solves only) — twists made vs the
+   scramble's minimum. A step down from the solved-count line in size and
+   brightness; the .perfect variant (player matched the minimum) goes gold
+   to read as a small win. No display rule on the base selector, so the
+   `hidden` attribute keeps working (the .continueRunCard pitfall). */
+#solveMoves {
+    margin-top: 0.15rem;
+    font-size: clamp(0.85rem, 2vw, 1.1rem);
+    font-weight: 500;
+    color: rgba(230, 240, 255, 0.75);
+}
+#solveMoves.perfect {
+    color: #FFD700;
+    text-shadow: 0 0 0.8rem rgba(255, 215, 0, 0.4);
+    font-weight: 600;
+}
 html.mode-debug #solveTransition { display: none !important; }
 
 /* PotD solved card — same visual language as #solveTransition (gold border +

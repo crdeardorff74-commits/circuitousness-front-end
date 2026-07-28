@@ -176,6 +176,30 @@ const Gates = (() => {
         blockedEdgesCache = null;
     }
 
+    // Minimum number of gate rotations (in whichever direction is shorter)
+    // that puts EVERY gate on an edge no solution path uses. delta 0 is
+    // safe by construction (each gate's solutionDir was picked from its
+    // safe set), so a finite answer always exists; 0 when there are no
+    // gates. `solutionEdges` = the same canonical-edge-key Set assignGates
+    // receives (Maze.solutionEdges()). Feeds Maze.minSolveMoves.
+    function minMovesToClear(solutionEdges) {
+        if (list.length === 0) return 0;
+        let best = Infinity;
+        for (let d = 0; d < 4; d++) {
+            let safe = true;
+            for (const gate of list) {
+                if (solutionEdges.has(edgeKeyForGateDir(gate.vr, gate.vc, (gate.solutionDir + d) & 3))) {
+                    safe = false;
+                    break;
+                }
+            }
+            if (!safe) continue;
+            const t = (d - delta + 4) & 3;
+            best = Math.min(best, Math.min(t, 4 - t));
+        }
+        return best === Infinity ? 0 : best;
+    }
+
     function edgeBlocked(r1, c1, r2, c2) {
         if (list.length === 0) return false;
         if (!blockedEdgesCache) rebuildBlockedEdges();
@@ -269,6 +293,7 @@ const Gates = (() => {
         assignGates,
         rotate,
         edgeBlocked,
+        minMovesToClear,
         hitTest,
         polygonsFor,
         snapshot,

@@ -557,6 +557,13 @@
                 // its current puzzle — a sticking-out-of-grid mismatch
                 // when the live puzzle is larger than the replayed one.
                 gates: (typeof Gates !== 'undefined' && Gates.snapshot) ? Gates.snapshot() : null,
+                // Minimum twists the fresh scramble needs (tile/quad + gate
+                // rotations, shorter direction each). Both callers place
+                // gates BEFORE startRecording (newPuzzle and PotD), so the
+                // gate share is included. Stored on the recording so it
+                // survives the saved-run resume round-trip; the Zen solve
+                // popup reads it for the moves-feedback line.
+                minMoves: Maze.minSolveMoves ? Maze.minSolveMoves() : null,
                 moves: [],
                 // Music events: songs that played during this puzzle.
                 // [{ t: ms, songId: string }, ...] where t is ms since

@@ -1681,6 +1681,23 @@ const Maze = (() => {
         return paths;
     }
 
+    // (dr,dc,dir) of a sub-tile face that points OUT of its quad → external
+    // port index, 0..7 clockwise from the top-left sub-tile's N face. Shared
+    // by quadSolutionConnections (solution threading) and traceQuadPairs
+    // (current-state connections). QUAD_EXT_PORTS is the inverse, indexable
+    // 0..7 back to the sub-tile offset + port.
+    const EXT_INDEX = {};
+    EXT_INDEX['0,0,' + N] = 0; EXT_INDEX['0,1,' + N] = 1;
+    EXT_INDEX['0,1,' + E] = 2; EXT_INDEX['1,1,' + E] = 3;
+    EXT_INDEX['1,1,' + S] = 4; EXT_INDEX['1,0,' + S] = 5;
+    EXT_INDEX['1,0,' + W] = 6; EXT_INDEX['0,0,' + W] = 7;
+    const QUAD_EXT_PORTS = [
+        { dr: 0, dc: 0, port: N }, { dr: 0, dc: 1, port: N },
+        { dr: 0, dc: 1, port: E }, { dr: 1, dc: 1, port: E },
+        { dr: 1, dc: 1, port: S }, { dr: 1, dc: 0, port: S },
+        { dr: 1, dc: 0, port: W }, { dr: 0, dc: 0, port: W }
+    ];
+
     // Build a map of, for EACH quad, the set of COLORED external-port
     // connections that solution paths use to cross it.
     //   key   = "qr,qc"
@@ -1704,13 +1721,6 @@ const Maze = (() => {
     // uses. quadScramble is saved/restored separately (restoreState doesn't
     // round-trip it).
     function quadSolutionConnections() {
-        // (dr,dc,dir) of a sub-tile face that points OUT of its quad → ext index.
-        const EXT_INDEX = {};
-        EXT_INDEX['0,0,' + N] = 0; EXT_INDEX['0,1,' + N] = 1;
-        EXT_INDEX['0,1,' + E] = 2; EXT_INDEX['1,1,' + E] = 3;
-        EXT_INDEX['1,1,' + S] = 4; EXT_INDEX['1,0,' + S] = 5;
-        EXT_INDEX['1,0,' + W] = 6; EXT_INDEX['0,0,' + W] = 7;
-
         const map = new Map();
         function record(qr, qc, pi, a, b) {
             const key = qr + ',' + qc;
@@ -1780,6 +1790,167 @@ const Maze = (() => {
             if (dance) { restoreState(snap); quadScramble = savedQuadScramble; }
         }
         return map;
+    }
+
+    // ── Minimum-moves floor ─────────────────────────────────────────────
+    // How many player moves (each = one 90° twist of a tile, a quad, or
+    // the gate set, in whichever direction is shorter) the CURRENT board
+    // state needs to reach the solved state. Computed at puzzle start —
+    // game.js's startRecording stamps it on the recording — and shown on
+    // the Zen solve popup next to the player's actual twist count.
+    //
+    // "Solved" means port-equivalence, not exact rotation values —
+    // matching the win condition (connectivity) and hint()'s semantics:
+    //   cross     4-symmetric → always solved (0 moves)
+    //   straight  2-symmetric → 0 or 1 move
+    //   elbow     asymmetric  → min(d, 4−d) moves
+    // Filler tiles never need touching (only gates can block a lit path),
+    // and singular twins pair path+filler (assignTwins), so fixing the
+    // path member never conflicts with its partner.
+    //
+    // The floor is exact for the intended solution. An alternate
+    // completion could in principle cost less, but the generator's
+    // shortcut suppression (minShortcutTwists) makes that pathological —
+    // and the popup treats "player beat the floor" as perfect anyway.
+    function minSolveMoves() {
+        let total = 0;
+        if (quadMode && quadScramble) {
+            total += quadMinMoves();
+        } else {
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const t = grid[r][c];
+                    if (!t || t._solution === undefined) continue;
+                    if (t.type === T_CROSS) continue;
+                    const d = (t._solution - t.rotation + 4) & 3;
+                    total += (t.type === T_STRAIGHT) ? (d & 1) : Math.min(d, 4 - d);
+                }
+            }
+        }
+        if (typeof Gates !== 'undefined' && Gates.minMovesToClear) {
+            total += Gates.minMovesToClear(solutionEdges());
+        }
+        return total;
+    }
+
+    // Quad-mode arm of minSolveMoves. Each quad must reach an offset where
+    // every solution connection it carries (quadSolutionConnections,
+    // uncolored — the win condition is connectivity; path colors are
+    // cosmetic) is present. Offset 0 always qualifies; a rotation-
+    // symmetric quad may qualify at others, which lowers the true cost —
+    // the same equivalence hint() honors. Rotating a rigid quad CW shifts
+    // every external-port index by +2 (mod 8), so "connections at offset
+    // o" = solved-state connections shifted by 2o — no re-walk per offset.
+    // Twin quads rotate AND scramble in lockstep, so a pair prices as one
+    // unit: a single move advances both, and the pair's cost is the
+    // cheapest net turn count that satisfies both members at once.
+    function quadMinMoves() {
+        // Uncolored requirement sets per quad (strip the pathIdx*64 tag).
+        const reqMap = quadSolutionConnections();
+        const req = new Map();
+        for (const [key, set] of reqMap) {
+            const u = new Set();
+            for (const v of set) u.add(v % 64);
+            req.set(key, u);
+        }
+        // Solved-state connection sets for every constrained quad: dance
+        // the grid to its solved state (same inverse-rotation walk the
+        // other solved-frame readers use), trace, restore.
+        const solvedConn = new Map();
+        const snap = snapshotState();
+        const savedQuadScramble = quadScramble.map((row) => row.slice());
+        try {
+            for (let qr = 0; qr < quadScramble.length; qr++) {
+                for (let qc = 0; qc < quadScramble[qr].length; qc++) {
+                    const turns = quadScramble[qr][qc];
+                    for (let i = 0; i < turns; i++) rotateQuad(qr * 2, qc * 2, true);
+                    quadScramble[qr][qc] = 0;
+                }
+            }
+            for (const key of req.keys()) {
+                const [qr, qc] = key.split(',').map(Number);
+                solvedConn.set(key, traceQuadPairs(qr, qc));
+            }
+        } finally {
+            restoreState(snap);
+            quadScramble = savedQuadScramble;
+        }
+        // Does the quad carry its required connections at offset o (CW
+        // turns from solved)? Unconstrained quads accept every offset.
+        function offsetOk(key, o) {
+            const need = req.get(key);
+            if (!need) return true;
+            const have = solvedConn.get(key);
+            const s = (8 - 2 * o) % 8;   // shift back by o CW turns
+            for (const v of need) {
+                const lo = (v >> 3) & 7, hi = v & 7;
+                const a = (lo + s) % 8, b = (hi + s) % 8;
+                if (!have.has(Math.min(a, b) * 8 + Math.max(a, b))) return false;
+            }
+            return true;
+        }
+        let total = 0;
+        const qRows = quadScramble.length;
+        const qCols = quadScramble[0].length;
+        const seen = new Set();
+        for (let qr = 0; qr < qRows; qr++) {
+            for (let qc = 0; qc < qCols; qc++) {
+                const key = qr + ',' + qc;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                const group = [{ key, k: quadScramble[qr][qc] }];
+                const twin = grid[qr * 2][qc * 2]._twin;
+                if (twin) {
+                    const [pr, pc] = twin.partner.split(',').map(Number);
+                    const pKey = (pr / 2) + ',' + (pc / 2);
+                    if (!seen.has(pKey)) {
+                        seen.add(pKey);
+                        group.push({ key: pKey, k: quadScramble[pr / 2][pc / 2] });
+                    }
+                }
+                let best = Infinity;
+                for (let t = 0; t < 4; t++) {
+                    if (group.every((g) => offsetOk(g.key, (g.k + t) & 3))) {
+                        best = Math.min(best, Math.min(t, 4 - t));
+                    }
+                }
+                if (best !== Infinity) total += best;
+            }
+        }
+        return total;
+    }
+
+    // Every external-port connection the quad at (qr, qc) carries in the
+    // grid's CURRENT state: walk in from each of the 8 external ports,
+    // follow lanes through the sub-tiles, record where the walk leaves the
+    // quad. Returns a Set of lo*8+hi pair keys — the uncolored counterpart
+    // of quadSolutionConnections' entries. (r & 1 recovers the sub-tile
+    // offset because quads are 2-aligned.)
+    function traceQuadPairs(qr, qc) {
+        const pairs = new Set();
+        for (let i = 0; i < 8; i++) {
+            const start = QUAD_EXT_PORTS[i];
+            let r = qr * 2 + start.dr;
+            let c = qc * 2 + start.dc;
+            let inPort = start.port;
+            // Cap = 16: 4 sub-tiles × ≤2 lanes × 2 directions bounds the
+            // distinct lane traversals an interior walk can make before
+            // it must exit or dead-end.
+            for (let step = 0; step < 16; step++) {
+                const out = getExitPort(grid[r][c], inPort);
+                if (out === null) break;
+                const ext = EXT_INDEX[(r & 1) + ',' + (c & 1) + ',' + out];
+                if (ext !== undefined) {
+                    const lo = Math.min(i, ext), hi = Math.max(i, ext);
+                    pairs.add(lo * 8 + hi);
+                    break;
+                }
+                r += DELTA[out].dr;
+                c += DELTA[out].dc;
+                inPort = (out + 2) & 3;
+            }
+        }
+        return pairs;
     }
 
     // Highlights = union of (forward-walk-from-entry) and (backward-walk-from-exit),
@@ -2872,6 +3043,7 @@ const Maze = (() => {
         getConnections,
         hasShortcutWithin,
         solutionEdges,
+        minSolveMoves,
         recompute: () => updateHighlighted(),
         isLocked(r, c)    { return locked.has(r + ',' + c); },
         get ROWS()        { return ROWS; },
