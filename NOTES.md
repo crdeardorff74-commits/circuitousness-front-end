@@ -2,6 +2,13 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-28 — Release v1.18 (corner-hop paths blocked: pair distance floor + layered backtracker reserve)
+- **Two ~5-cell corner-hop paths shipped on a 4-path singular board** (user screenshot): v1.16's pair-retry fix covered the LINEAR placement (2-3 paths) only — this was the backtracker, via a two-part hole. (1) `pickFarPair` is farthest-of-5 with NO lower bound; late in a 4-path build ~6 used perimeter cells kill enough samples that a distance-2 corner pair can win by default, and endpoints that close can ONLY yield hops. (2) The backtracker's quality gate opened entirely below 80 of 200 budget steps — deep searches routinely get there, then accept FIRST-FIT (the span check needs just 2 rows + 2 cols, so a corner curl passes).
+- Fix 1: **distance floor in pickFarPair** — min Manhattan `max(4, (ROWS+COLS)/3)`; samples extend to 3× base when unmet; best-found always returned (never fails a build). Protects path 1 + linear + backtracker alike. Floor vs max-possible checked across sizes (5×7: 4/10; 12×12: 8/22) — prunes corners, can't starve.
+- Fix 2: **layered backtracker reserve** (was binary): >80 steps = full q≥5 gate; 80–40 = length-only (`addedPathMinCells`, ~8-12 cells); <40 (`BT_LENGTH_RESERVE`) = accept-anything emergency lane. Never-drop-a-color guarantee intact; "plain path" can no longer mean "5 cells" until the search is on fumes.
+- Caveat: screenshot board may have been a pre-v1.16 save resumed post-update, but the traced mechanism exists in current code regardless. Watch: 4-path build times (middle layer spends budget choosier) + all 4 colors still placing.
+- Version bumped 1.17 → 1.18.
+
 ## 2026-07-28 — Release v1.17 (solve cards un-squeezed on phones)
 - **Solve cards were width-capped at HALF the container** (user phone screenshot: v1.16's "Puzzle 1 solved!" card ~200px wide, every line wrapping): an absolutely-positioned box with `left: 50%` computes its shrink-to-fit width against only the space RIGHT of the 50% line — `translate(-50%)` recenters it visually but the used width stays ≤50%. Always true; the new Zen moves line made it visible.
 - Fix: `width: max-content` on BOTH #solveTransition and #potdSolveTransition (same latent squeeze), so `max-width: min(90vw, 34rem)` is now the only wrap trigger. Same idiom #creditsPopup already used. PotD's tighter credits-context max-width override still composes on top.
