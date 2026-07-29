@@ -1424,21 +1424,8 @@ const Marathon = (() => {
         // Marathon play time: puzzleStartMs shifts forward by the delay,
         // and startTimer waits it out (guarded — a quit during the few
         // hundred ms must not start a timer on the menu).
-        // New-puzzle SFX cue rides the spin: spinInBoard fires it when
-        // the board has fully emerged and stopped tumbling (or
-        // synchronously when there's no spin — first puzzles, resumes,
-        // reduced-motion), so the bass punctuates the landing — the same
-        // moment the Marathon clock starts below. A quit during the spin
-        // window cancels it inside cancelSpin.
-        const playPuzzleStartSfx = function () {
-            if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
-        };
-        let spinDelayMs = 0;
-        if (typeof Render !== 'undefined' && Render.spinInBoard) {
-            spinDelayMs = Render.spinInBoard(playPuzzleStartSfx);
-        } else {
-            playPuzzleStartSfx();
-        }
+        const spinDelayMs = (typeof Render !== 'undefined' && Render.spinInBoard)
+            ? Render.spinInBoard() : 0;
         puzzleStartMs = Date.now() + spinDelayMs;
         // Checkpoint the run at every puzzle boundary — a crash or killed
         // tab from here on resumes at this puzzle instead of losing the run.
@@ -1458,9 +1445,10 @@ const Marathon = (() => {
                 startTimer();
             }
         }
-        // (cinematic_bass moved into playPuzzleStartSfx above — it now
-        // rides the spin-in instead of firing while the old board is
-        // still tumbling away.)
+        // Fires immediately — deliberately overlapping the outbound
+        // tumble (user-tuned: tried at tumble-start and at settle, the
+        // original immediate timing felt best).
+        if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
         // CrazyGames engagement signal (no-op off-CG). Deduped internally, so
         // firing on every puzzle of a run is fine; the state-PLAYING guard
         // above keeps replays (state REPLAYING) from ever reporting.
