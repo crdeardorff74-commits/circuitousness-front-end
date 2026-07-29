@@ -1318,6 +1318,40 @@ const Maze = (() => {
         // fresh worker output — fall back to an empty set, matching the
         // previous behavior.
         locked = new Set(s.locked || []);
+        // Sanitize twin partner references. Recordings made on the
+        // 2026-07-29 buggy build carry corrupted partner keys inside
+        // their STORED initial states (the penalty transforms mutated
+        // shared _twin objects in place, which leaked post-transform
+        // keys into the already-captured snapshot — see rotateBoard's
+        // comment), and those recordings live on the leaderboard server
+        // forever. ~25 call sites dereference partner keys unguarded, so
+        // rather than guard each one, validate at this single choke
+        // point — every replay/undo/resume enters through loadSnapshot.
+        // A twin whose partner key is out of bounds OR non-reciprocal
+        // (the partner doesn't point back) is STRIPPED — both sides of a
+        // broken pair fail the check and drop together — degrading the
+        // pair to plain tiles: a corrupted replay plays through without
+        // twin lockstep instead of freezing on a TypeError.
+        if (grid) {
+            const anchorKeyOf = (r, c) => quadMode
+                ? ((r >> 1) * 2) + ',' + ((c >> 1) * 2)
+                : r + ',' + c;
+            const invalid = [];
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const t = grid[r][c];
+                    if (!t || !t._twin) continue;
+                    const parts = String(t._twin.partner || '').split(',').map(Number);
+                    const prow  = grid[parts[0]];
+                    const ptile = prow && prow[parts[1]];
+                    if (!ptile || !ptile._twin
+                        || ptile._twin.partner !== anchorKeyOf(r, c)) {
+                        invalid.push(t);
+                    }
+                }
+            }
+            for (const t of invalid) delete t._twin;
+        }
         updateHighlighted();
     }
 

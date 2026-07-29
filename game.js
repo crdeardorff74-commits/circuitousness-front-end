@@ -382,7 +382,15 @@
             return {
                 rows:   s.rows,
                 cols:   s.cols,
-                grid:   s.grid.map((row) => row.map((t) => Object.assign({}, t))),
+                // _twin gets its own copy — a bare Object.assign shares it
+                // between clones, and shared _twin objects are exactly how
+                // the 2026-07-29 penalty transforms corrupted recordings'
+                // stored initial states (see Maze.snapshotState's comment).
+                grid:   s.grid.map((row) => row.map((t) => {
+                    const c = Object.assign({}, t);
+                    if (c._twin) c._twin = Object.assign({}, c._twin);
+                    return c;
+                })),
                 entry:  Object.assign({}, s.entry),
                 exit:   Object.assign({}, s.exit),
                 entry2: s.entry2 ? Object.assign({}, s.entry2) : null,
@@ -428,7 +436,12 @@
         function cloneMazeSnap(s) {
             return {
                 rows: s.rows, cols: s.cols,
-                grid: s.grid.map((row) => row.map((t) => Object.assign({}, t))),
+                // Same _twin-cloning rule as deepCloneSnapshot — see there.
+                grid: s.grid.map((row) => row.map((t) => {
+                    const c = Object.assign({}, t);
+                    if (c._twin) c._twin = Object.assign({}, c._twin);
+                    return c;
+                })),
                 entry:  Object.assign({}, s.entry),
                 exit:   Object.assign({}, s.exit),
                 entry2: s.entry2 ? Object.assign({}, s.entry2) : null,
