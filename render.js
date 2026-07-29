@@ -3055,17 +3055,21 @@ const Render = (() => {
             if (g.parentNode) g.parentNode.removeChild(g);
             canvas.classList.remove('maze-spin-hold');
         };
-        const j = Math.max(3, Math.round((rect.width || 300) * 0.012));
-        const jitter = [
-            { transform: 'translate(0, 0)' },
-            { transform: 'translate(' +  j + 'px, ' + (-j) + 'px)' },
-            { transform: 'translate(' + (-j) + 'px, ' +  j + 'px)' },
-            { transform: 'translate(' +  j + 'px, ' +  j + 'px)' },
-            { transform: 'translate(' + (-j) + 'px, ' + (-j) + 'px)' },
-            { transform: 'translate(' +  Math.ceil(j / 2) + 'px, 0)' },
-            { transform: 'translate(' + (-Math.ceil(j / 2)) + 'px, 0)' },
-            { transform: 'translate(0, 0)' }
-        ];
+        // Constant, subtle vibration (user-tuned twice: the original 1.2%
+        // amplitude wandered too far, and playing the cycle as two
+        // eased iterations read as two distinct PULSES). Now one linear
+        // pass over the whole window: small constant amplitude (0.5% of
+        // board width, floor 2px), direction hopping every ~56ms through
+        // a fixed 8-direction pattern — reads as a steady buzz with no
+        // swell or seam.
+        const j = Math.max(2, Math.round((rect.width || 300) * 0.005));
+        const dirs = [[1, -1], [-1, 1], [1, 1], [-1, -1], [1, 0], [-1, 0], [0, 1], [0, -1]];
+        const jitter = [{ transform: 'translate(0, 0)' }];
+        for (let i = 0; i < 15; i++) {
+            const d = dirs[i % dirs.length];
+            jitter.push({ transform: 'translate(' + (d[0] * j) + 'px, ' + (d[1] * j) + 'px)' });
+        }
+        jitter.push({ transform: 'translate(0, 0)' });
         return new Promise(function (res) {
             let done = false;
             const settle = function () {
@@ -3084,16 +3088,13 @@ const Render = (() => {
                 anim.finished ? anim.finished.then(settle, settle)
                               : setTimeout(settle, ROTATE_ANIM_MS + 100);
             };
-            // Two iterations at half duration (not one long pass): SHAKE_MS
-            // doubled 450 → 900 (user call), and a single stretched cycle
-            // would halve the jitter frequency into a slow wobble — two
-            // fast cycles keep the vibration feel for the longer window.
-            // The jitter's last frame returns to (0,0), so the loop seam
-            // is invisible.
+            // Single linear pass — the jitter keyframes above carry the
+            // vibration frequency themselves (a hop per keyframe), so no
+            // easing or iteration looping is wanted: ease-in-out over two
+            // iterations was exactly the "two pulses" the user flagged.
             let shake = null;
             try {
-                shake = g.animate(jitter,
-                    { duration: SHAKE_MS / 2, iterations: 2, easing: 'ease-in-out' });
+                shake = g.animate(jitter, { duration: SHAKE_MS, easing: 'linear' });
             } catch (e) {}
             if (shake && shake.finished) shake.finished.then(startTurn, startTurn);
             else setTimeout(startTurn, shake ? SHAKE_MS + 60 : 0);
