@@ -1461,21 +1461,43 @@ body:not(.mode-potd) .menuSection.menuPotdSlots { display: none; }
     }
     /* PotD is the tallest tab (streak strip + TWO 4-card sections where
        Zen/Marathon show one 2-card row) — it alone overflowed short
-       embed iframes (~630px CrazyGames, user screenshot 2026-07-29:
-       slight scrollbar + title jump). vh-shrink its slot thumbs and
-       section padding below the generic squeeze above so the full
-       stack + rigid spacer fits. Scoped to .menuPotdSlots — the
-       Zen/Marathon cards keep the #menuMarathonTypes ID sizing.
+       embed iframes and desktop windows in the ~550-700px height band
+       (user screenshots 2026-07-29: slight scrollbar + title jump; a
+       second report after the first, gentler squeeze still showed the
+       scrollbar across a height range — these floors and vh terms are
+       deliberately aggressive so the whole stack tracks viewport
+       height through that band). Everything here is BELOW the tabs
+       and PotD-scoped: the title/tabs/spacer must render identically
+       on every tab (that's the static-tabs rule), and Zen/Marathon
+       keep the #menuMarathonTypes ID sizing.
        (The portrait-phone block later in the file re-asserts its own
-       thumb size at equal specificity — this rule's 0,3,0 beats the
-       generic 0,2,0 rules, so that re-assert is required; don't drop it.) */
+       thumb size + card padding at equal specificity — these rules'
+       higher specificity beats its generic ones, so those re-asserts
+       are required; don't drop them.) */
     .menuPotdSlots .menuModeBtn .modeThumb {
-        width:  clamp(3.2rem, 8.5vh, 8rem);
-        height: clamp(3.2rem, 8.5vh, 8rem);
+        width:  clamp(2.8rem, 8vh, 8rem);
+        height: clamp(2.8rem, 8vh, 8rem);
+    }
+    .menuPotdSlots .menuModeBtn {
+        padding: clamp(0.25rem, 0.8vh, 0.5rem) 0.4rem;
     }
     body.mode-potd .menuSection {
-        padding-top:    clamp(0.3rem, 0.8vh, 0.8rem);
-        padding-bottom: clamp(0.3rem, 0.8vh, 0.8rem);
+        padding-top:    clamp(0.25rem, 0.7vh, 0.8rem);
+        padding-bottom: clamp(0.25rem, 0.7vh, 0.8rem);
+    }
+    /* Subtitle margins sit below the tabs — safe to compress per-mode. */
+    body.mode-potd #menu .menuSubtitle {
+        margin: clamp(0.15rem, 0.4vh, 0.4rem) 0 clamp(0.2rem, 0.6vh, 0.6rem);
+    }
+    /* Streak strip: vh-fluid chip padding/font + tighter bottom margin.
+       PotD-only element, so no cross-tab visual drift. */
+    #potdStreakStrip {
+        gap: clamp(0.3rem, 0.8vh, 0.5rem);
+        margin-bottom: clamp(0.2rem, 0.9vh, 0.9rem);
+    }
+    .potdStreakChip {
+        padding: clamp(0.2rem, 0.5vh, 0.3rem) 0.6rem;
+        font-size: clamp(0.75rem, 1.6vh, 1rem);
     }
     /* Menu title — slight shrink from desktop's 3.6rem cap so the
        title doesn't dominate. #menu .titleFrame (not bare .titleFrame)
@@ -4839,14 +4861,19 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
         width: clamp(3rem, 17vw, 4.5rem);
         height: clamp(3rem, 17vw, 4.5rem);
     }
-    /* Re-assert the phone thumb size for the PotD slots at matching
-       specificity: the short-viewport block's .menuPotdSlots rule
-       (0,3,0 — see its comment) also matches portrait phones via the
-       coarse-pointer arm and would beat the 0,2,0 rule above; this
-       later-source 0,3,0 copy restores the vw-based phone sizing. */
+    /* Re-assert the phone thumb size + card padding for the PotD slots
+       at matching specificity: the short-viewport block's .menuPotdSlots
+       rules (see its comment) also match portrait phones via the
+       coarse-pointer arm and would beat the generic rules above; these
+       later-source copies restore the vw-based phone sizing (the padding
+       especially — the 4-across row overflows if cards regain the wider
+       0.4rem side padding). */
     .menuPotdSlots .menuModeBtn .modeThumb {
         width: clamp(3rem, 17vw, 4.5rem);
         height: clamp(3rem, 17vw, 4.5rem);
+    }
+    .menuPotdSlots .menuModeBtn {
+        padding: 0.35rem 0.2rem;
     }
     /* PotD slot badges: scale with the smaller thumbnails. */
     .menuModeBtn.potd-solved::after,
