@@ -898,6 +898,18 @@
         async function runBoardPenalty() {
             boardRotating = true;
             try {
+                // The trigger fires from the same refresh() that COMMITTED
+                // the joining move — the tile's own rotation animation
+                // (render.js ROTATION_ANIM_MS = 200, +30ms settle draw)
+                // hasn't painted yet. Snapshotting the ghost now would
+                // freeze the tile un-rotated through the whole shake and
+                // pop it into place at the end (user caught exactly that).
+                // Hold ~300ms — input is already locked via boardRotating —
+                // so the tile visibly lands and the red join state reads
+                // for a beat before the board starts to shake.
+                await new Promise(function (res) { setTimeout(res, 300); });
+                // Player quit during the hold → menu wiped the grid.
+                if (!Maze.grid) return;
                 const doFlip = Math.random() < 0.5;
                 if (doFlip && Render.flipBoardVisual) {
                     const vertical = Math.random() < 0.5;
