@@ -2,6 +2,12 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-29 — Release v1.33 (replays get the between-puzzle tumble transition)
+- **Multi-puzzle replays (leaderboard Watch) now show the same 3D spin transition live play has between puzzles** (user: playback didn't match live). Seam sequence: solved board holds the existing 800ms breath (stands in for the solve popup's dwell) → `Render.spinOutBoard()` tumbles it away (fired in replayAll's loop, i>0 only) → playOneRecording draws the next board hidden behind the hold class → `Render.spinInBoard()` (fired inside playOneRecording after its setup draw) waits out the spin-out remainder and tumbles it in → move/music timeline HELD until the board lands (the wait rides replayTimer/replayResolve so Stop interrupts it like any inter-move wait; scripted music starts after, keeping songs beside their moves).
+- Reuses the exact live machinery — durations/easing/mirrored-axes/reduced-motion all match automatically, and future spin tuning applies to both. spinInBoard returns 0 with no spin pending → the single-recording replay button and puzzle 1 of a Watch are untouched (matches live: a run's first puzzle doesn't spin).
+- Test: Watch a multi-puzzle Marathon run — every boundary tumbles out/in; puzzle 1 appears plainly; Stop mid-tumble exits cleanly.
+- Version bumped 1.32 → 1.33.
+
 ## 2026-07-29 — Release v1.32 (HOTFIX 2: replay freeze — shared _twin objects corrupted snapshots + recordings)
 - **Field crash on v1.30/31** (user: Marathon replay froze, `TypeError ... reading '4'` in Maze.rotate's twin-partner lookup): every snapshot clone helper (`snapshotState`, `deepCloneSnapshot`, `cloneMazeSnap`) shallow-copied tiles via Object.assign — copying `rotation` BY VALUE but sharing the `_twin` OBJECT by reference. The penalty transforms mutated `_twin.partner` IN PLACE → retroactively rewrote partner keys inside every banked undo/replay snapshot AND inside recordings' stored initialStates. Undo/replay restoring a pre-penalty board then had post-penalty partner keys → OOB grid row on the next twinned rotate → frozen replay.
 - **Recordings made on the buggy build are PERMANENTLY corrupted** (including server-stored leaderboard copies) — hard refreshes can't help; the bad keys are in the data.
