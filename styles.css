@@ -95,6 +95,57 @@ body {
     touch-action: manipulation;
 }
 
+/* ----- 3D board-spin transition (Zen/Marathon next-puzzle) -----
+   Driven by render.js spinOutBoard/spinInBoard — see the section comment
+   there for the ghost/hold/spin-in choreography. The ANIMATION DURATIONS
+   here must match render.js's SPIN_OUT_MS (340) / SPIN_IN_MS (400).
+   The transforms tumble the board in genuine 3D: an off-axis rotate3d
+   (mostly Y with a little X/Z wobble so it reads as a tumble, not a flat
+   spin) while translateZ recedes it into the distance. perspective() is
+   applied inside the transform so no ancestor perspective is needed.
+   Out accelerates away (ease-in-ish curve); in decelerates to rest.
+   The in-axis is mirrored so the new board visibly arrives spinning the
+   opposite way the old one left. */
+.mazeSpinGhost {
+    position: fixed;
+    z-index: 0;             /* DOM order (inserted right after #maze) keeps it under the HUD */
+    pointer-events: none;
+    animation: mazeSpinOut 340ms cubic-bezier(0.45, 0, 1, 1) forwards;
+    will-change: transform, opacity;
+}
+#maze.maze-spin-hold {
+    /* Real canvas hidden while the ghost tumbles away and the next
+       puzzle builds/draws underneath. pointer-events off so nobody
+       rotates tiles on an invisible board. */
+    opacity: 0;
+    pointer-events: none;
+}
+#maze.maze-spin-in {
+    animation: mazeSpinIn 400ms cubic-bezier(0, 0, 0.35, 1) backwards;
+    pointer-events: none;
+    will-change: transform, opacity;
+}
+@keyframes mazeSpinOut {
+    from {
+        transform: perspective(70rem) translateZ(0) rotate3d(0.35, 1, 0.15, 0turn);
+        opacity: 1;
+    }
+    to {
+        transform: perspective(70rem) translateZ(-110rem) rotate3d(0.35, 1, 0.15, 2turn);
+        opacity: 0;
+    }
+}
+@keyframes mazeSpinIn {
+    from {
+        transform: perspective(70rem) translateZ(-110rem) rotate3d(-0.3, 1, -0.15, -2turn);
+        opacity: 0;
+    }
+    to {
+        transform: perspective(70rem) translateZ(0) rotate3d(-0.3, 1, -0.15, 0turn);
+        opacity: 1;
+    }
+}
+
 #hintBtn {
     position: absolute;
     top: 1.2rem;

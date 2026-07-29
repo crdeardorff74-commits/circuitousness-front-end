@@ -2921,6 +2921,101 @@ const Render = (() => {
         return v === undefined ? -1 : v;
     }
 
+    // ── 3D board-spin transition (Zen/Marathon next-puzzle) ──────────
+    // When the player taps past the solve popup, the just-solved board
+    // goes tumbling into the distance (3D rotation + recede, not a flat
+    // spin) and the new puzzle comes tumbling back out. Mechanics:
+    //   1. spinOutBoard() — snapshot the live canvas onto a GHOST canvas
+    //      overlaid at the exact same screen rect, CSS-animate the ghost
+    //      away (.mazeSpinGhost → mazeSpinOut keyframes), and hide the
+    //      REAL canvas (.maze-spin-hold). The build pipeline then blanks
+    //      and redraws the real canvas freely — it's invisible, so none
+    //      of that shows. The ghost self-removes on animationend (plus a
+    //      timeout fallback for browsers that drop the event).
+    //   2. spinInBoard() — called when the new puzzle is on-screen-ready.
+    //      Waits out whatever remains of the spin-out (instant pre-gen
+    //      builds resolve faster than the animation), then swaps the
+    //      hold for .maze-spin-in and lets the CSS bring the board
+    //      tumbling in. Returns the total ms until the board is fully
+    //      visible so marathon.js can delay the puzzle clock — the spin
+    //      must never eat Marathon play time.
+    //   3. cancelSpin() — quit/menu teardown; without it a hold class
+    //      could strand the NEXT game's board invisible.
+    // Durations MUST match the CSS animation-durations on .mazeSpinGhost
+    // / #maze.maze-spin-in (styles.css). Reduced-motion users skip the
+    // whole effect (spinOutBoard no-ops → spinInBoard returns 0).
+    const SPIN_OUT_MS = 340;
+    const SPIN_IN_MS  = 400;
+    let spinOutStartedAt = 0;   // epoch of spinOutBoard; 0 = no spin pending
+    let spinGhost   = null;
+    let spinInTimer = null;
+
+    function _prefersReducedMotion() {
+        try {
+            return !!(window.matchMedia
+                && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        } catch (e) { return false; }
+    }
+    function cancelSpin() {
+        spinOutStartedAt = 0;
+        if (spinInTimer !== null) { clearTimeout(spinInTimer); spinInTimer = null; }
+        if (spinGhost && spinGhost.parentNode) spinGhost.parentNode.removeChild(spinGhost);
+        spinGhost = null;
+        if (canvas) {
+            canvas.classList.remove('maze-spin-hold');
+            canvas.classList.remove('maze-spin-in');
+        }
+    }
+    function spinOutBoard() {
+        if (!canvas) return;
+        cancelSpin();
+        if (_prefersReducedMotion()) return;
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        const g = document.createElement('canvas');
+        g.width  = canvas.width;
+        g.height = canvas.height;
+        g.className = 'mazeSpinGhost';
+        g.style.left   = rect.left + 'px';
+        g.style.top    = rect.top + 'px';
+        g.style.width  = rect.width + 'px';
+        g.style.height = rect.height + 'px';
+        try {
+            g.getContext('2d').drawImage(canvas, 0, 0);
+        } catch (e) { return; }   // zero-size/odd state — just skip the effect
+        // Insert as the canvas's NEXT SIBLING (not body-append): the ghost
+        // has z-index 0, so DOM order keeps it above the canvas but under
+        // every later-in-DOM positioned element (HUD buttons, popups).
+        canvas.parentNode.insertBefore(g, canvas.nextSibling);
+        spinGhost = g;
+        const cleanupGhost = function () {
+            if (g.parentNode) g.parentNode.removeChild(g);
+            if (spinGhost === g) spinGhost = null;
+        };
+        g.addEventListener('animationend', cleanupGhost);
+        setTimeout(cleanupGhost, SPIN_OUT_MS + 300);   // event-drop fallback
+        canvas.classList.add('maze-spin-hold');
+        spinOutStartedAt = Date.now();
+    }
+    function spinInBoard() {
+        if (!canvas || spinOutStartedAt === 0) return 0;
+        const elapsed = Date.now() - spinOutStartedAt;
+        spinOutStartedAt = 0;
+        const wait = Math.max(0, SPIN_OUT_MS - elapsed);
+        spinInTimer = setTimeout(function () {
+            spinInTimer = null;
+            canvas.classList.remove('maze-spin-hold');
+            canvas.classList.add('maze-spin-in');
+            const done = function () {
+                canvas.classList.remove('maze-spin-in');
+                canvas.removeEventListener('animationend', done);
+            };
+            canvas.addEventListener('animationend', done);
+            setTimeout(done, SPIN_IN_MS + 300);   // fallback; double-remove is a no-op
+        }, wait);
+        return wait + SPIN_IN_MS;
+    }
+
     return { init, draw, cellAt, gateAt, animateGateRotation,
              resize,  // music.js re-layouts when the Now Playing chip toggles (bottom reserve)
              setTileColor, setPathColor, setPathOpacity,
@@ -2937,6 +3032,7 @@ const Render = (() => {
              hasJoinedLanes,    // game.js polls this for the overlap-SFX state machine
              fadeLanes, clearFadingLanes,  // broken-chain fade triggered alongside the twin-break SFX
              shuffleBackground,  // marathon.js calls on each new puzzle to draw a fresh body bg from the 54-image bag
+             spinOutBoard, spinInBoard, cancelSpin,  // 3D next-puzzle spin transition (marathon.js drives; see the section comment)
              debugCycleBackground,  // debug-mode ArrowRight steps sequentially through the bg pool
              setBackgroundEnabled,  // settings.js calls to toggle bg images off (body goes pure black)
              refit: resize };  // public hook to recompute canvas dims after Maze.ROWS/COLS change

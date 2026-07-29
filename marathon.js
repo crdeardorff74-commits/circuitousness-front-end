@@ -407,7 +407,10 @@ const Marathon = (() => {
             return;
         }
         clearTransition();
-        startNextPuzzle();
+        // true → the solved board is still on the canvas; startNextPuzzle
+        // sends it tumbling away (the 3D spin transition) before the
+        // build blanks it.
+        startNextPuzzle(true);
     }
 
     function goToMenu() {
@@ -437,6 +440,10 @@ const Marathon = (() => {
             Maze.clear();
             if (typeof Render !== 'undefined' && Render.draw) Render.draw();
         }
+        // Tear down any in-flight board-spin transition — without this a
+        // quit during the spin window would strand the canvas with the
+        // spin-hold class and the NEXT game's board would be invisible.
+        if (typeof Render !== 'undefined' && Render.cancelSpin) Render.cancelSpin();
         // CrazyGames engagement signal (no-op off-CG / when not playing).
         if (typeof CgSdk !== 'undefined') CgSdk.gameplayStop();
         // The one-time auto-start run (if that's what we're leaving) is
@@ -1326,7 +1333,17 @@ const Marathon = (() => {
         }
     }
 
-    function startNextPuzzle() {
+    // `spinFromSolved` — true only on the advance() path, where the
+    // just-solved board is still painted on the canvas: snapshot it and
+    // send it tumbling into the distance (Render.spinOutBoard) before the
+    // startPuzzle callback blanks the canvas for the build. The matching
+    // spin-IN fires from onPuzzleReady via Render.spinInBoard. First
+    // puzzles (startGame) and resume boundaries pass nothing — there's no
+    // solved board to spin away.
+    function startNextPuzzle(spinFromSolved) {
+        if (spinFromSolved && typeof Render !== 'undefined' && Render.spinOutBoard) {
+            Render.spinOutBoard();
+        }
         // Pause the clock during the build — would otherwise eat into the
         // player's allotment for the puzzle they can't even see yet.
         // Restarts in onPuzzleReady once the new puzzle is on-screen.
@@ -1400,13 +1417,34 @@ const Marathon = (() => {
     function onPuzzleReady() {
         if (state !== STATE.PLAYING) return;
         puzzleLive = true;
-        puzzleStartMs = Date.now();
+        // Kick the 3D spin-IN if an advance() spin-out is pending (returns
+        // the ms until the board is fully visible; 0 when no spin — first
+        // puzzles, resumes, reduced-motion). The puzzle clock is anchored
+        // and started AFTER that window so the transition never eats
+        // Marathon play time: puzzleStartMs shifts forward by the delay,
+        // and startTimer waits it out (guarded — a quit during the few
+        // hundred ms must not start a timer on the menu).
+        const spinDelayMs = (typeof Render !== 'undefined' && Render.spinInBoard)
+            ? Render.spinInBoard() : 0;
+        puzzleStartMs = Date.now() + spinDelayMs;
         // Checkpoint the run at every puzzle boundary — a crash or killed
         // tab from here on resumes at this puzzle instead of losing the run.
         saveRunState();
         // Practice is untimed — no countdown, so the game only ever ends when
         // the player quits. Marathon starts its per-puzzle clock here.
-        if (!isPractice) startTimer();
+        if (!isPractice) {
+            if (spinDelayMs > 0) {
+                const spinLevel = level;
+                setTimeout(function () {
+                    if (state === STATE.PLAYING && puzzleLive
+                        && level === spinLevel && !isPractice) {
+                        startTimer();
+                    }
+                }, spinDelayMs);
+            } else {
+                startTimer();
+            }
+        }
         if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
         // CrazyGames engagement signal (no-op off-CG). Deduped internally, so
         // firing on every puzzle of a run is fine; the state-PLAYING guard
