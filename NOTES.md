@@ -2,6 +2,14 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-29 — Release v1.25 (static menu tabs for real + PotD fits short viewports; audience SFX retuned to 75%)
+- **Menu title/tabs no longer jump on tab switch, on ANY viewport** (user: v0.95's fix seemed portrait-only — actually its spacer had flex-shrink 999 and PARTIALLY collapsed whenever the active tab overflowed, so on the ~630px CG iframe Zen/Marathon held while PotD collapsed it → jump + scrollbar). `#menu::before` is now RIGID (flex-shrink 0); overflowing tabs scroll past it instead. Landscape ≤500px block zeroes its basis (always top-anchored + scrolling there anyway).
+- **PotD stack now fits short viewports without a scrollbar** — three squeeze rounds in the ≤920px-tall block (user re-tested between each; final state): spacer basis 3vh→2vh; PotD-scoped vh-fluid slot thumbs `clamp(2.8rem, 8vh, 8rem)`, card padding, section paddings, subtitle margins, streak-strip chips/margins; shared-below-tabs chrome (bottom buttons `clamp(0.35rem,1vh,0.65rem)` v-padding, legal footer margin/font) vh-fluid too. RULE captured in comments: title/tabs/spacer must render identically on every tab — only content BELOW the tabs may differ per-mode.
+- **PITFALL (twice)**: the ≤920 block's coarse-pointer arm also matches portrait phones, and the PotD-scoped selectors out-rank the portrait block's generic ones — portrait re-asserts (thumb size + card padding) added at matching specificity, commented as load-bearing; don't drop them.
+- **Audience-reaction SFX 0.5 → 0.75** (`AUDIENCE_REACTION_VOLUME`, audio.js): v1.24's 50% was too quiet in playtesting.
+- If a scrollbar sliver still appears at some exact height, knobs: the 8vh/2.8rem thumb clamp + 2vh spacer basis.
+- Version bumped 1.24 → 1.25.
+
 ## 2026-07-28 — Release v1.24 (audience-reaction SFX at half volume)
 - **Audience-flavored SFX now play at 50% of the other effects' volume** (user call: crowd recordings mixed hot, drowning the mechanical cues). New `AUDIENCE_REACTION_VOLUME = 0.5` (audio.js, next to `isAudienceReactionType` — same category as the audience-reactions mute toggle: `applause`, `applause_*`, `audience_*`). Applied in `startSource` (the single gain-creation point, covers play + playLoop) on top of master `volume`, so the Settings slider scales both categories together and the ratio holds at any position. Mechanical cues (fail*, glitch_overlap, jump_scare, cinematic_bass, synth clicks) untouched.
 - The constant is the tuning knob if 50% turns out too quiet/loud in playtesting.
