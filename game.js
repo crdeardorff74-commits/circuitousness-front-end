@@ -1131,6 +1131,27 @@
             // refresh() would diff against those and could fire spurious
             // applause / leak a stale glitch-loop into the new playback.
             resetSfxBaselines();
+            // Between-puzzle tumble-IN: replayAll fired spinOutBoard just
+            // before this call, so the board drawn above is sitting hidden
+            // behind the hold class — spinInBoard waits out the spin-out's
+            // remainder and tumbles it in, exactly like live play. Returns
+            // 0 when no spin is pending (the single-recording replay
+            // button, puzzle 1 of a Watch, reduced-motion) → no wait. The
+            // move/music timeline is HELD until the board lands so the
+            // first moves aren't applied to a board mid-tumble; the wait
+            // rides replayTimer/replayResolve so Stop interrupts it like
+            // any inter-move wait.
+            const spinMs = (Render.spinInBoard) ? Render.spinInBoard() : 0;
+            if (spinMs > 0 && !replayCancelled) {
+                await new Promise((res) => {
+                    replayResolve = res;
+                    replayTimer = setTimeout(() => {
+                        replayTimer = null;
+                        replayResolve = null;
+                        res();
+                    }, spinMs);
+                });
+            }
             // Compress dead air out of the timeline (moves AND music
             // remapped together — see compressReplayTimeline).
             const timeline = compressReplayTimeline(rec);
@@ -1224,6 +1245,13 @@
             let completed = true;
             for (let i = 0; i < events.length; i++) {
                 if (replayCancelled) { completed = false; break; }
+                // Tumble the previous puzzle's solved board away — the same
+                // 3D spin transition live play shows between puzzles (the
+                // 800ms breath below stands in for the solve popup's dwell).
+                // The matching spin-IN fires inside playOneRecording once
+                // the next board is drawn; puzzle 1 has no predecessor, so
+                // no spin (matches live: a run's first puzzle doesn't spin).
+                if (i > 0 && Render.spinOutBoard) Render.spinOutBoard();
                 if (typeof onPuzzleChange === 'function') {
                     try { onPuzzleChange(i, events.length); } catch (e) {}
                 }
