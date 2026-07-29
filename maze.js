@@ -1239,7 +1239,23 @@ const Maze = (() => {
         return {
             rows:   ROWS,
             cols:   COLS,
-            grid:   grid.map((row) => row.map((t) => Object.assign({}, t))),
+            // Tiles are shallow-copied EXCEPT _twin, which gets its own
+            // copy: a bare Object.assign shares the _twin object between
+            // the snapshot and the live tile, so any in-place mutation of
+            // it (the penalty transforms briefly did `_twin.partner = …`)
+            // corrupts every banked undo/replay snapshot retroactively —
+            // that was the 2026-07-29 replay crash. The transforms now
+            // replace _twin instead of mutating, and this per-field clone
+            // makes the whole class of bug impossible from the snapshot
+            // side too. (_crossLanes stays shared-by-reference: every
+            // writer replaces the array wholesale, and cloning a nested
+            // array per tile per snapshot is where the cost would start
+            // to matter.)
+            grid:   grid.map((row) => row.map((t) => {
+                const c = Object.assign({}, t);
+                if (c._twin) c._twin = Object.assign({}, c._twin);
+                return c;
+            })),
             entry:  Object.assign({}, entry),
             exit:   Object.assign({}, exit),
             entry2: entry2 ? Object.assign({}, entry2) : null,
@@ -1353,7 +1369,22 @@ const Maze = (() => {
                 if (t._crossLanes) {
                     t._crossLanes = t._crossLanes.map(([a, b, p]) => [rot(a, d), rot(b, d), p]);
                 }
-                if (t._twin && t._twin.partner) t._twin.partner = mapKeyStr(t._twin.partner);
+                // REPLACE the _twin object — never mutate it in place.
+                // Undo/replay snapshots hold Object.assign SHALLOW copies
+                // of tiles, so a banked snapshot SHARES this object with
+                // the live grid; an in-place `t._twin.partner = ...`
+                // leaked post-transform coords into every banked
+                // pre-transform snapshot. Undoing (live or replayed) past
+                // a penalty then rotating a twinned tile dereferenced an
+                // out-of-bounds partner row → TypeError froze the replay
+                // (field crash 2026-07-29). Every other field here
+                // already follows the replace-don't-mutate rule
+                // (_crossLanes gets a new array; rotation/_solution are
+                // value writes).
+                if (t._twin && t._twin.partner) {
+                    t._twin = Object.assign({}, t._twin,
+                        { partner: mapKeyStr(t._twin.partner) });
+                }
                 const m = mapCell(r, c);
                 ng[m[0]][m[1]] = t;
             }
@@ -1471,7 +1502,13 @@ const Maze = (() => {
                 if (t._crossLanes) {
                     t._crossLanes = t._crossLanes.map(([a, b, p]) => [mPort(a), mPort(b), p]);
                 }
-                if (t._twin && t._twin.partner) t._twin.partner = mapKeyStr(t._twin.partner);
+                // REPLACE _twin, never mutate — shared with banked undo/
+                // replay snapshots (see the matching comment in rotateBoard;
+                // the in-place version corrupted them → replay crash).
+                if (t._twin && t._twin.partner) {
+                    t._twin = Object.assign({}, t._twin,
+                        { partner: mapKeyStr(t._twin.partner) });
+                }
                 const m = mapCell(r, c);
                 ng[m[0]][m[1]] = t;
             }
