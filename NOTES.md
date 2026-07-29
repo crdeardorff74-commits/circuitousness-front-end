@@ -2,6 +2,12 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-29 — Release v1.26 (PotD slot thumbs sized by height budget)
+- **PotD slot thumbs in the ≤920px-tall block now size from a height BUDGET, not a flat vh multiple**: `clamp(2.8rem, calc(50vh - 15rem), 8rem)`. Why: the stack has TWO card rows, so thumb size should be (viewport − fixed chrome)/2 — a plain 8vh grew too slowly (v1.25 left dead space under the footer at ~615px, user screenshot) and the chrome is floor-bound so it isn't linear in vh.
+- Calibration history (all user-screenshot-driven, same day): 8vh ≈ 49px too small at ~615px → K=14rem gave ~91px at ~630px, scrollbar returned → **K=15rem final**. TUNE K, NOT THE 50vh COEFFICIENT, and err toward LARGER K — a little slack under the footer beats a scrollbar. Full math in the styles.css comment on the rule.
+- Portrait/landscape phones untouched (their own blocks + the load-bearing portrait re-asserts from v1.25 still win).
+- Version bumped 1.25 → 1.26.
+
 ## 2026-07-29 — Release v1.25 (static menu tabs for real + PotD fits short viewports; audience SFX retuned to 75%)
 - **Menu title/tabs no longer jump on tab switch, on ANY viewport** (user: v0.95's fix seemed portrait-only — actually its spacer had flex-shrink 999 and PARTIALLY collapsed whenever the active tab overflowed, so on the ~630px CG iframe Zen/Marathon held while PotD collapsed it → jump + scrollbar). `#menu::before` is now RIGID (flex-shrink 0); overflowing tabs scroll past it instead. Landscape ≤500px block zeroes its basis (always top-anchored + scrolling there anyway).
 - **PotD stack now fits short viewports without a scrollbar** — three squeeze rounds in the ≤920px-tall block (user re-tested between each; final state): spacer basis 3vh→2vh; PotD-scoped vh-fluid slot thumbs `clamp(2.8rem, 8vh, 8rem)`, card padding, section paddings, subtitle margins, streak-strip chips/margins; shared-below-tabs chrome (bottom buttons `clamp(0.35rem,1vh,0.65rem)` v-padding, legal footer margin/font) vh-fluid too. RULE captured in comments: title/tabs/spacer must render identically on every tab — only content BELOW the tabs may differ per-mode.

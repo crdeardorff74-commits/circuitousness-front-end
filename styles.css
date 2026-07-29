@@ -1488,9 +1488,23 @@ body:not(.mode-potd) .menuSection.menuPotdSlots { display: none; }
        thumb size + card padding at equal specificity — these rules'
        higher specificity beats its generic ones, so those re-asserts
        are required; don't drop them.) */
+    /* Thumb size = height BUDGET, not a plain vh multiple: the PotD
+       stack has TWO card rows, so each px of thumb costs 2px of stack —
+       thumb ≈ (viewport − fixed chrome) / 2, i.e. 50vh minus half the
+       chrome (~14rem: title/tabs/subtitle/strip/labels/buttons/footer/
+       paddings at their short-viewport floors). A plain 8vh term
+       under-filled taller windows in the band (user screenshot: cards
+       too small, dead space under the footer at ~615px) because the
+       chrome doesn't scale linearly — it's floor-bound. Calibrated
+       against user screenshots across three rounds: K=14rem produced
+       ~91px thumbs at ~630px and brought the scrollbar back — the
+       chrome estimate was ~1rem short. K=15rem sits between the
+       too-small (8vh ≈ 49px) and too-big (91px) data points. Tune K,
+       not the coefficient; err toward a LARGER K (a little slack under
+       the footer beats a scrollbar). */
     .menuPotdSlots .menuModeBtn .modeThumb {
-        width:  clamp(2.8rem, 8vh, 8rem);
-        height: clamp(2.8rem, 8vh, 8rem);
+        width:  clamp(2.8rem, calc(50vh - 15rem), 8rem);
+        height: clamp(2.8rem, calc(50vh - 15rem), 8rem);
     }
     .menuPotdSlots .menuModeBtn {
         padding: clamp(0.25rem, 0.8vh, 0.5rem) 0.4rem;
