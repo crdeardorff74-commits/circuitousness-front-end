@@ -1394,8 +1394,7 @@ const Maze = (() => {
             locked = new Set();
             assignQuadTwins();   // assign before scramble so the scramble can keep twins in lockstep
             scrambleQuads();
-            updateHighlighted();
-            breakPreWonPaths();
+            finalizeStartScramble();
             return true;
         }
 
@@ -1503,8 +1502,7 @@ const Maze = (() => {
             else if (bestFallback)  restoreState(bestFallback);
             locked = new Set();
             assignTwins();
-            updateHighlighted();
-            breakPreWonPaths();
+            finalizeStartScramble();
             return true;
         }
 
@@ -1549,8 +1547,7 @@ const Maze = (() => {
             if (bestSnapshot) restoreState(bestSnapshot);
             locked = new Set();
             assignTwins();
-            updateHighlighted();
-            breakPreWonPaths();
+            finalizeStartScramble();
             return true;
         }
 
@@ -1613,8 +1610,7 @@ const Maze = (() => {
 
         locked = new Set();  // wipe locks from any previous puzzle
         assignTwins();
-        updateHighlighted();
-        breakPreWonPaths();
+        finalizeStartScramble();
         return true;
     }
 
@@ -2111,6 +2107,127 @@ const Maze = (() => {
         highlighted = tag(fwd1.result, 0).concat(tag(bwd1.result, 0), extra2, extra3, extra4);
     }
 
+    // ── Minimum start-scramble guarantee ──────────────────────────────
+    // Random rotation rerolls give each path tile an independent chance
+    // of landing on (or port-equivalent to) its solved orientation —
+    // straights 50%, crosses always, elbows 25% — so a short path can
+    // spawn with all but ONE tile already correct and the solve is
+    // read-off-obvious (user screenshot 2026-07-28: a pink 2-elbow path
+    // whose single unlit tile was the whole puzzle). breakPreWonPaths
+    // below only catches the fully-won extreme; this guarantees DEPTH:
+    // at least MIN_PATH_SCRAMBLE_FRACTION of each path's twistable
+    // tiles (floor 2) start off their solved ports.
+    //
+    // "Twistable" excludes what can't meaningfully scramble: entry/exit
+    // cells (rotation pinned to the notch), and crosses (4-symmetric —
+    // no rotation is ever "wrong"). Port-equivalence via
+    // rotationsHaveSamePorts, so a straight parked at solution+2 counts
+    // as solved, matching what the player sees. Quad mode's unit is the
+    // QUAD (position-scramble): the quota is over quads carrying the
+    // path's cells, "scrambled" = non-zero quadScramble turns.
+    //
+    // Twins rotate in lockstep (same as the player's coupling and
+    // breakPreWonPaths' nudges). Same deliberate trade-off as
+    // breakPreWonPaths: runs AFTER the canonical-difficulty checks, so
+    // the shipped board can be marginally off-canonical — the depth
+    // guarantee is worth more than exact canonical purity.
+    const MIN_PATH_SCRAMBLE_FRACTION = 0.58;
+
+    function ensureMinScramble() {
+        const pathIdxs = [0];
+        if (entry2 && exit2) pathIdxs.push(1);
+        if (entry3 && exit3) pathIdxs.push(2);
+        if (entry4 && exit4) pathIdxs.push(3);
+
+        if (quadMode) {
+            if (!quadScramble) return;
+            for (const p of pathIdxs) {
+                const quadKeys = new Set();
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        if (cellIsOnPath(r, c, p)) quadKeys.add((r >> 1) + ',' + (c >> 1));
+                    }
+                }
+                const quads = [...quadKeys].map((k) => k.split(',').map(Number));
+                const n = quads.length;
+                if (n === 0) continue;
+                const untouched = quads.filter(([qr, qc]) => quadScramble[qr][qc] === 0);
+                const quota = Math.min(n, Math.max(2, Math.ceil(n * MIN_PATH_SCRAMBLE_FRACTION)));
+                let need = quota - (n - untouched.length);
+                if (need <= 0) continue;
+                // shuffle() returns a copy (doesn't mutate) — use it, or
+                // the picks would carry a top-left scan-order bias.
+                const quadPicks = shuffle(untouched);
+                for (let i = 0; i < quadPicks.length && need > 0; i++, need--) {
+                    // 1-3 turns, twin partner in lockstep — mirrors the
+                    // quad branch of breakPreWonPaths.
+                    const [qr, qc] = quadPicks[i];
+                    const turns = 1 + Math.floor(Math.random() * 3);
+                    quadScramble[qr][qc] = (quadScramble[qr][qc] + turns) & 3;
+                    for (let t = 0; t < turns; t++) rotateQuad(qr * 2, qc * 2, false);
+                    const tile = grid[qr * 2][qc * 2];
+                    if (tile && tile._twin) {
+                        const [pr, pc] = tile._twin.partner.split(',').map(Number);
+                        quadScramble[pr / 2][pc / 2] = (quadScramble[pr / 2][pc / 2] + turns) & 3;
+                        for (let t = 0; t < turns; t++) rotateQuad(pr, pc, false);
+                    }
+                }
+            }
+            return;
+        }
+
+        const endpoints = new Set();
+        for (const ep of [entry, exit, entry2, exit2, entry3, exit3, entry4, exit4]) {
+            if (ep) endpoints.add(ep.row + ',' + ep.col);
+        }
+        for (const p of pathIdxs) {
+            const twistable = [];
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (!cellIsOnPath(r, c, p)) continue;
+                    if (endpoints.has(r + ',' + c)) continue;
+                    if (grid[r][c].type === T_CROSS) continue;
+                    twistable.push(grid[r][c]);
+                }
+            }
+            const n = twistable.length;
+            if (n === 0) continue;
+            const atSolution = twistable.filter((t) =>
+                rotationsHaveSamePorts(t.type, t.rotation, t._solution));
+            const quota = Math.min(n, Math.max(2, Math.ceil(n * MIN_PATH_SCRAMBLE_FRACTION)));
+            let need = quota - (n - atSolution.length);
+            if (need <= 0) continue;
+            // shuffle() returns a copy (doesn't mutate) — use it, or the
+            // twisted tiles would carry a top-left scan-order bias.
+            const picks = shuffle(atSolution);
+            for (let i = 0; i < picks.length && need > 0; i++, need--) {
+                const t = picks[i];
+                // Pick a rotation NOT port-equivalent to the solution:
+                // straights differ by parity (±1), elbows by any of +1..3.
+                const newRot = (t.type === T_STRAIGHT)
+                    ? (t._solution + (Math.random() < 0.5 ? 1 : 3)) & 3
+                    : (t._solution + 1 + Math.floor(Math.random() * 3)) & 3;
+                const turns = (newRot - t.rotation) & 3;
+                t.rotation = newRot;
+                // Twin partner rotates in lockstep — always a filler
+                // (assignTwins pairs path+filler), solve-irrelevant.
+                if (t._twin) {
+                    const [pr, pc] = t._twin.partner.split(',').map(Number);
+                    grid[pr][pc].rotation = (grid[pr][pc].rotation + turns) & 3;
+                }
+            }
+        }
+    }
+
+    // Shared end-of-build scramble finalizer — every newPuzzle branch
+    // funnels through here: depth guarantee first (twists tiles, so
+    // highlights must be recomputed), then the pre-won breaker.
+    function finalizeStartScramble() {
+        ensureMinScramble();
+        updateHighlighted();
+        breakPreWonPaths();
+    }
+
     // A freshly scrambled puzzle can land with a path ALREADY complete:
     // scrambleQuads gives every quad a 1-in-4 chance of 0 turns (and
     // rotation-symmetric quad contents survive non-zero turns), and the
@@ -2118,8 +2235,9 @@ const Maze = (() => {
     // lines up by pure chance. Nothing re-checked pathsWon before shipping,
     // so players could start a puzzle with paths pre-won (field report:
     // a quad start with a path already gold). Called at the end of every
-    // newPuzzle branch, after updateHighlighted: while any real path is
-    // won, re-rotate one of its tiles (or its quad) and re-check.
+    // newPuzzle branch (via finalizeStartScramble), after updateHighlighted:
+    // while any real path is won, re-rotate one of its tiles (or its quad)
+    // and re-check.
     // Trade-off (deliberate): in non-quad mode the nudge happens AFTER the
     // canonical-difficulty checks, so the shipped puzzle can be marginally
     // off-canonical — acceptable for a case this rare vs. re-running the

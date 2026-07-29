@@ -2,6 +2,13 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-28 — Release v1.22 (minimum start-scramble guarantee per path)
+- **Paths can no longer spawn nearly solved** (user screenshot: a pink path with ONE wrong tile — solution read-off-obvious): random rotation rerolls leave each path tile solved by luck (straights 50%, crosses always, elbows 25%), and breakPreWonPaths only caught the fully-won extreme. New `ensureMinScramble()` (maze.js) guarantees ≥`MIN_PATH_SCRAMBLE_FRACTION` (0.58 — user-tuned from 0.5 same session; at most ~42% of a path may spawn correct) of each path's TWISTABLE tiles start off their solved ports, floor 2 per path.
+- Twistable excludes entry/exit cells (notch-pinned) + crosses (4-symmetric); "solved" is port-equivalence-aware via rotationsHaveSamePorts (straight at solution+2 counts as solved — matches what the player sees). Quad mode's unit is the QUAD: quota over quads carrying the path's cells, scrambled = non-zero quadScramble turns. Twins lockstep everywhere (mirrors breakPreWonPaths). Same documented trade-off: runs post-canonical-checks → marginally off-canonical boards accepted.
+- All four newPuzzle branches funnel through new `finalizeStartScramble()` (ensureMinScramble → updateHighlighted → breakPreWonPaths). PITFALL caught in-session: maze.js `shuffle()` returns a COPY (doesn't mutate) — a bare `shuffle(arr);` statement silently keeps scan order (top-left bias).
+- Rollout: worker/urgent/new-PotD-seed builds all covered (shared maze.js); already-seeded PotD snapshots unchanged. Test: fresh small multi-path boards — no path should start missing only 1-2 tiles.
+- Version bumped 1.21 → 1.22.
+
 ## 2026-07-28 — Release v1.21 (Zen hint voids twists line, CG credits un-squashed)
 - **Zen twists-vs-minimum line voided by ANY hint**: hint-spamming to the solution printed "Perfect — solved in the minimum twists!" (user-reported). solveMoveStats (marathon.js) now returns null (line hidden — both the % and Perfect variants) on any hint in the recording, including 0-turn hints (the player didn't know the tile was right without help); survives quit/resume (recording carries hint moves). Marathon never showed the line; replays never reach the solve card.
 - **Credits squash on CrazyGames fixed**: .credits-content `max-width: 36%` starved the two fixed 420px/250px credit columns on the CG iframe (~300-400px box → flex-shrink word-wrapped every name; user screenshot). Now `min(max(36%, 47rem), 94vw)` — floored at the ~712px the columns need; 36% only wins on ~2000px+ viewports (desktop look unchanged); phones cap at 94vw (much better than the old 36%-of-390px there too).
