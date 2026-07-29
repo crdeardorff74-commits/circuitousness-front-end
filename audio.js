@@ -83,7 +83,7 @@ const Sfx = (function () {
     // were drowning the mechanical cues). Applied in startSource on top
     // of the master `volume`, so the Settings slider scales both
     // categories together and this ratio stays constant.
-    const AUDIENCE_REACTION_VOLUME = 0.5;
+    const AUDIENCE_REACTION_VOLUME = 0.75;
 
     // Per-type throttle: don't replay an effect of the same type within
     // THROTTLE_MS. Players chaining the same trigger rapidly (twisting
