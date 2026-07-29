@@ -2997,13 +2997,23 @@ const Render = (() => {
         canvas.classList.add('maze-spin-hold');
         spinOutStartedAt = Date.now();
     }
-    function spinInBoard() {
-        if (!canvas || spinOutStartedAt === 0) return 0;
+    // `onSpinStart` (optional): fires at the exact moment the tumble-in
+    // begins — marathon.js hands the new-puzzle SFX cue here so the sound
+    // lands with the board's arrival, not during the outbound tumble.
+    // Called synchronously when there's no pending spin (the cue should
+    // play immediately then). A quit during the wait cancels via
+    // cancelSpin's clearTimeout, so the cue can never fire on the menu.
+    function spinInBoard(onSpinStart) {
+        if (!canvas || spinOutStartedAt === 0) {
+            if (onSpinStart) { try { onSpinStart(); } catch (e) {} }
+            return 0;
+        }
         const elapsed = Date.now() - spinOutStartedAt;
         spinOutStartedAt = 0;
         const wait = Math.max(0, SPIN_OUT_MS - elapsed);
         spinInTimer = setTimeout(function () {
             spinInTimer = null;
+            if (onSpinStart) { try { onSpinStart(); } catch (e) {} }
             canvas.classList.remove('maze-spin-hold');
             canvas.classList.add('maze-spin-in');
             const done = function () {

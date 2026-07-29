@@ -1424,8 +1424,19 @@ const Marathon = (() => {
         // Marathon play time: puzzleStartMs shifts forward by the delay,
         // and startTimer waits it out (guarded — a quit during the few
         // hundred ms must not start a timer on the menu).
-        const spinDelayMs = (typeof Render !== 'undefined' && Render.spinInBoard)
-            ? Render.spinInBoard() : 0;
+        // New-puzzle SFX cue rides the spin: spinInBoard fires it the
+        // moment the board starts tumbling in (or synchronously when
+        // there's no spin — first puzzles, resumes, reduced-motion).
+        // A quit during the spin window cancels it inside cancelSpin.
+        const playPuzzleStartSfx = function () {
+            if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
+        };
+        let spinDelayMs = 0;
+        if (typeof Render !== 'undefined' && Render.spinInBoard) {
+            spinDelayMs = Render.spinInBoard(playPuzzleStartSfx);
+        } else {
+            playPuzzleStartSfx();
+        }
         puzzleStartMs = Date.now() + spinDelayMs;
         // Checkpoint the run at every puzzle boundary — a crash or killed
         // tab from here on resumes at this puzzle instead of losing the run.
@@ -1445,7 +1456,9 @@ const Marathon = (() => {
                 startTimer();
             }
         }
-        if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
+        // (cinematic_bass moved into playPuzzleStartSfx above — it now
+        // rides the spin-in instead of firing while the old board is
+        // still tumbling away.)
         // CrazyGames engagement signal (no-op off-CG). Deduped internally, so
         // firing on every puzzle of a run is fine; the state-PLAYING guard
         // above keeps replays (state REPLAYING) from ever reporting.
