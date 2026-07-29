@@ -879,14 +879,21 @@ html.is-crazygames .cg-only { display: revert !important; }
    (which adds the streak strip below the tabs) made the title + tabs
    jump upward. A fixed flex-basis spacer gives the title a constant
    offset from the top instead: tab switches only move the content BELOW
-   the tabs, and spare space collects at the bottom. The huge shrink
-   factor + min-height: 0 let the spacer collapse to nothing before any
-   real content is squeezed, so short viewports still top-anchor and
-   scroll exactly like the old collapsed-auto-margin case. A pseudo-
-   element keeps this scoped to #menu — the intro overlay is untouched. */
+   the tabs, and spare space collects at the bottom.
+   RIGID on purpose (flex-shrink 0 — changed 2026-07-29): the original
+   version had flex-shrink 999 so the spacer collapsed before content
+   scrolled, but a PARTIAL collapse re-introduced the exact jump this
+   spacer exists to prevent — on the ~630px CrazyGames iframe the
+   Zen/Marathon stacks fit (spacer held) while the taller PotD stack
+   overflowed (spacer collapsed → title + tabs jumped up, user report).
+   A rigid spacer keeps the title at the same offset on EVERY tab; the
+   cost is that overflowing tabs scroll past the spacer, which the
+   short-viewport blocks mitigate by shrinking its basis (3vh in the
+   ≤920px block, 0 in the ≤500px landscape block). A pseudo-element
+   keeps this scoped to #menu — the intro overlay is untouched. */
 #menu::before {
     content: '';
-    flex: 0 999 clamp(0rem, 7vh, 4.5rem);
+    flex: 0 0 clamp(0rem, 7vh, 4.5rem);
     min-height: 0;
 }
 /* Title frame — small viewfinder-style corner brackets. Tighter padding
@@ -1444,6 +1451,31 @@ body:not(.mode-potd) .menuSection.menuPotdSlots { display: none; }
         padding-left:  max(clamp(0.8rem, 3vw, 2rem), env(safe-area-inset-left));
         padding-right: max(clamp(0.8rem, 3vw, 2rem), env(safe-area-inset-right));
         padding-bottom: max(0.8rem, env(safe-area-inset-bottom));
+    }
+    /* Rigid spacer (see base #menu::before): smaller basis on short
+       viewports — the title anchors a bit higher but IDENTICALLY on
+       every tab, and the reclaimed ~4vh is what lets the tall PotD
+       stack fit without a scrollbar. */
+    #menu::before {
+        flex-basis: clamp(0rem, 3vh, 4.5rem);
+    }
+    /* PotD is the tallest tab (streak strip + TWO 4-card sections where
+       Zen/Marathon show one 2-card row) — it alone overflowed short
+       embed iframes (~630px CrazyGames, user screenshot 2026-07-29:
+       slight scrollbar + title jump). vh-shrink its slot thumbs and
+       section padding below the generic squeeze above so the full
+       stack + rigid spacer fits. Scoped to .menuPotdSlots — the
+       Zen/Marathon cards keep the #menuMarathonTypes ID sizing.
+       (The portrait-phone block later in the file re-asserts its own
+       thumb size at equal specificity — this rule's 0,3,0 beats the
+       generic 0,2,0 rules, so that re-assert is required; don't drop it.) */
+    .menuPotdSlots .menuModeBtn .modeThumb {
+        width:  clamp(3.2rem, 8.5vh, 8rem);
+        height: clamp(3.2rem, 8.5vh, 8rem);
+    }
+    body.mode-potd .menuSection {
+        padding-top:    clamp(0.3rem, 0.8vh, 0.8rem);
+        padding-bottom: clamp(0.3rem, 0.8vh, 0.8rem);
     }
     /* Menu title — slight shrink from desktop's 3.6rem cap so the
        title doesn't dominate. #menu .titleFrame (not bare .titleFrame)
@@ -3719,6 +3751,13 @@ html.dbgHidden #undoBtn { display: none !important; }
         gap: 0.25rem;
         justify-content: flex-start;
     }
+    /* Landscape phones always top-anchor + scroll the menu — a rigid
+       spacer (see base #menu::before) would only add dead scroll
+       height here, so zero it. Title stays static across tabs
+       trivially: everything starts at the top. */
+    #menu::before {
+        flex-basis: 0;
+    }
     /* Title block — clamp against vh so it shrinks proportionally
        with the shorter viewport. titleMazeO canvas is em-sized so
        it scales along automatically. */
@@ -4797,6 +4836,15 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
         font-size: 0.75rem;
     }
     .menuModeBtn .modeThumb {
+        width: clamp(3rem, 17vw, 4.5rem);
+        height: clamp(3rem, 17vw, 4.5rem);
+    }
+    /* Re-assert the phone thumb size for the PotD slots at matching
+       specificity: the short-viewport block's .menuPotdSlots rule
+       (0,3,0 — see its comment) also matches portrait phones via the
+       coarse-pointer arm and would beat the 0,2,0 rule above; this
+       later-source 0,3,0 copy restores the vw-based phone sizing. */
+    .menuPotdSlots .menuModeBtn .modeThumb {
         width: clamp(3rem, 17vw, 4.5rem);
         height: clamp(3rem, 17vw, 4.5rem);
     }
