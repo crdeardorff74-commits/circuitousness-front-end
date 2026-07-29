@@ -2,6 +2,12 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-29 — Release v1.27 (fullscreen 1080p scrollbar: squeeze-block ceiling 920 → 1150)
+- **PotD scrollbar at fullscreen 1080** (user screenshot): the fine-pointer arm of the menu squeeze block stopped at max-height 920, so 921-1080+ rendered BASE sizes (144px thumbs) + the now-RIGID 7vh spacer — ~40-80px over. It only "fit" pre-v1.25 because the collapsing spacer silently absorbed the overflow (= the title-jump bug itself).
+- Fix: fine-pointer arm extended to **max-height 1150** (coarse arm unchanged at 1080). In 920-1150 the block's clamps sit at/near caps → near-desktop look; the differences at 1080 fullscreen are budget-capped PotD thumbs (8rem=128px vs 144) and the 2vh spacer (~22px vs ~76 — menu anchors a bit higher, identically on all tabs). Above 1150 base sizes genuinely fit with slack. Zen/Marathon card sizing unaffected (#menuMarathonTypes ID clamp caps the same in and out of the block).
+- Both CSS comments (block header + base #menu::before) updated with the 1150 ceiling + incident. Test: fullscreen PotD no scrollbar + static tabs; sweep a window through ~900-1200px for the boundary.
+- Version bumped 1.26 → 1.27.
+
 ## 2026-07-29 — Release v1.26 (PotD slot thumbs sized by height budget)
 - **PotD slot thumbs in the ≤920px-tall block now size from a height BUDGET, not a flat vh multiple**: `clamp(2.8rem, calc(50vh - 15rem), 8rem)`. Why: the stack has TWO card rows, so thumb size should be (viewport − fixed chrome)/2 — a plain 8vh grew too slowly (v1.25 left dead space under the footer at ~615px, user screenshot) and the chrome is floor-bound so it isn't linear in vh.
 - Calibration history (all user-screenshot-driven, same day): 8vh ≈ 49px too small at ~615px → K=14rem gave ~91px at ~630px, scrollbar returned → **K=15rem final**. TUNE K, NOT THE 50vh COEFFICIENT, and err toward LARGER K — a little slack under the footer beats a scrollbar. Full math in the styles.css comment on the rule.
