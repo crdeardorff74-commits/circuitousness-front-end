@@ -888,9 +888,11 @@ html.is-crazygames .cg-only { display: revert !important; }
    overflowed (spacer collapsed → title + tabs jumped up, user report).
    A rigid spacer keeps the title at the same offset on EVERY tab; the
    cost is that overflowing tabs scroll past the spacer, which the
-   short-viewport blocks mitigate by shrinking its basis (3vh in the
-   ≤920px block, 0 in the ≤500px landscape block). A pseudo-element
-   keeps this scoped to #menu — the intro overlay is untouched. */
+   short-viewport blocks mitigate by shrinking its basis (2vh in the
+   ≤1150px block, 0 in the ≤500px landscape block). This base 7vh value
+   therefore only applies ABOVE 1150px, where the full stack + spacer
+   fit with slack. A pseudo-element keeps this scoped to #menu — the
+   intro overlay is untouched. */
 #menu::before {
     content: '';
     flex: 0 0 clamp(0rem, 7vh, 4.5rem);
@@ -1423,15 +1425,22 @@ body:not(.mode-potd) .menuSection.menuPotdSlots { display: none; }
    own font-size rule with higher source-order precedence further up,
    so the intro title stays at its dramatic size; this block only
    adjusts the menu title via #menu .titleFrame. */
-/* Second query in the list: same squeeze for SHORT FINE-POINTER viewports
-   (desktop windows and, critically, portal embed iframes — CrazyGames
-   hands the game a ~600px-tall desktop iframe). The full-size desktop
-   menu stack needs ~900px+ of height, so below ~920px it must shrink like
-   the tablets do; pointer: coarse alone left mouse users with an
-   overflowing full-size menu. 501px floor on both — under that the
-   harder landscape-phone squeeze below takes over. */
+/* Second query in the list: same squeeze for SHORT-to-MEDIUM FINE-POINTER
+   viewports (desktop windows and, critically, portal embed iframes —
+   CrazyGames hands the game a ~600px-tall desktop iframe). The full-size
+   desktop menu stack needs ~900px+ of height, so below ~920px it must
+   shrink like the tablets do; pointer: coarse alone left mouse users with
+   an overflowing full-size menu. Ceiling raised 920 → 1150 (2026-07-29):
+   once the #menu::before spacer went RIGID, the base-size PotD stack +
+   full 7vh spacer overflowed a 1080px FULLSCREEN desktop too (the old
+   collapsing spacer had been silently absorbing that overflow — which was
+   exactly the title-jump bug). Under this block the clamps resolve at or
+   near their caps in the 920-1150 range, so the look stays close to
+   desktop; the PotD thumb budget + 2vh spacer are what make it fit. Above
+   1150 the base sizes fit with honest slack. 501px floor on both arms —
+   under that the harder landscape-phone squeeze below takes over. */
 @media (max-height: 1080px) and (min-height: 501px) and (pointer: coarse),
-       (max-height: 920px) and (min-height: 501px) {
+       (max-height: 1150px) and (min-height: 501px) {
     #menu {
         /* The base #menu::before spacer top-anchors the content at a fixed
            offset and collapses when space is tight; overflow:auto + smooth scroll
