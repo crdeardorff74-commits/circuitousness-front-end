@@ -2,6 +2,14 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-29 — Release v1.28 (3D board-spin transition between Zen/Marathon puzzles)
+- **Next-puzzle transition**: tap past the solve popup → the solved board tumbles into the distance (off-axis rotate3d + translateZ recede + fade, 480ms), then the new puzzle tumbles in on a mirrored axis (560ms). User-tuned from an initial 340/400 ("slow it down a bit"). Durations live in render.js `SPIN_OUT_MS`/`SPIN_IN_MS` and MUST match the CSS animation-durations on `.mazeSpinGhost` / `#maze.maze-spin-in`.
+- **Mechanism (render.js spinOutBoard/spinInBoard/cancelSpin)**: GHOST canvas snapshot of the solved board animates away while the real canvas hides (`.maze-spin-hold`) — the build pipeline blanks/redraws it invisibly, untouched. spinInBoard waits out the spin-out remainder (pre-gen resolves faster than the animation), then spins the real canvas in; returns total ms to visible.
+- **Marathon clock compensated**: onPuzzleReady shifts puzzleStartMs forward by the spin window and delays startTimer to match (guarded) — the transition eats zero play time; old-client leaderboard fairness preserved.
+- Scope/safety: advance()-path only (first puzzles/resumes/PotD/replays unaffected); goToMenu calls Render.cancelSpin (else a quit mid-spin strands the next board invisible via the hold class); pointer-events off during hold+spin; ghost inserted as canvas nextSibling with z-index 0 (under HUD by DOM order); prefers-reduced-motion skips everything.
+- **cinematic_bass timing experiment — settled on ORIGINAL**: tried at tumble-start, then at full settle; user preferred immediate-at-onPuzzleReady (overlapping the outbound tumble). Callback plumbing fully removed; comments in both files record the history — don't re-try without reading it.
+- Version bumped 1.27 → 1.28.
+
 ## 2026-07-29 — Release v1.27 (fullscreen 1080p scrollbar: squeeze-block ceiling 920 → 1150)
 - **PotD scrollbar at fullscreen 1080** (user screenshot): the fine-pointer arm of the menu squeeze block stopped at max-height 920, so 921-1080+ rendered BASE sizes (144px thumbs) + the now-RIGID 7vh spacer — ~40-80px over. It only "fit" pre-v1.25 because the collapsing spacer silently absorbed the overflow (= the title-jump bug itself).
 - Fix: fine-pointer arm extended to **max-height 1150** (coarse arm unchanged at 1080). In 920-1150 the block's clamps sit at/near caps → near-desktop look; the differences at 1080 fullscreen are budget-capped PotD thumbs (8rem=128px vs 144) and the 2vh spacer (~22px vs ~76 — menu anchors a bit higher, identically on all tabs). Above 1150 base sizes genuinely fit with slack. Zen/Marathon card sizing unaffected (#menuMarathonTypes ID clamp caps the same in and out of the block).
