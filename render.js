@@ -2997,23 +2997,27 @@ const Render = (() => {
         canvas.classList.add('maze-spin-hold');
         spinOutStartedAt = Date.now();
     }
-    // `onSpinStart` (optional): fires at the exact moment the tumble-in
-    // begins — marathon.js hands the new-puzzle SFX cue here so the sound
-    // lands with the board's arrival, not during the outbound tumble.
-    // Called synchronously when there's no pending spin (the cue should
-    // play immediately then). A quit during the wait cancels via
-    // cancelSpin's clearTimeout, so the cue can never fire on the menu.
-    function spinInBoard(onSpinStart) {
+    // `onSettled` (optional): fires when the tumble-in COMPLETES and the
+    // board sits at rest — marathon.js hands the new-puzzle SFX cue here
+    // so the sound punctuates the board's arrival (user-tuned: first
+    // immediate, then at tumble-start, now at rest). Called synchronously
+    // when there's no pending spin (the cue should play immediately
+    // then). Both waits run through the tracked spinInTimer slot — the
+    // pre-spin delay first, then the settle delay — so cancelSpin's one
+    // clearTimeout kills whichever phase a quit interrupts and the cue
+    // can never fire on the menu. (The class-cleanup `done` path is NOT
+    // used for the cue: its untracked animationend/fallback pair can
+    // still run after a quit, which is fine for removing a class but
+    // would leak a stray boom.)
+    function spinInBoard(onSettled) {
         if (!canvas || spinOutStartedAt === 0) {
-            if (onSpinStart) { try { onSpinStart(); } catch (e) {} }
+            if (onSettled) { try { onSettled(); } catch (e) {} }
             return 0;
         }
         const elapsed = Date.now() - spinOutStartedAt;
         spinOutStartedAt = 0;
         const wait = Math.max(0, SPIN_OUT_MS - elapsed);
         spinInTimer = setTimeout(function () {
-            spinInTimer = null;
-            if (onSpinStart) { try { onSpinStart(); } catch (e) {} }
             canvas.classList.remove('maze-spin-hold');
             canvas.classList.add('maze-spin-in');
             const done = function () {
@@ -3022,6 +3026,10 @@ const Render = (() => {
             };
             canvas.addEventListener('animationend', done);
             setTimeout(done, SPIN_IN_MS + 300);   // fallback; double-remove is a no-op
+            spinInTimer = setTimeout(function () {
+                spinInTimer = null;
+                if (onSettled) { try { onSettled(); } catch (e) {} }
+            }, SPIN_IN_MS);
         }, wait);
         return wait + SPIN_IN_MS;
     }

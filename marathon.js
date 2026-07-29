@@ -1424,10 +1424,12 @@ const Marathon = (() => {
         // Marathon play time: puzzleStartMs shifts forward by the delay,
         // and startTimer waits it out (guarded — a quit during the few
         // hundred ms must not start a timer on the menu).
-        // New-puzzle SFX cue rides the spin: spinInBoard fires it the
-        // moment the board starts tumbling in (or synchronously when
-        // there's no spin — first puzzles, resumes, reduced-motion).
-        // A quit during the spin window cancels it inside cancelSpin.
+        // New-puzzle SFX cue rides the spin: spinInBoard fires it when
+        // the board has fully emerged and stopped tumbling (or
+        // synchronously when there's no spin — first puzzles, resumes,
+        // reduced-motion), so the bass punctuates the landing — the same
+        // moment the Marathon clock starts below. A quit during the spin
+        // window cancels it inside cancelSpin.
         const playPuzzleStartSfx = function () {
             if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
         };
