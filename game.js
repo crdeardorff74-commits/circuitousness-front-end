@@ -929,6 +929,15 @@
                         Render.draw();
                     });
                 }
+            } catch (e) {
+                // A transform bug must degrade to "penalty aborted", not a
+                // frozen game: an exception inside applyFn used to strand
+                // the ghost + the canvas hold class with input locked
+                // (field freeze 2026-07-29 — the stale-quadScramble crash).
+                // cancelSpin tears the visuals down; the finally below
+                // unlocks input.
+                if (Render.cancelSpin) Render.cancelSpin();
+                if (typeof Logger !== 'undefined') Logger.warn('Board penalty aborted', e);
             } finally {
                 boardRotating = false;
             }

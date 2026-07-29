@@ -1249,8 +1249,16 @@ const Maze = (() => {
             entry4: entry4 ? Object.assign({}, entry4) : null,
             exit4:  exit4  ? Object.assign({}, exit4)  : null,
             // quadScramble carries the per-quad rotation offsets used by
-            // hint() to find non-solved quads. Null when not in quad mode.
-            quadScramble: quadScramble ? quadScramble.map((row) => row.slice()) : null,
+            // hint() to find non-solved quads. Gated on quadMode, not just
+            // non-null: building a singular board never nulls a leftover
+            // quad matrix (the pre-gen worker alternates between building
+            // quad and singular starters), so an ungated capture shipped
+            // stale quad matrices inside SINGULAR snapshots for years —
+            // harmless until the penalty transforms consumed quadScramble
+            // and crashed on odd singular dims (2026-07-29). Snapshots now
+            // never carry it outside quad mode.
+            quadScramble: (quadMode && quadScramble)
+                ? quadScramble.map((row) => row.slice()) : null,
             // Set of "r,c" keys for hint-locked tiles, serialized as an
             // array (Sets don't survive JSON / structured-clone of plain
             // objects). PotD's background-gen save/restore relies on this
@@ -1366,7 +1374,18 @@ const Maze = (() => {
             const m = mapCell(parts[0], parts[1]);
             return m[0] + ',' + m[1];
         }));
-        if (quadScramble) {
+        // quadMode gate is LOAD-BEARING, not belt-and-braces: singular
+        // boards can carry a stale non-null quadScramble (the pre-gen
+        // worker builds quad starters, and building a singular board
+        // never nulls the leftover matrix — snapshotState then shipped
+        // it for years, harmlessly, because every consumer checked
+        // quadMode first). Gating only on quadScramble here meant odd
+        // singular dims hit `new Array(R/2 = x.5)` → RangeError mid-
+        // penalty (field crash 2026-07-29, first 2-path board of a
+        // fresh run). Already-seeded PotD snapshots stored server-side
+        // can carry the stale matrix FOREVER, so this gate must stay
+        // even though snapshotState no longer captures it.
+        if (quadMode && quadScramble) {
             const QR = R / 2, QC = C / 2;
             const nq = Array.from({ length: QC }, () => new Array(QR));
             for (let qr = 0; qr < QR; qr++) {
@@ -1471,7 +1490,9 @@ const Maze = (() => {
             const m = mapCell(parts[0], parts[1]);
             return m[0] + ',' + m[1];
         }));
-        if (quadScramble) {
+        // quadMode gate is load-bearing — same stale-matrix crash risk as
+        // rotateBoard (see the comment there).
+        if (quadMode && quadScramble) {
             const QR = R / 2, QC = C / 2;
             const nq = Array.from({ length: QR }, () => new Array(QC));
             for (let qr = 0; qr < QR; qr++) {
