@@ -78,6 +78,12 @@ const Sfx = (function () {
             || type.indexOf('audience_') === 0
             || type.indexOf('applause_') === 0;
     }
+    // Volume scale for the audience-reaction category, relative to every
+    // other SFX (user call 2026-07-28: crowd recordings are mixed hot and
+    // were drowning the mechanical cues). Applied in startSource on top
+    // of the master `volume`, so the Settings slider scales both
+    // categories together and this ratio stays constant.
+    const AUDIENCE_REACTION_VOLUME = 0.5;
 
     // Per-type throttle: don't replay an effect of the same type within
     // THROTTLE_MS. Players chaining the same trigger rapidly (twisting
@@ -237,7 +243,14 @@ const Sfx = (function () {
         source.buffer = buf;
         if (opts && opts.loop) source.loop = true;
         const gain = ctx.createGain();
-        gain.gain.value = volume;
+        // Audience-flavored cues (audience_* / applause*) play at half the
+        // volume of the mechanical SFX (user call 2026-07-28) — crowd
+        // recordings are mixed hot relative to the fail/glitch/bass cues
+        // and were dominating the mix. Applied at source start; the player
+        // volume slider still scales everything together.
+        gain.gain.value = isAudienceReactionType(type)
+            ? volume * AUDIENCE_REACTION_VOLUME
+            : volume;
         source.connect(gain).connect(ctx.destination);
         const entry = { source: source, gain: gain, fadeT: null, loopKey: (opts && opts.loopKey) || null };
         source.onended = function () {

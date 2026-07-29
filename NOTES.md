@@ -2,6 +2,11 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-28 — Release v1.24 (audience-reaction SFX at half volume)
+- **Audience-flavored SFX now play at 50% of the other effects' volume** (user call: crowd recordings mixed hot, drowning the mechanical cues). New `AUDIENCE_REACTION_VOLUME = 0.5` (audio.js, next to `isAudienceReactionType` — same category as the audience-reactions mute toggle: `applause`, `applause_*`, `audience_*`). Applied in `startSource` (the single gain-creation point, covers play + playLoop) on top of master `volume`, so the Settings slider scales both categories together and the ratio holds at any position. Mechanical cues (fail*, glitch_overlap, jump_scare, cinematic_bass, synth clicks) untouched.
+- The constant is the tuning knob if 50% turns out too quiet/loud in playtesting.
+- Version bumped 1.23 → 1.24.
+
 ## 2026-07-28 — Release v1.23 (terminal-lit rule: every terminal lights its first tile at start)
 - **Every path terminal now lights its first tile from the very first render** (user rule + screenshots: a dark terminal stub made the board read wrong; elbow endpoints can still point the wrong way — lit ≠ solved).
 - **Singular root cause was a longstanding asymmetry**: rotateToExpose pins ALL paths' endpoint tiles at build end, but rerollAllRotations/rerollRotationsOnly skipped only PATH 1's `entry`/`exit` — the 2-path canonical loop's rerolls re-randomized secondary endpoints (the screenshot). Both passes now skip all endpoints via new `endpointCellKeys()`. Safe vs the canonical loop's entry/exit swaps (rerolls only run outside the swap, and the set carries all 8 refs anyway).
