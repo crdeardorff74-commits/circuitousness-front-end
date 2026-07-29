@@ -2961,6 +2961,15 @@ const Render = (() => {
         if (spinInTimer !== null) { clearTimeout(spinInTimer); spinInTimer = null; }
         if (spinGhost && spinGhost.parentNode) spinGhost.parentNode.removeChild(spinGhost);
         spinGhost = null;
+        // Also tear down the joined-paths ROTATION visuals (shake + ghost
+        // — see the board-rotation section below): both features hide the
+        // real canvas behind `.maze-spin-hold`, so any quit-to-menu path
+        // that cancels one must cancel the other or the next game's board
+        // starts invisible. marathon goToMenu + potd quitToMenu both land
+        // here.
+        if (rotateGhost && rotateGhost.parentNode) rotateGhost.parentNode.removeChild(rotateGhost);
+        rotateGhost = null;
+        if (shakeAnim) { try { shakeAnim.cancel(); } catch (e) {} shakeAnim = null; }
         if (canvas) {
             canvas.classList.remove('maze-spin-hold');
             canvas.classList.remove('maze-spin-in');
@@ -2997,6 +3006,115 @@ const Render = (() => {
         canvas.classList.add('maze-spin-hold');
         spinOutStartedAt = Date.now();
     }
+    // ── Joined-paths penalty rotation visuals ────────────────────────
+    // game.js's runBoardRotation drives these: shakeBoard() vibrates the
+    // live canvas as the warning tell, then rotateBoardVisual(ccw,
+    // applyFn) plays the quarter-turn. Same ghost trick as the spin
+    // transition above — snapshot the pre-rotation board onto a fixed
+    // overlay, hide the real canvas (`.maze-spin-hold`, shared with the
+    // spin so cancelSpin covers both), let applyFn rotate the DATA +
+    // refit + redraw invisibly, then animate the ghost turning ±90° and
+    // scaling/translating onto the new canvas rect (non-square boards
+    // swap aspect, so refit resizes — the scale factor bridges old and
+    // new footprints). Web Animations API (not CSS classes) because the
+    // end transform depends on measured rects. Reduced-motion players
+    // get the data rotation instantly with no theatrics.
+    let rotateGhost = null;
+    let shakeAnim   = null;
+    const SHAKE_MS       = 450;
+    const ROTATE_ANIM_MS = 620;
+
+    function shakeBoard() {
+        if (!canvas || _prefersReducedMotion()) return Promise.resolve();
+        // Small translate jitter, decaying — reads as a vibration warning
+        // before the board is wrenched around.
+        const j = Math.max(3, Math.round((canvas.getBoundingClientRect().width || 300) * 0.012));
+        try {
+            shakeAnim = canvas.animate([
+                { transform: 'translate(0, 0)' },
+                { transform: 'translate(' +  j + 'px, ' + (-j) + 'px)' },
+                { transform: 'translate(' + (-j) + 'px, ' +  j + 'px)' },
+                { transform: 'translate(' +  j + 'px, ' +  j + 'px)' },
+                { transform: 'translate(' + (-j) + 'px, ' + (-j) + 'px)' },
+                { transform: 'translate(' +  Math.ceil(j / 2) + 'px, 0)' },
+                { transform: 'translate(' + (-Math.ceil(j / 2)) + 'px, 0)' },
+                { transform: 'translate(0, 0)' }
+            ], { duration: SHAKE_MS, easing: 'ease-in-out' });
+        } catch (e) { shakeAnim = null; return Promise.resolve(); }
+        const a = shakeAnim;
+        return new Promise(function (res) {
+            const settle = function () { if (shakeAnim === a) shakeAnim = null; res(); };
+            a.finished ? a.finished.then(settle, settle) : setTimeout(settle, SHAKE_MS + 100);
+            // Belt-and-braces timeout in case `finished` never resolves
+            // (cancelSpin's cancel() rejects it — settle runs via the
+            // rejection handler above, so this rarely fires).
+            setTimeout(settle, SHAKE_MS + 200);
+        });
+    }
+
+    function rotateBoardVisual(ccw, applyFn) {
+        if (!canvas || _prefersReducedMotion()) {
+            if (applyFn) applyFn();
+            return Promise.resolve();
+        }
+        const oldRect = canvas.getBoundingClientRect();
+        let g = null;
+        if (oldRect.width > 0 && oldRect.height > 0) {
+            g = document.createElement('canvas');
+            g.width  = canvas.width;
+            g.height = canvas.height;
+            g.className = 'mazeRotateGhost';
+            g.style.left   = oldRect.left + 'px';
+            g.style.top    = oldRect.top + 'px';
+            g.style.width  = oldRect.width + 'px';
+            g.style.height = oldRect.height + 'px';
+            try { g.getContext('2d').drawImage(canvas, 0, 0); }
+            catch (e) { g = null; }
+        }
+        if (g) {
+            canvas.parentNode.insertBefore(g, canvas.nextSibling);
+            rotateGhost = g;
+            canvas.classList.add('maze-spin-hold');
+        }
+        // Rotate the DATA while the real canvas is hidden — dims swap,
+        // refit resizes the canvas, the rotated board is drawn invisibly.
+        if (applyFn) applyFn();
+        if (!g) return Promise.resolve();
+        // Bridge old footprint → new: the ghost turns ±90° about its
+        // center, scales so its (rotated) width matches the new canvas
+        // width, and translates its center onto the new canvas center.
+        const newRect = canvas.getBoundingClientRect();
+        const dx = (newRect.left + newRect.width  / 2) - (oldRect.left + oldRect.width  / 2);
+        const dy = (newRect.top  + newRect.height / 2) - (oldRect.top  + oldRect.height / 2);
+        const s  = oldRect.height > 0 ? newRect.width / oldRect.height : 1;
+        const deg = ccw ? -90 : 90;
+        const finish = function () {
+            if (rotateGhost === g) rotateGhost = null;
+            if (g.parentNode) g.parentNode.removeChild(g);
+            canvas.classList.remove('maze-spin-hold');
+        };
+        let anim = null;
+        try {
+            anim = g.animate([
+                { transform: 'translate(0, 0) rotate(0deg) scale(1)' },
+                { transform: 'translate(' + dx + 'px, ' + dy + 'px) rotate(' + deg + 'deg) scale(' + s + ')' }
+            ], { duration: ROTATE_ANIM_MS, easing: 'cubic-bezier(0.35, 0, 0.25, 1)', fill: 'forwards' });
+        } catch (e) { finish(); return Promise.resolve(); }
+        return new Promise(function (res) {
+            let done = false;
+            const settle = function () {
+                if (done) return;
+                done = true;
+                // cancelSpin may have already torn everything down — the
+                // guards inside finish() make the double-cleanup safe.
+                finish();
+                res();
+            };
+            anim.finished ? anim.finished.then(settle, settle) : setTimeout(settle, ROTATE_ANIM_MS + 100);
+            setTimeout(settle, ROTATE_ANIM_MS + 250);   // event-drop fallback
+        });
+    }
+
     // (A brief experiment routed the new-puzzle SFX cue through a
     // callback here — first at tumble-start, then at settle — but the
     // user preferred the original timing: the cue plays immediately at
@@ -3038,6 +3156,7 @@ const Render = (() => {
              fadeLanes, clearFadingLanes,  // broken-chain fade triggered alongside the twin-break SFX
              shuffleBackground,  // marathon.js calls on each new puzzle to draw a fresh body bg from the 54-image bag
              spinOutBoard, spinInBoard, cancelSpin,  // 3D next-puzzle spin transition (marathon.js drives; see the section comment)
+             shakeBoard, rotateBoardVisual,  // joined-paths penalty rotation visuals (game.js runBoardRotation drives)
              debugCycleBackground,  // debug-mode ArrowRight steps sequentially through the bg pool
              setBackgroundEnabled,  // settings.js calls to toggle bg images off (body goes pure black)
              refit: resize };  // public hook to recompute canvas dims after Maze.ROWS/COLS change

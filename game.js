@@ -478,9 +478,12 @@
             } else if (move.type === 'gate') {
                 if (Render.animateGateRotation) Render.animateGateRotation(!move.ccw);
             }
+            // ('rotateBoard' deliberately falls through: undoing the
+            // penalty rotation snaps the board back with a refit — no
+            // per-tile inverse animation exists for a whole-board turn.)
         }
         function undo() {
-            if (isBuilding || isReplaying) return;
+            if (isBuilding || isReplaying || boardRotating) return;
             // Tutorial open = the live Maze is temporarily the tutorial's
             // teaching grid (Tutorial.open swaps it in, close restores).
             // Ctrl+Z is the one game input the tutorial's modal overlay
@@ -504,12 +507,18 @@
             const prev = entry.state;
             const undoneMove = entry.move;
             // Clone before restore (loadSnapshot takes ownership of the grid).
+            // Dims can differ across a `rotateBoard` penalty move — undoing
+            // past one snaps the board back to its pre-rotation orientation,
+            // which needs a canvas refit.
+            const dimsChanged = prev.maze
+                && (prev.maze.rows !== Maze.ROWS || prev.maze.cols !== Maze.COLS);
             Maze.loadSnapshot(cloneMazeSnap(prev.maze));
             if (typeof Gates !== 'undefined') {
                 if (prev.gates && Gates.restore) Gates.restore(prev.gates);
                 else if (Gates.clear) Gates.clear();
                 if (Maze.recompute) Maze.recompute();
             }
+            if (dimsChanged) Render.refit();
             undoBaseState = prev;
             // Record the undo as its own replayable move so playback reflects
             // what actually happened — the move, then the player taking it back.
@@ -811,14 +820,81 @@
                 lastPathsWon = [!!cur[0], !!cur[1], !!cur[2], !!cur[3]];
 
                 // Two-paths-overlap loop: rising edge starts the glitch loop,
-                // falling edge stops it.
+                // falling edge stops it. The same rising edge fires the
+                // board-rotation penalty (maybeTriggerBoardRotation gates
+                // itself on replay/tutorial/build/rotation-in-progress —
+                // during replays the recorded `rotateBoard` move plays the
+                // rotation instead, so it never double-fires).
                 const joined = !!(Render.hasJoinedLanes && Render.hasJoinedLanes());
-                if (joined && !lastJoined)      Sfx.playLoop('glitch_overlap', 'glitch');
-                else if (!joined && lastJoined) Sfx.stopLoop('glitch_overlap');
+                if (joined && !lastJoined) {
+                    Sfx.playLoop('glitch_overlap', 'glitch');
+                    maybeTriggerBoardRotation();
+                } else if (!joined && lastJoined) {
+                    Sfx.stopLoop('glitch_overlap');
+                }
                 lastJoined = joined;
             }
 
             lastWon = Maze.won;
+        }
+
+        // ── Joined-paths penalty rotation ────────────────────────────
+        // When two different-color paths JOIN (the flashing-red overlap
+        // state), the whole board shakes and then rotates 90° — random
+        // CW/CCW — as a chaos penalty. The DATA genuinely rotates
+        // (Maze.rotateBoard + Gates.rotateBoard; applyBoardRotation is
+        // the one orchestrator), dims swap so non-square boards refit to
+        // the new aspect, and the move records as `rotateBoard` so
+        // replays re-apply it and undo can rewind through it (the
+        // snapshot-based undo stack restores the pre-rotation board —
+        // both undo paths refit when dims change). Input is locked for
+        // the full shake+turn via `boardRotating` (plus the canvas's
+        // pointer-events-off hold class). Trigger is EDGE-based — the
+        // joined state persists after the rotation (connectivity is
+        // rotation-invariant), so only a fresh join fires it; the player
+        // must un-join and re-join to be punished twice.
+        let boardRotating = false;
+        function applyBoardRotation(ccw) {
+            const oldR = Maze.ROWS, oldC = Maze.COLS;
+            if (!Maze.rotateBoard || !Maze.rotateBoard(ccw)) return false;
+            if (typeof Gates !== 'undefined' && Gates.rotateBoard) {
+                Gates.rotateBoard(ccw, oldR, oldC);
+            }
+            if (Maze.recompute) Maze.recompute();
+            Render.refit();
+            return true;
+        }
+        function maybeTriggerBoardRotation() {
+            if (boardRotating || isReplaying || isBuilding) return;
+            if (!Maze.grid || Maze.won) return;
+            // Tutorial's teaching script deliberately joins paths — the
+            // fixed grid must never rotate under the overlay.
+            if (typeof Tutorial !== 'undefined' && Tutorial.isOpen && Tutorial.isOpen()) return;
+            runBoardRotation();
+        }
+        async function runBoardRotation() {
+            boardRotating = true;
+            try {
+                const ccw = Math.random() < 0.5;
+                await (Render.shakeBoard ? Render.shakeBoard() : Promise.resolve());
+                // Player quit during the shake → menu wiped the grid;
+                // nothing to rotate.
+                if (!Maze.grid) return;
+                await Render.rotateBoardVisual(ccw, function () {
+                    if (!applyBoardRotation(ccw)) return;
+                    // Bank + record AFTER the data flip: recordMove pushes
+                    // the pre-rotation snapshot for undo and appends the
+                    // replayable move at the apply moment.
+                    recordMove({ type: 'rotateBoard', ccw: ccw });
+                    Render.draw();
+                });
+            } finally {
+                boardRotating = false;
+            }
+            // Re-sync the SFX/win machine against the rotated board.
+            // lastJoined is still true (the overlap survives rotation), so
+            // this can't re-trigger — the edge gate above sees no edge.
+            if (Maze.grid) refresh();
         }
 
         // Replay-side mirror of the live undo stack. Because replay rebuilds
@@ -837,12 +913,17 @@
             if (replayUndoStack.length === 0) return;
             const entry = replayUndoStack.pop();
             const prev = entry.state;
+            // Same dims-change refit as live undo() — undoing past a
+            // recorded `rotateBoard` restores the pre-rotation orientation.
+            const dimsChanged = prev.maze
+                && (prev.maze.rows !== Maze.ROWS || prev.maze.cols !== Maze.COLS);
             Maze.loadSnapshot(cloneMazeSnap(prev.maze));
             if (typeof Gates !== 'undefined') {
                 if (prev.gates && Gates.restore) Gates.restore(prev.gates);
                 else if (Gates.clear) Gates.clear();
                 if (Maze.recompute) Maze.recompute();
             }
+            if (dimsChanged) Render.refit();
             replayBase = prev;
             if (Render.clearFadingLanes) Render.clearFadingLanes();
             // Spin tiles back, same as the live undo (entry.move is the move
@@ -874,6 +955,22 @@
                     Gates.rotate(move.ccw);
                     if (Maze.recompute) Maze.recompute();
                     Render.animateGateRotation(move.ccw);
+                }
+            } else if (move.type === 'rotateBoard') {
+                // Joined-paths penalty rotation. The DATA applies
+                // synchronously inside rotateBoardVisual's applyFn —
+                // subsequent replay moves need the rotated grid
+                // immediately — while the ghost animation plays out in
+                // parallel with the replay's own pacing. No shake in
+                // replay: the recorded timestamp marks the APPLY moment
+                // (live play shakes BEFORE recording the move).
+                if (Render.rotateBoardVisual) {
+                    Render.rotateBoardVisual(move.ccw, function () {
+                        applyBoardRotation(move.ccw);
+                        Render.draw();
+                    });
+                } else {
+                    applyBoardRotation(move.ccw);
                 }
             }
         }
@@ -1480,7 +1577,7 @@
         // CW; mouse LEFT-click = CCW, RIGHT-click = CW; touch swipe left/up =
         // CCW, right/down = CW.
         function handlePointer(x, y, ccw) {
-            if (isBuilding || isReplaying) return;
+            if (isBuilding || isReplaying || boardRotating) return;
             // Marathon between-puzzles state: swallow canvas taps entirely.
             // Rotating now would break the gold path the player's looking at,
             // and advance is intentionally popup-only so a click-cascade from
@@ -1878,7 +1975,7 @@
         // CSS hides whichever button doesn't match the current mode.
         async function handleHintClick(ev) {
             ev.stopPropagation();
-            if (isBuilding || isReplaying) return;
+            if (isBuilding || isReplaying || boardRotating) return;
             // Don't run hint during the between-puzzles transition; the
             // player's already won, hint would just lock a tile on a
             // puzzle they're about to leave behind. Treat it as a no-op.

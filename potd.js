@@ -2090,6 +2090,11 @@ const Potd = (() => {
         if (typeof Credits !== 'undefined' && Credits.stop) Credits.stop();
         Maze.clear();
         Render.draw();  // wipe the canvas so the menu doesn't paint over a stale puzzle
+        // Tear down any in-flight board-rotation (joined-paths penalty)
+        // visuals — the penalty fires during PotD play too, and a quit
+        // mid-rotation would otherwise strand the canvas hidden behind
+        // the hold class. Mirrors marathon.js goToMenu.
+        if (typeof Render !== 'undefined' && Render.cancelSpin) Render.cancelSpin();
         showMenu();
     }
 

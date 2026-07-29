@@ -1297,6 +1297,94 @@ const Maze = (() => {
         updateHighlighted();
     }
 
+    // ── Whole-board 90° rotation (the joined-paths penalty) ──────────
+    // Rotates the ENTIRE live puzzle a quarter turn — real data, not a
+    // visual: the grid transposes (dims swap), every tile carries its
+    // rotation AND _solution forward by the same quarter turn (so each
+    // tile's offset-from-solved — and with it minSolveMoves and every
+    // hint/port-equivalence semantic — is preserved), cross-lane port
+    // pairs rotate, twin partner keys remap, entry/exit terminals move
+    // with their ports, hint-locks follow their tiles, and in quad mode
+    // the quadScramble matrix permutes positionally with VALUES
+    // UNCHANGED (a global quarter turn rotates each quad's content
+    // exactly like one rotateQuad AND rotates the solved reference
+    // identically, so each quad's offset-from-solved is invariant; the
+    // un-scramble dance still lands on the rotated solution).
+    // Gates live in their own module — callers must run
+    // Gates.rotateBoard with the OLD dims alongside this; game.js's
+    // applyBoardRotation is the single orchestrator.
+    // CW (ccw=false): (r,c) → (c, ROWS-1-r), ports/rotations +1.
+    // CCW:            (r,c) → (COLS-1-c, r), ports/rotations +3.
+    function rotateBoard(ccw) {
+        if (!grid) return false;
+        const R = ROWS, C = COLS;
+        const d = ccw ? 3 : 1;
+        const mapCell = ccw
+            ? (r, c) => [C - 1 - c, r]
+            : (r, c) => [c, R - 1 - r];
+        // Twin partner keys: singular partners are exact cell keys; quad
+        // partners are the TL sub-tile of the partner QUAD — the TL of a
+        // rotated quad is the min-corner of its mapped 2×2 block.
+        const mapKeyStr = (key) => {
+            const parts = key.split(',').map(Number);
+            if (quadMode) {
+                const qr = parts[0] >> 1, qc = parts[1] >> 1;
+                const a = mapCell(qr * 2, qc * 2);
+                const b = mapCell(qr * 2 + 1, qc * 2 + 1);
+                return Math.min(a[0], b[0]) + ',' + Math.min(a[1], b[1]);
+            }
+            const m = mapCell(parts[0], parts[1]);
+            return m[0] + ',' + m[1];
+        };
+        const ng = Array.from({ length: C }, () => new Array(R));
+        for (let r = 0; r < R; r++) {
+            for (let c = 0; c < C; c++) {
+                const t = grid[r][c];
+                t.rotation = (t.rotation + d) & 3;
+                if (typeof t._solution === 'number') t._solution = (t._solution + d) & 3;
+                if (t._crossLanes) {
+                    t._crossLanes = t._crossLanes.map(([a, b, p]) => [rot(a, d), rot(b, d), p]);
+                }
+                if (t._twin && t._twin.partner) t._twin.partner = mapKeyStr(t._twin.partner);
+                const m = mapCell(r, c);
+                ng[m[0]][m[1]] = t;
+            }
+        }
+        const mapEp = (ep) => {
+            if (!ep) return null;
+            const m = mapCell(ep.row, ep.col);
+            return Object.assign({}, ep, { row: m[0], col: m[1], port: rot(ep.port, d) });
+        };
+        entry  = mapEp(entry);  exit  = mapEp(exit);
+        entry2 = mapEp(entry2); exit2 = mapEp(exit2);
+        entry3 = mapEp(entry3); exit3 = mapEp(exit3);
+        entry4 = mapEp(entry4); exit4 = mapEp(exit4);
+        // Hint-locks are per-CELL keys (sub-tile keys in quad mode) — map
+        // them as plain cells, no TL remap.
+        locked = new Set(Array.from(locked).map((k) => {
+            const parts = k.split(',').map(Number);
+            const m = mapCell(parts[0], parts[1]);
+            return m[0] + ',' + m[1];
+        }));
+        if (quadScramble) {
+            const QR = R / 2, QC = C / 2;
+            const nq = Array.from({ length: QC }, () => new Array(QR));
+            for (let qr = 0; qr < QR; qr++) {
+                for (let qc = 0; qc < QC; qc++) {
+                    const nqr = ccw ? QC - 1 - qc : qc;
+                    const nqc = ccw ? qr : QR - 1 - qr;
+                    nq[nqr][nqc] = quadScramble[qr][qc];
+                }
+            }
+            quadScramble = nq;
+        }
+        grid = ng;
+        ROWS = C;
+        COLS = R;
+        updateHighlighted();
+        return true;
+    }
+
     // Reset to a "no puzzle loaded" state. Used by the title-O renderer to
     // wipe the synthetic 2×2 snapshot it loaded for inline rendering — so
     // a subsequent Render.draw before the next real puzzle finishes building
@@ -3363,6 +3451,7 @@ const Maze = (() => {
         N, E, S, W,
         T_STRAIGHT, T_ELBOW, T_CROSS,
         init, rotate, hint, applyHintAt, togglePlayerLock, setDimensions, setHurry, setAbort, setTwoPathMode, setPathCount, setQuadMode,
+        rotateBoard,   // whole-board 90° penalty rotation — see its comment; Gates.rotateBoard must run alongside
         snapshotState, loadSnapshot, clear,
         getConnections,
         hasShortcutWithin,

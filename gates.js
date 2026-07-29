@@ -268,6 +268,29 @@ const Gates = (() => {
         };
     }
 
+    // Whole-board 90° rotation companion to Maze.rotateBoard (the
+    // joined-paths penalty; game.js applyBoardRotation orchestrates the
+    // pair). Vertices are grid POINTS, so the map differs from the cell
+    // map: CW (vr,vc) → (vc, oldRows − vr); CCW → (oldCols − vc, vr) —
+    // interior vertices stay interior. Each gate's SOLUTION direction
+    // rotates with the board while the unison `delta` stays put: the
+    // current prong direction (solutionDir + delta) then comes out
+    // rotated exactly one quarter turn, and minMovesToClear (delta-based)
+    // is invariant — the penalty rotates the puzzle, it doesn't change
+    // how far the gates are from open. Derivation check lives in the
+    // session notes: a dir-N gate's blocked edge maps to precisely the
+    // edge its rotated dir-E/W self blocks.
+    function rotateBoard(ccw, oldRows, oldCols) {
+        const d = ccw ? 3 : 1;
+        for (const g of list) {
+            const vr = g.vr, vc = g.vc;
+            if (ccw) { g.vr = oldCols - vc; g.vc = vr; }
+            else     { g.vr = vc;           g.vc = oldRows - vr; }
+            g.solutionDir = (g.solutionDir + d) & 3;
+        }
+        blockedEdgesCache = null;
+    }
+
     // Capture/restore for recording & replay. Snapshot is structured-clone
     // safe (plain primitives in arrays/objects). Restore validates against
     // the current grid dims is the caller's job — we don't know them here.
@@ -292,6 +315,7 @@ const Gates = (() => {
         clear,
         assignGates,
         rotate,
+        rotateBoard,
         edgeBlocked,
         minMovesToClear,
         hitTest,
