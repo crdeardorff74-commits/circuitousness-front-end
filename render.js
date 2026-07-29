@@ -3115,6 +3115,66 @@ const Render = (() => {
         });
     }
 
+    // Penalty variant 2: mirror FLIP. Same ghost/hold contract as
+    // rotateBoardVisual, but the animation is a single 180° 3D card-turn
+    // — rotateY for a left-right flip, rotateX for top-bottom. The
+    // elegant bit: past 90° the ghost shows its BACKFACE, which is the
+    // old board mirrored on exactly the axis the data flipped on — i.e.
+    // the NEW board. So the turn lands seamlessly on the revealed real
+    // canvas with no content pop. Dims don't change on a flip, so no
+    // scale/translate bridging is needed.
+    function flipBoardVisual(vertical, applyFn) {
+        if (!canvas || _prefersReducedMotion()) {
+            if (applyFn) applyFn();
+            return Promise.resolve();
+        }
+        const rect = canvas.getBoundingClientRect();
+        let g = null;
+        if (rect.width > 0 && rect.height > 0) {
+            g = document.createElement('canvas');
+            g.width  = canvas.width;
+            g.height = canvas.height;
+            g.className = 'mazeRotateGhost';
+            g.style.left   = rect.left + 'px';
+            g.style.top    = rect.top + 'px';
+            g.style.width  = rect.width + 'px';
+            g.style.height = rect.height + 'px';
+            try { g.getContext('2d').drawImage(canvas, 0, 0); }
+            catch (e) { g = null; }
+        }
+        if (g) {
+            canvas.parentNode.insertBefore(g, canvas.nextSibling);
+            rotateGhost = g;
+            canvas.classList.add('maze-spin-hold');
+        }
+        if (applyFn) applyFn();
+        if (!g) return Promise.resolve();
+        const axis = vertical ? 'rotateX' : 'rotateY';
+        const finish = function () {
+            if (rotateGhost === g) rotateGhost = null;
+            if (g.parentNode) g.parentNode.removeChild(g);
+            canvas.classList.remove('maze-spin-hold');
+        };
+        let anim = null;
+        try {
+            anim = g.animate([
+                { transform: 'perspective(70rem) ' + axis + '(0deg)' },
+                { transform: 'perspective(70rem) ' + axis + '(180deg)' }
+            ], { duration: ROTATE_ANIM_MS, easing: 'cubic-bezier(0.35, 0, 0.25, 1)', fill: 'forwards' });
+        } catch (e) { finish(); return Promise.resolve(); }
+        return new Promise(function (res) {
+            let done = false;
+            const settle = function () {
+                if (done) return;
+                done = true;
+                finish();
+                res();
+            };
+            anim.finished ? anim.finished.then(settle, settle) : setTimeout(settle, ROTATE_ANIM_MS + 100);
+            setTimeout(settle, ROTATE_ANIM_MS + 250);   // event-drop fallback
+        });
+    }
+
     // (A brief experiment routed the new-puzzle SFX cue through a
     // callback here — first at tumble-start, then at settle — but the
     // user preferred the original timing: the cue plays immediately at
@@ -3156,7 +3216,7 @@ const Render = (() => {
              fadeLanes, clearFadingLanes,  // broken-chain fade triggered alongside the twin-break SFX
              shuffleBackground,  // marathon.js calls on each new puzzle to draw a fresh body bg from the 54-image bag
              spinOutBoard, spinInBoard, cancelSpin,  // 3D next-puzzle spin transition (marathon.js drives; see the section comment)
-             shakeBoard, rotateBoardVisual,  // joined-paths penalty rotation visuals (game.js runBoardRotation drives)
+             shakeBoard, rotateBoardVisual, flipBoardVisual,  // joined-paths penalty visuals (game.js runBoardPenalty drives)
              debugCycleBackground,  // debug-mode ArrowRight steps sequentially through the bg pool
              setBackgroundEnabled,  // settings.js calls to toggle bg images off (body goes pure black)
              refit: resize };  // public hook to recompute canvas dims after Maze.ROWS/COLS change

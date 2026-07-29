@@ -291,6 +291,27 @@ const Gates = (() => {
         blockedEdgesCache = null;
     }
 
+    // Mirror-flip companion to Maze.flipBoard (penalty variant 2).
+    // `vertical` = top-bottom flip. Vertex points mirror on one axis;
+    // each gate's solution direction mirrors (N↔S for vertical, E↔W for
+    // horizontal); and the unison `delta` NEGATES — reflections
+    // conjugate rotations (M∘R^d = R^-d∘M), so keeping currentDir =
+    // solutionDir + delta consistent with the mirrored prongs requires
+    // delta' = -delta. minMovesToClear is distance-to-0 in either
+    // direction, which negation preserves.
+    function flipBoard(vertical, oldRows, oldCols) {
+        const mDir = vertical
+            ? (p) => (2 - p) & 3
+            : (p) => (4 - p) & 3;
+        for (const g of list) {
+            if (vertical) g.vr = oldRows - g.vr;
+            else          g.vc = oldCols - g.vc;
+            g.solutionDir = mDir(g.solutionDir);
+        }
+        delta = (4 - delta) & 3;
+        blockedEdgesCache = null;
+    }
+
     // Capture/restore for recording & replay. Snapshot is structured-clone
     // safe (plain primitives in arrays/objects). Restore validates against
     // the current grid dims is the caller's job — we don't know them here.
@@ -316,6 +337,7 @@ const Gates = (() => {
         assignGates,
         rotate,
         rotateBoard,
+        flipBoard,
         edgeBlocked,
         minMovesToClear,
         hitTest,

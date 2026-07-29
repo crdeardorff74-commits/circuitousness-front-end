@@ -1385,6 +1385,109 @@ const Maze = (() => {
         return true;
     }
 
+    // ── Whole-board MIRROR flip (the joined-paths penalty, variant 2) ──
+    // Mirrors the live puzzle across one axis. `vertical` = flip
+    // top-to-bottom (across the horizontal axis); false = left-to-right.
+    // Dims DON'T change (unlike rotateBoard). Reflections are not
+    // rotations, so two things differ structurally from rotateBoard:
+    //   • Tile rotations can't shift by a uniform ±1 — the mirrored
+    //     rotation depends on the tile's current one. mirrorRotFor finds
+    //     the rotation of the same type whose port set equals the
+    //     mirrored port set (always exists: straight/elbow/cross are all
+    //     achiral shapes). rotation and _solution map through the SAME
+    //     function, so offset-from-solved stays port-equivalence-intact.
+    //   • Reflections CONJUGATE rotations (M∘R^k = R^-k∘M), so
+    //     quadScramble VALUES NEGATE ((4-k)&3) while the matrix mirrors
+    //     positionally — the un-scramble dance then lands exactly on the
+    //     mirrored solution. (Gates.flipBoard negates its unison delta
+    //     for the same reason.)
+    function flipBoard(vertical) {
+        if (!grid) return false;
+        const R = ROWS, C = COLS;
+        const mapCell = vertical
+            ? (r, c) => [R - 1 - r, c]
+            : (r, c) => [r, C - 1 - c];
+        // Port mirror: vertical flip swaps N↔S (p → (2-p)&3); horizontal
+        // swaps E↔W (p → (4-p)&3).
+        const mPort = vertical
+            ? (p) => (2 - p) & 3
+            : (p) => (4 - p) & 3;
+        const portsKey = (type, r) => {
+            const ps = [];
+            for (const [a, b] of BASE_CONNECTIONS[type]) {
+                ps.push(rot(a, r), rot(b, r));
+            }
+            return ps.sort().join(',');
+        };
+        const mirrorRotFor = (type, r) => {
+            const want = (() => {
+                const ps = [];
+                for (const [a, b] of BASE_CONNECTIONS[type]) {
+                    ps.push(mPort(rot(a, r)), mPort(rot(b, r)));
+                }
+                return ps.sort().join(',');
+            })();
+            for (let nr = 0; nr < 4; nr++) {
+                if (portsKey(type, nr) === want) return nr;
+            }
+            return r;   // unreachable for achiral tile shapes; safe fallback
+        };
+        const mapKeyStr = (key) => {
+            const parts = key.split(',').map(Number);
+            if (quadMode) {
+                const qr = parts[0] >> 1, qc = parts[1] >> 1;
+                const a = mapCell(qr * 2, qc * 2);
+                const b = mapCell(qr * 2 + 1, qc * 2 + 1);
+                return Math.min(a[0], b[0]) + ',' + Math.min(a[1], b[1]);
+            }
+            const m = mapCell(parts[0], parts[1]);
+            return m[0] + ',' + m[1];
+        };
+        const ng = Array.from({ length: R }, () => new Array(C));
+        for (let r = 0; r < R; r++) {
+            for (let c = 0; c < C; c++) {
+                const t = grid[r][c];
+                t.rotation = mirrorRotFor(t.type, t.rotation);
+                if (typeof t._solution === 'number') t._solution = mirrorRotFor(t.type, t._solution);
+                if (t._crossLanes) {
+                    t._crossLanes = t._crossLanes.map(([a, b, p]) => [mPort(a), mPort(b), p]);
+                }
+                if (t._twin && t._twin.partner) t._twin.partner = mapKeyStr(t._twin.partner);
+                const m = mapCell(r, c);
+                ng[m[0]][m[1]] = t;
+            }
+        }
+        const mapEp = (ep) => {
+            if (!ep) return null;
+            const m = mapCell(ep.row, ep.col);
+            return Object.assign({}, ep, { row: m[0], col: m[1], port: mPort(ep.port) });
+        };
+        entry  = mapEp(entry);  exit  = mapEp(exit);
+        entry2 = mapEp(entry2); exit2 = mapEp(exit2);
+        entry3 = mapEp(entry3); exit3 = mapEp(exit3);
+        entry4 = mapEp(entry4); exit4 = mapEp(exit4);
+        locked = new Set(Array.from(locked).map((k) => {
+            const parts = k.split(',').map(Number);
+            const m = mapCell(parts[0], parts[1]);
+            return m[0] + ',' + m[1];
+        }));
+        if (quadScramble) {
+            const QR = R / 2, QC = C / 2;
+            const nq = Array.from({ length: QR }, () => new Array(QC));
+            for (let qr = 0; qr < QR; qr++) {
+                for (let qc = 0; qc < QC; qc++) {
+                    const nqr = vertical ? QR - 1 - qr : qr;
+                    const nqc = vertical ? qc : QC - 1 - qc;
+                    nq[nqr][nqc] = (4 - quadScramble[qr][qc]) & 3;
+                }
+            }
+            quadScramble = nq;
+        }
+        grid = ng;
+        updateHighlighted();
+        return true;
+    }
+
     // Reset to a "no puzzle loaded" state. Used by the title-O renderer to
     // wipe the synthetic 2×2 snapshot it loaded for inline rendering — so
     // a subsequent Render.draw before the next real puzzle finishes building
@@ -3452,6 +3555,7 @@ const Maze = (() => {
         T_STRAIGHT, T_ELBOW, T_CROSS,
         init, rotate, hint, applyHintAt, togglePlayerLock, setDimensions, setHurry, setAbort, setTwoPathMode, setPathCount, setQuadMode,
         rotateBoard,   // whole-board 90° penalty rotation — see its comment; Gates.rotateBoard must run alongside
+        flipBoard,     // whole-board mirror penalty (variant 2) — Gates.flipBoard must run alongside
         snapshotState, loadSnapshot, clear,
         getConnections,
         hasShortcutWithin,

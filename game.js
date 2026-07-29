@@ -478,9 +478,10 @@
             } else if (move.type === 'gate') {
                 if (Render.animateGateRotation) Render.animateGateRotation(!move.ccw);
             }
-            // ('rotateBoard' deliberately falls through: undoing the
-            // penalty rotation snaps the board back with a refit — no
-            // per-tile inverse animation exists for a whole-board turn.)
+            // ('rotateBoard' and 'flipBoard' deliberately fall through:
+            // undoing a penalty snaps the board back — with a refit for
+            // the rotation's dims swap — no per-tile inverse animation
+            // exists for a whole-board transform.)
         }
         function undo() {
             if (isBuilding || isReplaying || boardRotating) return;
@@ -838,21 +839,24 @@
             lastWon = Maze.won;
         }
 
-        // ── Joined-paths penalty rotation ────────────────────────────
+        // ── Joined-paths penalty (rotate or flip) ────────────────────
         // When two different-color paths JOIN (the flashing-red overlap
-        // state), the whole board shakes and then rotates 90° — random
-        // CW/CCW — as a chaos penalty. The DATA genuinely rotates
-        // (Maze.rotateBoard + Gates.rotateBoard; applyBoardRotation is
-        // the one orchestrator), dims swap so non-square boards refit to
-        // the new aspect, and the move records as `rotateBoard` so
-        // replays re-apply it and undo can rewind through it (the
-        // snapshot-based undo stack restores the pre-rotation board —
-        // both undo paths refit when dims change). Input is locked for
-        // the full shake+turn via `boardRotating` (plus the canvas's
+        // state), the whole board shakes and then — 50/50 — either
+        // ROTATES 90° (CW/CCW random; dims swap, non-square boards
+        // refit to the new aspect) or MIRROR-FLIPS across a random axis
+        // (dims unchanged). The DATA genuinely transforms
+        // (Maze.rotateBoard/flipBoard + the Gates twins;
+        // applyBoardRotation/applyBoardFlip are the orchestrators), and
+        // the move records as `rotateBoard`/`flipBoard` so replays
+        // re-apply it and undo can rewind through it (the snapshot-based
+        // undo stack restores the pre-penalty board — both undo paths
+        // refit when dims change). Input is locked for the full
+        // shake+transform via `boardRotating` (plus the canvas's
         // pointer-events-off hold class). Trigger is EDGE-based — the
-        // joined state persists after the rotation (connectivity is
-        // rotation-invariant), so only a fresh join fires it; the player
-        // must un-join and re-join to be punished twice.
+        // joined state persists through both variants (connectivity is
+        // invariant under rotation AND mirroring), so only a fresh join
+        // fires it; the player must un-join and re-join to be punished
+        // twice.
         let boardRotating = false;
         function applyBoardRotation(ccw) {
             const oldR = Maze.ROWS, oldC = Maze.COLS;
@@ -864,36 +868,61 @@
             Render.refit();
             return true;
         }
+        // Mirror-flip variant (dims unchanged — no refit needed; the
+        // snapshot undo path's dims check simply never fires for flips).
+        function applyBoardFlip(vertical) {
+            if (!Maze.flipBoard || !Maze.flipBoard(vertical)) return false;
+            if (typeof Gates !== 'undefined' && Gates.flipBoard) {
+                Gates.flipBoard(vertical, Maze.ROWS, Maze.COLS);
+            }
+            if (Maze.recompute) Maze.recompute();
+            return true;
+        }
         function maybeTriggerBoardRotation() {
             if (boardRotating || isReplaying || isBuilding) return;
             if (!Maze.grid || Maze.won) return;
             // Tutorial's teaching script deliberately joins paths — the
             // fixed grid must never rotate under the overlay.
             if (typeof Tutorial !== 'undefined' && Tutorial.isOpen && Tutorial.isOpen()) return;
-            runBoardRotation();
+            runBoardPenalty();
         }
-        async function runBoardRotation() {
+        // Variety (user call 2026-07-29): half the time the penalty is the
+        // 90° rotation (CW/CCW random), the other half a MIRROR FLIP
+        // across a random axis. Both shake first, both record as
+        // replayable moves, both lock input for the duration.
+        async function runBoardPenalty() {
             boardRotating = true;
             try {
-                const ccw = Math.random() < 0.5;
+                const doFlip = Math.random() < 0.5;
                 await (Render.shakeBoard ? Render.shakeBoard() : Promise.resolve());
                 // Player quit during the shake → menu wiped the grid;
-                // nothing to rotate.
+                // nothing to transform.
                 if (!Maze.grid) return;
-                await Render.rotateBoardVisual(ccw, function () {
-                    if (!applyBoardRotation(ccw)) return;
-                    // Bank + record AFTER the data flip: recordMove pushes
-                    // the pre-rotation snapshot for undo and appends the
-                    // replayable move at the apply moment.
-                    recordMove({ type: 'rotateBoard', ccw: ccw });
-                    Render.draw();
-                });
+                if (doFlip && Render.flipBoardVisual) {
+                    const vertical = Math.random() < 0.5;
+                    await Render.flipBoardVisual(vertical, function () {
+                        if (!applyBoardFlip(vertical)) return;
+                        recordMove({ type: 'flipBoard', vertical: vertical });
+                        Render.draw();
+                    });
+                } else {
+                    const ccw = Math.random() < 0.5;
+                    await Render.rotateBoardVisual(ccw, function () {
+                        if (!applyBoardRotation(ccw)) return;
+                        // Bank + record AFTER the data flip: recordMove
+                        // pushes the pre-penalty snapshot for undo and
+                        // appends the replayable move at the apply moment.
+                        recordMove({ type: 'rotateBoard', ccw: ccw });
+                        Render.draw();
+                    });
+                }
             } finally {
                 boardRotating = false;
             }
-            // Re-sync the SFX/win machine against the rotated board.
-            // lastJoined is still true (the overlap survives rotation), so
-            // this can't re-trigger — the edge gate above sees no edge.
+            // Re-sync the SFX/win machine against the transformed board.
+            // lastJoined is still true (the overlap survives both penalty
+            // variants), so this can't re-trigger — the edge gate above
+            // sees no edge.
             if (Maze.grid) refresh();
         }
 
@@ -971,6 +1000,17 @@
                     });
                 } else {
                     applyBoardRotation(move.ccw);
+                }
+            } else if (move.type === 'flipBoard') {
+                // Mirror-flip penalty variant — same sync-data/async-visual
+                // contract as rotateBoard above.
+                if (Render.flipBoardVisual) {
+                    Render.flipBoardVisual(move.vertical, function () {
+                        applyBoardFlip(move.vertical);
+                        Render.draw();
+                    });
+                } else {
+                    applyBoardFlip(move.vertical);
                 }
             }
         }
