@@ -500,14 +500,32 @@ const Maze = (() => {
         return false;
     }
 
+    // "r,c" of EVERY path's entry/exit cell. Terminal-lit rule
+    // (2026-07-28, user screenshots): every terminal must light its
+    // first tile from the very first render — the endpoint tile's
+    // rotation was pinned by rotateToExpose, and nothing after the
+    // build may re-randomize it. The two reroll passes below used to
+    // skip only path 1's `entry`/`exit`, so the 2-path canonical
+    // loop's rerolls shipped boards with dark secondary terminals.
+    // (An elbow endpoint still starts "wrong" half the time — its
+    // other arm can point either way — so no free solve information
+    // beyond the lit stub the notch already implies.)
+    function endpointCellKeys() {
+        const s = new Set();
+        for (const ep of [entry, exit, entry2, exit2, entry3, exit3, entry4, exit4]) {
+            if (ep) s.add(ep.row + ',' + ep.col);
+        }
+        return s;
+    }
+
     // Re-roll just rotations (preserving tile types). Used after smartReroll
     // changes types — we want to randomize rotations to avoid rotation-cost
     // shortcuts without undoing the type changes.
     function rerollRotationsOnly() {
+        const eps = endpointCellKeys();
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
-                if (r === entry.row && c === entry.col) continue;
-                if (r === exit.row  && c === exit.col)  continue;
+                if (eps.has(r + ',' + c)) continue;
                 grid[r][c].rotation = Math.floor(Math.random() * 4);
             }
         }
@@ -597,10 +615,10 @@ const Maze = (() => {
     // their type & _solution; their rotation is randomized again so a "lucky"
     // intended-solution alignment doesn't trap us below the shortcut threshold.
     function rerollAllRotations() {
+        const eps = endpointCellKeys();
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
-                if (r === entry.row && c === entry.col) continue;
-                if (r === exit.row  && c === exit.col)  continue;
+                if (eps.has(r + ',' + c)) continue;
                 const t = grid[r][c];
                 if (t._solution === undefined) t.type = pickFillerType(r, c);
                 t.rotation = Math.floor(Math.random() * 4);
@@ -2133,6 +2151,64 @@ const Maze = (() => {
     // guarantee is worth more than exact canonical purity.
     const MIN_PATH_SCRAMBLE_FRACTION = 0.58;
 
+    // ── Quad terminal-lit helpers ─────────────────────────────────────
+    // The terminal-lit rule (see endpointCellKeys) needs different
+    // machinery in quad mode: turning a quad PERMUTES sub-tile
+    // positions, so whichever sub-tile lands on an endpoint cell may or
+    // may not expose the notch port. Every quad-turning site
+    // (scrambleQuads, ensureMinScramble, breakPreWonPaths) therefore
+    // restricts an endpoint quad's turns to values that keep all its
+    // notch stubs lit — checked by SIMULATION: rotate the quad through
+    // its 4 states on the live grid (4 turns = identity, so the grid
+    // comes back untouched) and record which states expose every
+    // endpoint port in the quad. Twin pairs share one turn value, so
+    // the check covers both quads of a pair.
+    function endpointCellsInQuad(qr, qc) {
+        const out = [];
+        for (const ep of [entry, exit, entry2, exit2, entry3, exit3, entry4, exit4]) {
+            if (ep && (ep.row >> 1) === qr && (ep.col >> 1) === qc) out.push(ep);
+        }
+        return out;
+    }
+    // Relative turns (subset of [1,2,3]) that keep every terminal in the
+    // (qr,qc) quad — and its twin partner (pqr,pqc), pass null when
+    // absent — lit. Quads with no terminals return the full [1,2,3].
+    // Can return [] for an endpoint quad whose other states all darken
+    // a stub; callers must then leave the quad alone.
+    function allowedQuadTurns(qr, qc, pqr, pqc) {
+        const okFor = (tqr, tqc) => {
+            const eps = endpointCellsInQuad(tqr, tqc);
+            if (eps.length === 0) return null;   // unconstrained
+            const ok = [];
+            for (let t = 0; t < 4; t++) {
+                let all = true;
+                for (const ep of eps) {
+                    if (!tileHasPort(grid[ep.row][ep.col], ep.port)) { all = false; break; }
+                }
+                if (all) ok.push(t);
+                rotateQuad(tqr * 2, tqc * 2, false);
+            }
+            return ok;   // grid restored — 4 rotations are the identity
+        };
+        let allowed = [1, 2, 3];
+        const a = okFor(qr, qc);
+        if (a) allowed = allowed.filter((t) => a.includes(t));
+        if (pqr !== null && pqr !== undefined && !(pqr === qr && pqc === qc)) {
+            const b = okFor(pqr, pqc);
+            if (b) allowed = allowed.filter((t) => b.includes(t));
+        }
+        return allowed;
+    }
+    // Twin partner quad coords for the quad at (qr,qc), or null. Every
+    // quad-turn site needs this to keep pairs in lockstep.
+    function quadTwinPartner(qr, qc) {
+        const tile = grid[qr * 2][qc * 2];
+        if (!tile || !tile._twin) return null;
+        const [pr, pc] = tile._twin.partner.split(',').map(Number);
+        if (pr / 2 === qr && pc / 2 === qc) return null;
+        return [pr / 2, pc / 2];
+    }
+
     function ensureMinScramble() {
         const pathIdxs = [0];
         if (entry2 && exit2) pathIdxs.push(1);
@@ -2158,19 +2234,24 @@ const Maze = (() => {
                 // shuffle() returns a copy (doesn't mutate) — use it, or
                 // the picks would carry a top-left scan-order bias.
                 const quadPicks = shuffle(untouched);
-                for (let i = 0; i < quadPicks.length && need > 0; i++, need--) {
+                for (let i = 0; i < quadPicks.length && need > 0; i++) {
                     // 1-3 turns, twin partner in lockstep — mirrors the
-                    // quad branch of breakPreWonPaths.
+                    // quad branch of breakPreWonPaths. Endpoint quads may
+                    // only take turns that keep their notch stubs lit
+                    // (terminal-lit rule); a quad with no qualifying turn
+                    // is skipped WITHOUT counting toward the quota.
                     const [qr, qc] = quadPicks[i];
-                    const turns = 1 + Math.floor(Math.random() * 3);
+                    const pq = quadTwinPartner(qr, qc);
+                    const allowed = allowedQuadTurns(qr, qc, pq ? pq[0] : null, pq ? pq[1] : null);
+                    if (allowed.length === 0) continue;
+                    const turns = allowed[Math.floor(Math.random() * allowed.length)];
                     quadScramble[qr][qc] = (quadScramble[qr][qc] + turns) & 3;
                     for (let t = 0; t < turns; t++) rotateQuad(qr * 2, qc * 2, false);
-                    const tile = grid[qr * 2][qc * 2];
-                    if (tile && tile._twin) {
-                        const [pr, pc] = tile._twin.partner.split(',').map(Number);
-                        quadScramble[pr / 2][pc / 2] = (quadScramble[pr / 2][pc / 2] + turns) & 3;
-                        for (let t = 0; t < turns; t++) rotateQuad(pr, pc, false);
+                    if (pq) {
+                        quadScramble[pq[0]][pq[1]] = (quadScramble[pq[0]][pq[1]] + turns) & 3;
+                        for (let t = 0; t < turns; t++) rotateQuad(pq[0] * 2, pq[1] * 2, false);
                     }
+                    need--;
                 }
             }
             return;
@@ -2277,16 +2358,20 @@ const Maze = (() => {
             const cell = cells[Math.floor(Math.random() * cells.length)];
             if (quadMode && quadScramble) {
                 // 1-3 extra turns on the quad containing the cell, twin
-                // partner in lockstep (mirrors scrambleQuads).
+                // partner in lockstep (mirrors scrambleQuads). Endpoint
+                // quads honor the terminal-lit rule: only turns that keep
+                // their notch stubs lit qualify — none qualifying, try a
+                // different random cell on the next guard iteration.
                 const qr = Math.floor(cell.row / 2), qc = Math.floor(cell.col / 2);
-                const turns = 1 + Math.floor(Math.random() * 3);
+                const pq = quadTwinPartner(qr, qc);
+                const allowed = allowedQuadTurns(qr, qc, pq ? pq[0] : null, pq ? pq[1] : null);
+                if (allowed.length === 0) continue;
+                const turns = allowed[Math.floor(Math.random() * allowed.length)];
                 quadScramble[qr][qc] = (quadScramble[qr][qc] + turns) & 3;
                 for (let i = 0; i < turns; i++) rotateQuad(qr * 2, qc * 2, false);
-                const tile = grid[qr * 2][qc * 2];
-                if (tile && tile._twin) {
-                    const [pr, pc] = tile._twin.partner.split(',').map(Number);
-                    quadScramble[pr / 2][pc / 2] = (quadScramble[pr / 2][pc / 2] + turns) & 3;
-                    for (let i = 0; i < turns; i++) rotateQuad(pr, pc, false);
+                if (pq) {
+                    quadScramble[pq[0]][pq[1]] = (quadScramble[pq[0]][pq[1]] + turns) & 3;
+                    for (let i = 0; i < turns; i++) rotateQuad(pq[0] * 2, pq[1] * 2, false);
                 }
             } else {
                 const t = grid[cell.row][cell.col];
@@ -2563,7 +2648,16 @@ const Maze = (() => {
             for (let qc = 0; qc < qCOLS; qc++) {
                 const key = qr + ',' + qc;
                 if (scrambled.has(key)) continue;
-                const turns = Math.floor(Math.random() * 4);
+                // Terminal-lit rule: an endpoint quad (or one twinned to
+                // an endpoint quad — pairs share one turn value) may only
+                // take turns that keep its notch stub(s) lit. 0 always
+                // qualifies (the solved state exposes by construction),
+                // so the pool is never empty; quads carrying no terminal
+                // get the same uniform 0-3 roll as before.
+                const pq = quadTwinPartner(qr, qc);
+                const pool = allowedQuadTurns(qr, qc, pq ? pq[0] : null, pq ? pq[1] : null)
+                    .concat([0]);
+                const turns = pool[Math.floor(Math.random() * pool.length)];
                 quadScramble[qr][qc] = turns;
                 for (let i = 0; i < turns; i++) rotateQuad(qr * 2, qc * 2, false);
                 scrambled.add(key);
