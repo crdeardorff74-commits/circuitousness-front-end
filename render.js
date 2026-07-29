@@ -2961,15 +2961,15 @@ const Render = (() => {
         if (spinInTimer !== null) { clearTimeout(spinInTimer); spinInTimer = null; }
         if (spinGhost && spinGhost.parentNode) spinGhost.parentNode.removeChild(spinGhost);
         spinGhost = null;
-        // Also tear down the joined-paths ROTATION visuals (shake + ghost
-        // — see the board-rotation section below): both features hide the
-        // real canvas behind `.maze-spin-hold`, so any quit-to-menu path
-        // that cancels one must cancel the other or the next game's board
-        // starts invisible. marathon goToMenu + potd quitToMenu both land
-        // here.
+        // Also tear down the joined-paths PENALTY visuals (see the
+        // penalty section below — the shake + turn animations both live
+        // ON the ghost, so removing it kills them too): both features
+        // hide the real canvas behind `.maze-spin-hold`, so any
+        // quit-to-menu path that cancels one must cancel the other or
+        // the next game's board starts invisible. marathon goToMenu +
+        // potd quitToMenu both land here.
         if (rotateGhost && rotateGhost.parentNode) rotateGhost.parentNode.removeChild(rotateGhost);
         rotateGhost = null;
-        if (shakeAnim) { try { shakeAnim.cancel(); } catch (e) {} shakeAnim = null; }
         if (canvas) {
             canvas.classList.remove('maze-spin-hold');
             canvas.classList.remove('maze-spin-in');
@@ -3006,49 +3006,99 @@ const Render = (() => {
         canvas.classList.add('maze-spin-hold');
         spinOutStartedAt = Date.now();
     }
-    // ── Joined-paths penalty rotation visuals ────────────────────────
-    // game.js's runBoardRotation drives these: shakeBoard() vibrates the
-    // live canvas as the warning tell, then rotateBoardVisual(ccw,
-    // applyFn) plays the quarter-turn. Same ghost trick as the spin
-    // transition above — snapshot the pre-rotation board onto a fixed
-    // overlay, hide the real canvas (`.maze-spin-hold`, shared with the
-    // spin so cancelSpin covers both), let applyFn rotate the DATA +
-    // refit + redraw invisibly, then animate the ghost turning ±90° and
-    // scaling/translating onto the new canvas rect (non-square boards
-    // swap aspect, so refit resizes — the scale factor bridges old and
-    // new footprints). Web Animations API (not CSS classes) because the
-    // end transform depends on measured rects. Reduced-motion players
-    // get the data rotation instantly with no theatrics.
+    // ── Joined-paths penalty visuals (rotate / flip) ─────────────────
+    // game.js's runBoardPenalty drives these. Same ghost trick as the
+    // spin transition above — snapshot the pre-penalty board onto a
+    // fixed overlay, hide the real canvas (`.maze-spin-hold`, shared
+    // with the spin so cancelSpin covers both), let applyFn transform
+    // the DATA + redraw invisibly, then animate the GHOST: first the
+    // shake/vibration warning, then the turn. The shake lives on the
+    // ghost (not the live canvas) so the whole sequence is one visual
+    // pipeline that REPLAYS identically — the recorded move's timestamp
+    // is the data-apply moment, and both live play and playback show
+    // shake-then-turn from that same instant (the shake was initially a
+    // separate pre-apply stage on the real canvas, which playback
+    // couldn't reproduce — user caught the missing shake). Web
+    // Animations API (not CSS classes) because the rotation's end
+    // transform depends on measured rects. Reduced-motion players get
+    // the data transform instantly with no theatrics.
     let rotateGhost = null;
-    let shakeAnim   = null;
-    const SHAKE_MS       = 450;
+    const SHAKE_MS       = 900;
     const ROTATE_ANIM_MS = 620;
 
-    function shakeBoard() {
-        if (!canvas || _prefersReducedMotion()) return Promise.resolve();
-        // Small translate jitter, decaying — reads as a vibration warning
-        // before the board is wrenched around.
-        const j = Math.max(3, Math.round((canvas.getBoundingClientRect().width || 300) * 0.012));
-        try {
-            shakeAnim = canvas.animate([
-                { transform: 'translate(0, 0)' },
-                { transform: 'translate(' +  j + 'px, ' + (-j) + 'px)' },
-                { transform: 'translate(' + (-j) + 'px, ' +  j + 'px)' },
-                { transform: 'translate(' +  j + 'px, ' +  j + 'px)' },
-                { transform: 'translate(' + (-j) + 'px, ' + (-j) + 'px)' },
-                { transform: 'translate(' +  Math.ceil(j / 2) + 'px, 0)' },
-                { transform: 'translate(' + (-Math.ceil(j / 2)) + 'px, 0)' },
-                { transform: 'translate(0, 0)' }
-            ], { duration: SHAKE_MS, easing: 'ease-in-out' });
-        } catch (e) { shakeAnim = null; return Promise.resolve(); }
-        const a = shakeAnim;
+    // Snapshot the live canvas onto a ghost overlay + hide the real
+    // canvas. Returns null when the effect can't run (zero rect / draw
+    // failure) — callers then just apply the data with no animation.
+    function _makePenaltyGhost(rect) {
+        if (rect.width <= 0 || rect.height <= 0) return null;
+        const g = document.createElement('canvas');
+        g.width  = canvas.width;
+        g.height = canvas.height;
+        g.className = 'mazeRotateGhost';
+        g.style.left   = rect.left + 'px';
+        g.style.top    = rect.top + 'px';
+        g.style.width  = rect.width + 'px';
+        g.style.height = rect.height + 'px';
+        try { g.getContext('2d').drawImage(canvas, 0, 0); }
+        catch (e) { return null; }
+        canvas.parentNode.insertBefore(g, canvas.nextSibling);
+        rotateGhost = g;
+        canvas.classList.add('maze-spin-hold');
+        return g;
+    }
+    // Shake the ghost, then play `turnKeyframes` on it, then clean up and
+    // resolve. All fallbacks funnel into one settle; cancelSpin's ghost
+    // removal makes every path double-cleanup-safe.
+    function _runPenaltyAnim(g, rect, turnKeyframes) {
+        const finish = function () {
+            if (rotateGhost === g) rotateGhost = null;
+            if (g.parentNode) g.parentNode.removeChild(g);
+            canvas.classList.remove('maze-spin-hold');
+        };
+        const j = Math.max(3, Math.round((rect.width || 300) * 0.012));
+        const jitter = [
+            { transform: 'translate(0, 0)' },
+            { transform: 'translate(' +  j + 'px, ' + (-j) + 'px)' },
+            { transform: 'translate(' + (-j) + 'px, ' +  j + 'px)' },
+            { transform: 'translate(' +  j + 'px, ' +  j + 'px)' },
+            { transform: 'translate(' + (-j) + 'px, ' + (-j) + 'px)' },
+            { transform: 'translate(' +  Math.ceil(j / 2) + 'px, 0)' },
+            { transform: 'translate(' + (-Math.ceil(j / 2)) + 'px, 0)' },
+            { transform: 'translate(0, 0)' }
+        ];
         return new Promise(function (res) {
-            const settle = function () { if (shakeAnim === a) shakeAnim = null; res(); };
-            a.finished ? a.finished.then(settle, settle) : setTimeout(settle, SHAKE_MS + 100);
-            // Belt-and-braces timeout in case `finished` never resolves
-            // (cancelSpin's cancel() rejects it — settle runs via the
-            // rejection handler above, so this rarely fires).
-            setTimeout(settle, SHAKE_MS + 200);
+            let done = false;
+            const settle = function () {
+                if (done) return;
+                done = true;
+                finish();
+                res();
+            };
+            const startTurn = function () {
+                if (done) return;
+                let anim = null;
+                try {
+                    anim = g.animate(turnKeyframes,
+                        { duration: ROTATE_ANIM_MS, easing: 'cubic-bezier(0.35, 0, 0.25, 1)', fill: 'forwards' });
+                } catch (e) { settle(); return; }
+                anim.finished ? anim.finished.then(settle, settle)
+                              : setTimeout(settle, ROTATE_ANIM_MS + 100);
+            };
+            // Two iterations at half duration (not one long pass): SHAKE_MS
+            // doubled 450 → 900 (user call), and a single stretched cycle
+            // would halve the jitter frequency into a slow wobble — two
+            // fast cycles keep the vibration feel for the longer window.
+            // The jitter's last frame returns to (0,0), so the loop seam
+            // is invisible.
+            let shake = null;
+            try {
+                shake = g.animate(jitter,
+                    { duration: SHAKE_MS / 2, iterations: 2, easing: 'ease-in-out' });
+            } catch (e) {}
+            if (shake && shake.finished) shake.finished.then(startTurn, startTurn);
+            else setTimeout(startTurn, shake ? SHAKE_MS + 60 : 0);
+            // Global event-drop fallback covering both stages.
+            setTimeout(settle, SHAKE_MS + ROTATE_ANIM_MS + 400);
         });
     }
 
@@ -3058,24 +3108,7 @@ const Render = (() => {
             return Promise.resolve();
         }
         const oldRect = canvas.getBoundingClientRect();
-        let g = null;
-        if (oldRect.width > 0 && oldRect.height > 0) {
-            g = document.createElement('canvas');
-            g.width  = canvas.width;
-            g.height = canvas.height;
-            g.className = 'mazeRotateGhost';
-            g.style.left   = oldRect.left + 'px';
-            g.style.top    = oldRect.top + 'px';
-            g.style.width  = oldRect.width + 'px';
-            g.style.height = oldRect.height + 'px';
-            try { g.getContext('2d').drawImage(canvas, 0, 0); }
-            catch (e) { g = null; }
-        }
-        if (g) {
-            canvas.parentNode.insertBefore(g, canvas.nextSibling);
-            rotateGhost = g;
-            canvas.classList.add('maze-spin-hold');
-        }
+        const g = _makePenaltyGhost(oldRect);
         // Rotate the DATA while the real canvas is hidden — dims swap,
         // refit resizes the canvas, the rotated board is drawn invisibly.
         if (applyFn) applyFn();
@@ -3088,31 +3121,10 @@ const Render = (() => {
         const dy = (newRect.top  + newRect.height / 2) - (oldRect.top  + oldRect.height / 2);
         const s  = oldRect.height > 0 ? newRect.width / oldRect.height : 1;
         const deg = ccw ? -90 : 90;
-        const finish = function () {
-            if (rotateGhost === g) rotateGhost = null;
-            if (g.parentNode) g.parentNode.removeChild(g);
-            canvas.classList.remove('maze-spin-hold');
-        };
-        let anim = null;
-        try {
-            anim = g.animate([
-                { transform: 'translate(0, 0) rotate(0deg) scale(1)' },
-                { transform: 'translate(' + dx + 'px, ' + dy + 'px) rotate(' + deg + 'deg) scale(' + s + ')' }
-            ], { duration: ROTATE_ANIM_MS, easing: 'cubic-bezier(0.35, 0, 0.25, 1)', fill: 'forwards' });
-        } catch (e) { finish(); return Promise.resolve(); }
-        return new Promise(function (res) {
-            let done = false;
-            const settle = function () {
-                if (done) return;
-                done = true;
-                // cancelSpin may have already torn everything down — the
-                // guards inside finish() make the double-cleanup safe.
-                finish();
-                res();
-            };
-            anim.finished ? anim.finished.then(settle, settle) : setTimeout(settle, ROTATE_ANIM_MS + 100);
-            setTimeout(settle, ROTATE_ANIM_MS + 250);   // event-drop fallback
-        });
+        return _runPenaltyAnim(g, oldRect, [
+            { transform: 'translate(0, 0) rotate(0deg) scale(1)' },
+            { transform: 'translate(' + dx + 'px, ' + dy + 'px) rotate(' + deg + 'deg) scale(' + s + ')' }
+        ]);
     }
 
     // Penalty variant 2: mirror FLIP. Same ghost/hold contract as
@@ -3129,50 +3141,14 @@ const Render = (() => {
             return Promise.resolve();
         }
         const rect = canvas.getBoundingClientRect();
-        let g = null;
-        if (rect.width > 0 && rect.height > 0) {
-            g = document.createElement('canvas');
-            g.width  = canvas.width;
-            g.height = canvas.height;
-            g.className = 'mazeRotateGhost';
-            g.style.left   = rect.left + 'px';
-            g.style.top    = rect.top + 'px';
-            g.style.width  = rect.width + 'px';
-            g.style.height = rect.height + 'px';
-            try { g.getContext('2d').drawImage(canvas, 0, 0); }
-            catch (e) { g = null; }
-        }
-        if (g) {
-            canvas.parentNode.insertBefore(g, canvas.nextSibling);
-            rotateGhost = g;
-            canvas.classList.add('maze-spin-hold');
-        }
+        const g = _makePenaltyGhost(rect);
         if (applyFn) applyFn();
         if (!g) return Promise.resolve();
         const axis = vertical ? 'rotateX' : 'rotateY';
-        const finish = function () {
-            if (rotateGhost === g) rotateGhost = null;
-            if (g.parentNode) g.parentNode.removeChild(g);
-            canvas.classList.remove('maze-spin-hold');
-        };
-        let anim = null;
-        try {
-            anim = g.animate([
-                { transform: 'perspective(70rem) ' + axis + '(0deg)' },
-                { transform: 'perspective(70rem) ' + axis + '(180deg)' }
-            ], { duration: ROTATE_ANIM_MS, easing: 'cubic-bezier(0.35, 0, 0.25, 1)', fill: 'forwards' });
-        } catch (e) { finish(); return Promise.resolve(); }
-        return new Promise(function (res) {
-            let done = false;
-            const settle = function () {
-                if (done) return;
-                done = true;
-                finish();
-                res();
-            };
-            anim.finished ? anim.finished.then(settle, settle) : setTimeout(settle, ROTATE_ANIM_MS + 100);
-            setTimeout(settle, ROTATE_ANIM_MS + 250);   // event-drop fallback
-        });
+        return _runPenaltyAnim(g, rect, [
+            { transform: 'perspective(70rem) ' + axis + '(0deg)' },
+            { transform: 'perspective(70rem) ' + axis + '(180deg)' }
+        ]);
     }
 
     // (A brief experiment routed the new-puzzle SFX cue through a
@@ -3216,7 +3192,7 @@ const Render = (() => {
              fadeLanes, clearFadingLanes,  // broken-chain fade triggered alongside the twin-break SFX
              shuffleBackground,  // marathon.js calls on each new puzzle to draw a fresh body bg from the 54-image bag
              spinOutBoard, spinInBoard, cancelSpin,  // 3D next-puzzle spin transition (marathon.js drives; see the section comment)
-             shakeBoard, rotateBoardVisual, flipBoardVisual,  // joined-paths penalty visuals (game.js runBoardPenalty drives)
+             rotateBoardVisual, flipBoardVisual,  // joined-paths penalty visuals, shake included (game.js runBoardPenalty drives)
              debugCycleBackground,  // debug-mode ArrowRight steps sequentially through the bg pool
              setBackgroundEnabled,  // settings.js calls to toggle bg images off (body goes pure black)
              refit: resize };  // public hook to recompute canvas dims after Maze.ROWS/COLS change

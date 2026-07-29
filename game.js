@@ -888,16 +888,17 @@
         }
         // Variety (user call 2026-07-29): half the time the penalty is the
         // 90° rotation (CW/CCW random), the other half a MIRROR FLIP
-        // across a random axis. Both shake first, both record as
-        // replayable moves, both lock input for the duration.
+        // across a random axis. Both record as replayable moves and lock
+        // input for the duration. The shake warning lives INSIDE the
+        // Render visuals (on the ghost) — the data applies immediately at
+        // trigger time and the recorded move's timestamp marks that same
+        // instant, so playback reproduces shake-then-turn exactly (the
+        // shake was originally a separate pre-apply stage out here, which
+        // replays skipped — user caught it missing).
         async function runBoardPenalty() {
             boardRotating = true;
             try {
                 const doFlip = Math.random() < 0.5;
-                await (Render.shakeBoard ? Render.shakeBoard() : Promise.resolve());
-                // Player quit during the shake → menu wiped the grid;
-                // nothing to transform.
-                if (!Maze.grid) return;
                 if (doFlip && Render.flipBoardVisual) {
                     const vertical = Math.random() < 0.5;
                     await Render.flipBoardVisual(vertical, function () {
