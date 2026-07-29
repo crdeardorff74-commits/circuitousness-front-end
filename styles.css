@@ -1454,10 +1454,24 @@ body:not(.mode-potd) .menuSection.menuPotdSlots { display: none; }
     }
     /* Rigid spacer (see base #menu::before): smaller basis on short
        viewports — the title anchors a bit higher but IDENTICALLY on
-       every tab, and the reclaimed ~4vh is what lets the tall PotD
-       stack fit without a scrollbar. */
+       every tab, and the reclaimed ~5vh is what lets the tall PotD
+       stack fit without a scrollbar. (3vh → 2vh in the second squeeze
+       round — a residual few-px scrollbar band survived the first.) */
     #menu::before {
-        flex-basis: clamp(0rem, 3vh, 4.5rem);
+        flex-basis: clamp(0rem, 2vh, 4.5rem);
+    }
+    /* Bottom buttons + legal footer: vh-fluid vertical chrome. Shared
+       by every tab (all below the tabs, so no cross-tab drift) — part
+       of the same residual-band squeeze as the spacer reduction above. */
+    .menuBottomBtns #menuHowToBtn,
+    .menuBottomBtns #menuLeaderboardBtn,
+    .menuBottomBtns #menuCreditsBtn {
+        padding-top:    clamp(0.35rem, 1vh, 0.65rem);
+        padding-bottom: clamp(0.35rem, 1vh, 0.65rem);
+    }
+    #menu .menu-legal-footer {
+        margin-top: clamp(0.2rem, 1vh, 1.4rem);
+        font-size: clamp(0.65rem, 1.7vh, 0.85rem);
     }
     /* PotD is the tallest tab (streak strip + TWO 4-card sections where
        Zen/Marathon show one 2-card row) — it alone overflowed short
