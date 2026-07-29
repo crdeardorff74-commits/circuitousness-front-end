@@ -98,7 +98,7 @@ body {
 /* ----- 3D board-spin transition (Zen/Marathon next-puzzle) -----
    Driven by render.js spinOutBoard/spinInBoard — see the section comment
    there for the ghost/hold/spin-in choreography. The ANIMATION DURATIONS
-   here must match render.js's SPIN_OUT_MS (340) / SPIN_IN_MS (400).
+   here must match render.js's SPIN_OUT_MS (480) / SPIN_IN_MS (560).
    The transforms tumble the board in genuine 3D: an off-axis rotate3d
    (mostly Y with a little X/Z wobble so it reads as a tumble, not a flat
    spin) while translateZ recedes it into the distance. perspective() is
@@ -110,7 +110,7 @@ body {
     position: fixed;
     z-index: 0;             /* DOM order (inserted right after #maze) keeps it under the HUD */
     pointer-events: none;
-    animation: mazeSpinOut 340ms cubic-bezier(0.45, 0, 1, 1) forwards;
+    animation: mazeSpinOut 480ms cubic-bezier(0.45, 0, 1, 1) forwards;
     will-change: transform, opacity;
 }
 #maze.maze-spin-hold {
@@ -121,7 +121,7 @@ body {
     pointer-events: none;
 }
 #maze.maze-spin-in {
-    animation: mazeSpinIn 400ms cubic-bezier(0, 0, 0.35, 1) backwards;
+    animation: mazeSpinIn 560ms cubic-bezier(0, 0, 0.35, 1) backwards;
     pointer-events: none;
     will-change: transform, opacity;
 }

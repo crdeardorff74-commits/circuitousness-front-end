@@ -2944,8 +2944,8 @@ const Render = (() => {
     // Durations MUST match the CSS animation-durations on .mazeSpinGhost
     // / #maze.maze-spin-in (styles.css). Reduced-motion users skip the
     // whole effect (spinOutBoard no-ops → spinInBoard returns 0).
-    const SPIN_OUT_MS = 340;
-    const SPIN_IN_MS  = 400;
+    const SPIN_OUT_MS = 480;
+    const SPIN_IN_MS  = 560;
     let spinOutStartedAt = 0;   // epoch of spinOutBoard; 0 = no spin pending
     let spinGhost   = null;
     let spinInTimer = null;
