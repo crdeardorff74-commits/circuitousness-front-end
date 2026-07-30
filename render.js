@@ -2939,7 +2939,13 @@ const Render = (() => {
     //      tumbling in. Returns the total ms until the board is fully
     //      visible so marathon.js can delay the puzzle clock — the spin
     //      must never eat Marathon play time.
-    //   3. cancelSpin() — quit/menu teardown; without it a hold class
+    //   3. primeSpinIn() — run starts (startGame, boundary resumes,
+    //      Watch puzzle 1): there's no solved board to tumble away, but
+    //      the arriving puzzle still tumbles IN like every later one.
+    //      Hides the canvas behind the same hold class and backdates the
+    //      pending-spin epoch by a full spin-out, so spinInBoard fires
+    //      with zero residual wait.
+    //   4. cancelSpin() — quit/menu teardown; without it a hold class
     //      could strand the NEXT game's board invisible.
     // Durations MUST match the CSS animation-durations on .mazeSpinGhost
     // / #maze.maze-spin-in (styles.css). Reduced-motion users skip the
@@ -3005,6 +3011,14 @@ const Render = (() => {
         setTimeout(cleanupGhost, SPIN_OUT_MS + 300);   // event-drop fallback
         canvas.classList.add('maze-spin-hold');
         spinOutStartedAt = Date.now();
+    }
+    // Run-start tumble-IN — see item 3 of the section comment above.
+    function primeSpinIn() {
+        if (!canvas) return;
+        cancelSpin();
+        if (_prefersReducedMotion()) return;
+        canvas.classList.add('maze-spin-hold');
+        spinOutStartedAt = Date.now() - SPIN_OUT_MS;
     }
     // ── Joined-paths penalty visuals (rotate / flip) ─────────────────
     // game.js's runBoardPenalty drives these. Same ghost trick as the
@@ -3192,7 +3206,7 @@ const Render = (() => {
              hasJoinedLanes,    // game.js polls this for the overlap-SFX state machine
              fadeLanes, clearFadingLanes,  // broken-chain fade triggered alongside the twin-break SFX
              shuffleBackground,  // marathon.js calls on each new puzzle to draw a fresh body bg from the 54-image bag
-             spinOutBoard, spinInBoard, cancelSpin,  // 3D next-puzzle spin transition (marathon.js drives; see the section comment)
+             spinOutBoard, spinInBoard, primeSpinIn, cancelSpin,  // 3D next-puzzle spin transition (marathon.js drives; see the section comment)
              rotateBoardVisual, flipBoardVisual,  // joined-paths penalty visuals, shake included (game.js runBoardPenalty drives)
              debugCycleBackground,  // debug-mode ArrowRight steps sequentially through the bg pool
              setBackgroundEnabled,  // settings.js calls to toggle bg images off (body goes pure black)

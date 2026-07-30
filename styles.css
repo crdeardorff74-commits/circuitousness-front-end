@@ -185,12 +185,13 @@ body {
     transform: translateY(1px);
 }
 
-/* Debug-mode Undo — stacked directly under #hintBtn at the top-right.
-   (The top-left corner is occupied by the debug slider panel, so the
-   two debug action buttons share the right edge instead.) Cyan accent
-   distinguishes it from the gold Hint. Hidden in game mode — the HUD
-   owns #hudUndoBtn there. */
-#undoBtn {
+/* Debug-mode Undo + Reset — stacked directly under #hintBtn at the
+   top-right. (The top-left corner is occupied by the debug slider panel,
+   so the debug action buttons share the right edge instead.) Cyan accent
+   distinguishes them from the gold Hint. Hidden in game mode — the HUD
+   owns #hudUndoBtn / #hudResetBtn there. */
+#undoBtn,
+#resetBtn {
     position: absolute;
     top: 4.2rem;
     right: 1.2rem;
@@ -209,21 +210,31 @@ body {
     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
 
-#undoBtn:hover:not(:disabled) {
+/* Reset takes the third slot in the debug stack (hint 1.2 / undo 4.2). */
+#resetBtn {
+    top: 7.2rem;
+}
+
+#undoBtn:hover:not(:disabled),
+#resetBtn:hover:not(:disabled) {
     background: rgba(40, 60, 70, 0.9);
     border-color: rgba(120, 220, 235, 0.75);
     color: #8fe6f5;
 }
 
-#undoBtn:active:not(:disabled) {
+#undoBtn:active:not(:disabled),
+#resetBtn:active:not(:disabled) {
     transform: translateY(1px);
 }
 
-/* Nothing to undo → dim + non-interactive (applies to both Undo buttons).
-   #hudHintBtn joins the list for the PotD hint cap — potd.js disables it
-   when the attempt's 5 hints are spent. */
+/* Nothing to undo → dim + non-interactive (applies to the Undo buttons
+   and the Reset buttons, which share undo's enabled state — see game.js
+   updateUndoButtons). #hudHintBtn joins the list for the PotD hint cap —
+   potd.js disables it when the attempt's 5 hints are spent. */
 #undoBtn:disabled,
+#resetBtn:disabled,
 #hudUndoBtn:disabled,
+#hudResetBtn:disabled,
 #hudHintBtn:disabled {
     opacity: 0.35;
     cursor: default;
@@ -599,7 +610,8 @@ html.mode-debug #potdSolveTransition { display: none !important; }
 /* Game mode owns its own hint button inside the HUD (#hudHintBtn) — hide
    the standalone debug-mode hintBtn so they don't both appear. */
 html.mode-game #hintBtn { display: none; }
-html.mode-game #undoBtn { display: none; }
+html.mode-game #undoBtn,
+html.mode-game #resetBtn { display: none; }
 
 /* ----- Opening intro / warning splash -----
    Painted on page load by intro.js. Sits above the menu (z-index 50,
@@ -2099,17 +2111,28 @@ html.mode-debug #settingsOverlay { display: none !important; }
     top: 50%;
     transform: translate(-50%, -50%);
 }
-/* Symmetric inner cluster around the centered timer: hudUndoBtn sits 10rem
-   to the left of center (right edge anchored), hudHintBtn the same distance
-   to the right (left edge anchored). Leaves ~7rem of breathing room around
-   the timer's ~3rem half-width on each side. The Puzzle/level readout
-   (#hudLevel) moved to the far-left corner so Undo could take its mirror
-   slot opposite Hint. */
-#hudUndoBtn {
+/* Symmetric inner cluster around the centered timer: the Undo+Reset pair
+   sits with its right edge 10rem left of center, hudHintBtn the same
+   distance to the right (left edge anchored). Leaves ~7rem of breathing
+   room around the timer's ~3rem half-width on each side. The Puzzle/level
+   readout (#hudLevel) moved to the far-left corner so Undo could take its
+   mirror slot opposite Hint. The pair lives in #hudUndoCluster (a flex
+   row — Reset then Undo, so Undo keeps its exact old spot at the anchor
+   and Reset hugs its left edge whatever width the translated labels
+   have). The #hud > prefix is load-bearing: `#hud > div` (1,0,1) beats a
+   bare id (1,0,0), so without it the wrapper would get painted as a
+   label pill (background/border/padding). */
+#hud > #hudUndoCluster {
     position: absolute;
     right: calc(50% + 10rem);
     top: 50%;
     transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0;
+    background: none;
+    border: none;
 }
 #hudLevel {
     position: absolute;
@@ -2218,6 +2241,7 @@ html.mode-debug #settingsOverlay { display: none !important; }
 #hudType { display: none; }
 #hudHintBtn,
 #hudUndoBtn,
+#hudResetBtn,
 #hudHowToBtn,
 #hudQuitBtn {
     padding: 0.4rem 0.9rem;
@@ -2229,14 +2253,18 @@ html.mode-debug #settingsOverlay { display: none !important; }
     text-transform: uppercase;
     cursor: pointer;
 }
-#hudUndoBtn {
+/* Reset shares Undo's cyan accent — they're the same take-it-back
+   family of controls, and the pair should read as one unit. */
+#hudUndoBtn,
+#hudResetBtn {
     color: rgba(120, 220, 235, 0.85);
     border: 1px solid rgba(120, 220, 235, 0.4);
     font-weight: 600;
     letter-spacing: 0.12em;
     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
-#hudUndoBtn:hover:not(:disabled) {
+#hudUndoBtn:hover:not(:disabled),
+#hudResetBtn:hover:not(:disabled) {
     background: rgba(40, 60, 70, 0.9);
     border-color: rgba(120, 220, 235, 0.75);
     color: #8fe6f5;
@@ -2309,13 +2337,16 @@ html.mode-debug #settingsOverlay { display: none !important; }
    aren't interactive. Placement matters: this block must stay AFTER
    every base #hud* rule (equal specificity → source order wins). */
 @media (max-width: 700px) {
-    #hudUndoBtn {
+    #hud > #hudUndoCluster {
         position: fixed;
         left: max(0.75rem, env(safe-area-inset-left));
         right: auto;
         top: auto;
         bottom: max(0.75rem, env(safe-area-inset-bottom));
         transform: none;
+        /* row-reverse keeps UNDO (last in DOM) at the corner-most spot
+           the thumb already knows; Reset lands just to its right. */
+        flex-direction: row-reverse;
     }
     #hudHintBtn {
         position: fixed;
@@ -3455,6 +3486,7 @@ body.credits-rolling #potdSolveTransition.visible {
 html.dbgHidden #debugSliders,
 html.dbgHidden #hintBtn,
 html.dbgHidden #undoBtn { display: none !important; }
+html.dbgHidden #resetBtn { display: none !important; }
 #debugSliders strong {
     display: block;
     font-size: 0.7rem;
@@ -3986,12 +4018,13 @@ html.dbgHidden #undoBtn { display: none !important; }
         font-size: clamp(0.7rem, 2.4vh, 0.9rem);
         padding: 0.2rem 0.5rem;
     }
-    #hudUndoBtn { right: calc(50% + 6rem); }
+    #hud > #hudUndoCluster { right: calc(50% + 6rem); }
     #hudHintBtn { left:  calc(50% + 6rem); }
     #hudLevel   { left:  max(0.5rem, env(safe-area-inset-left)); right: auto; }
     #hudTimer   { min-width: 3.6rem; }
     #hudHintBtn,
     #hudUndoBtn,
+    #hudResetBtn,
     #hudHowToBtn,
     #hudQuitBtn {
         padding: 0.25rem 0.55rem;

@@ -2,6 +2,10 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-29 — Post-v1.35: broken-path fade halved AGAIN (750 → 375)
+- `BROKEN_FADE_MS` 750 → 375 (render.js) — second same-day halving of the same knob (1500 → 750 shipped in v1.20); 200ms flash unchanged, total flash+fade now ~575ms. Ships in whichever zip goes out next.
+- Same session, NOT in this zip: the admin ladder-experiment table's engagement bar moved to ≥3 initial-run solves (back-end + umbrella admin page — see circuitousness-back-end/NOTES.md 2026-07-29; the four ladders are identical through puzzle 3, so shallower runs can't distinguish variants).
+
 ## 2026-07-29 — Release v1.35 (alternate-solution pressure: telemetry + equal-length suppression + targeted gates)
 - **⚠ DEPLOY ORDER: back-end FIRST** (migration adds `page_visits.solves_alternate`; /solved PATCH + late-milestones count it; admin stats ship the sums), then this zip, then the umbrella admin page (Netlify).
 - **Context**: user asked whether alternative solutions could be ELIMINATED. Assessment: exact uniqueness is impractical (the repair loop, not the check, explodes — alternate-freeness is rare under the 65% elbow filler bias, and 4-path budgets are already at 10k attempts). Shipped the practical trio instead:

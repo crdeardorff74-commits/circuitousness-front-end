@@ -1393,10 +1393,14 @@ const Marathon = (() => {
     // startPuzzle callback blanks the canvas for the build. The matching
     // spin-IN fires from onPuzzleReady via Render.spinInBoard. First
     // puzzles (startGame) and resume boundaries pass nothing — there's no
-    // solved board to spin away.
+    // solved board to spin away, but the arriving puzzle still tumbles IN
+    // like every later one (primeSpinIn hides the build behind the same
+    // hold class with the spin-out window pre-elapsed).
     function startNextPuzzle(spinFromSolved) {
         if (spinFromSolved && typeof Render !== 'undefined' && Render.spinOutBoard) {
             Render.spinOutBoard();
+        } else if (typeof Render !== 'undefined' && Render.primeSpinIn) {
+            Render.primeSpinIn();
         }
         // Pause the clock during the build — would otherwise eat into the
         // player's allotment for the puzzle they can't even see yet.
@@ -1471,9 +1475,10 @@ const Marathon = (() => {
     function onPuzzleReady() {
         if (state !== STATE.PLAYING) return;
         puzzleLive = true;
-        // Kick the 3D spin-IN if an advance() spin-out is pending (returns
-        // the ms until the board is fully visible; 0 when no spin — first
-        // puzzles, resumes, reduced-motion). The puzzle clock is anchored
+        // Kick the 3D spin-IN if a spin-out (advance) or primed run-start
+        // spin (startNextPuzzle) is pending (returns the ms until the
+        // board is fully visible; 0 when no spin — mid-puzzle resumes,
+        // reduced-motion). The puzzle clock is anchored
         // and started AFTER that window so the transition never eats
         // Marathon play time: puzzleStartMs shifts forward by the delay,
         // and startTimer waits it out (guarded — a quit during the few
@@ -1707,7 +1712,10 @@ const Marathon = (() => {
     // Twists-vs-minimum stats for the Zen solve popup. Player count =
     // every committed action that physically twisted the board: tile and
     // gate rotations, undos (an undo spins the board back — rotating a
-    // wrong tile and taking it back cost two twists). Pure lock moves are
+    // wrong tile and taking it back cost two twists), and resets (one
+    // twist each, same rationale — and crucially a reset never REFUNDS
+    // the moves it wipes; they're already in the recording and stay
+    // counted). Pure lock moves are
     // free. Hints don't count as twists — they VOID the stat: any hint in
     // the recording hides the line entirely (see below). The floor comes
     // from the recording (game.js
@@ -1727,7 +1735,8 @@ const Marathon = (() => {
             // Deliberately includes 0-turn hints: the tile was already
             // right, but the player didn't know that without help.
             if (m.type === 'hint') return null;
-            if (m.type === 'rotate' || m.type === 'gate' || m.type === 'undo') moves++;
+            if (m.type === 'rotate' || m.type === 'gate' || m.type === 'undo'
+                || m.type === 'reset') moves++;
         }
         if (moves <= 0) return null;
         return { moves, min: rec.minMoves };

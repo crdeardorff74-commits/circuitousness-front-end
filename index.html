@@ -187,6 +187,7 @@
 
         <canvas id="maze"></canvas>
         <button id="undoBtn" type="button" data-i18n="undo.button">Undo</button>
+        <button id="resetBtn" type="button" data-i18n="reset.button">Reset</button>
         <button id="hintBtn" type="button" data-i18n="hint.button">Hint</button>
         <!-- Now Playing — populated by music.js setOnSongChange callback.
              Hidden until a song is actually playing; pinned to the bottom-
@@ -227,7 +228,14 @@
         <div id="hud">
             <div id="hudType"></div>
             <div id="hudLevel"></div>
-            <button id="hudUndoBtn" type="button" data-i18n="undo.button">Undo</button>
+            <!-- Undo + Reset pair left of the timer. The cluster div is
+                 the absolutely-positioned anchor (right edge fixed at the
+                 hint-mirror slot) so Reset sits flush against Undo's left
+                 edge whatever width either translated label has. -->
+            <div id="hudUndoCluster">
+                <button id="hudResetBtn" type="button" data-i18n="reset.button">Reset</button>
+                <button id="hudUndoBtn" type="button" data-i18n="undo.button">Undo</button>
+            </div>
             <div id="hudTimer"><span class="hudTimerVal"></span></div>
             <!-- How-to-Solve entry for the one-time first-visit auto-started
                  Practice run (marathon.js unhides it only then) — that player
@@ -313,7 +321,7 @@
                      REPLACES the native tooltip on desktop (they'd
                      double up); aria-labels carry the accessible names. -->
                 <button type="button" class="potdStreakChip" id="potdStreakFire" data-i18n-attr="aria-label:potd.streak.currentTitle" aria-label="Daily streak">🔥&nbsp;<span id="potdStreakFireVal">0</span><span class="potdStreakBest" id="potdStreakFireBest"></span></button>
-                <button type="button" class="potdStreakChip" id="potdStreakStar" data-i18n-attr="aria-label:potd.streak.perfectTitle" aria-label="Perfect streak">⭐&nbsp;<span id="potdStreakStarVal">0</span><span class="potdStreakBest" id="potdStreakStarBest"></span></button>
+                <button type="button" class="potdStreakChip" id="potdStreakStar" data-i18n-attr="aria-label:potd.streak.perfectTitle" aria-label="Hint-free streak">⭐&nbsp;<span id="potdStreakStarVal">0</span><span class="potdStreakBest" id="potdStreakStarBest"></span></button>
                 <button type="button" class="potdStreakChip" id="potdStreakToday" data-i18n-attr="aria-label:potd.streak.todayTitle" aria-label="Puzzles solved today">✅&nbsp;<span id="potdStreakTodayVal">0/8</span></button>
                 <button type="button" class="potdStreakChip potdStreakCalBtn" id="potdCalendarBtn" data-i18n-attr="aria-label:potd.cal.button" aria-label="Calendar">📅</button>
                 <span class="potdStreakCountdown" id="potdCountdown"></span>

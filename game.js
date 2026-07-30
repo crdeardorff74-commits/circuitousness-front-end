@@ -420,6 +420,11 @@
         // unlimited for normal play, with a hard ceiling as a safety valve.
         const MAX_UNDO_DEPTH = 200;
         const undoBtnIds = ['undoBtn', 'hudUndoBtn'];
+        // Reset buttons share undo's enabled state: anything on the undo
+        // stack means the board has diverged from its starting point (and
+        // right after a reset, the stack holds the pre-reset board, so
+        // both stay live — undo takes the reset itself back).
+        const resetBtnIds = ['resetBtn', 'hudResetBtn'];
         let undoStack = [];          // pre-move full-state snapshots, oldest→newest
         let undoBaseState = null;    // snapshot of the current committed state
 
@@ -464,7 +469,7 @@
         }
         function updateUndoButtons() {
             const enabled = undoStack.length > 0;
-            undoBtnIds.forEach((id) => {
+            undoBtnIds.concat(resetBtnIds).forEach((id) => {
                 const el = document.getElementById(id);
                 if (el) el.disabled = !enabled;
             });
@@ -491,10 +496,10 @@
             } else if (move.type === 'gate') {
                 if (Render.animateGateRotation) Render.animateGateRotation(!move.ccw);
             }
-            // ('rotateBoard' and 'flipBoard' deliberately fall through:
-            // undoing a penalty snaps the board back — with a refit for
-            // the rotation's dims swap — no per-tile inverse animation
-            // exists for a whole-board transform.)
+            // ('rotateBoard', 'flipBoard', and 'reset' deliberately fall
+            // through: undoing a penalty or a reset snaps the board back —
+            // with a refit for the rotation's dims swap — no per-tile
+            // inverse animation exists for a whole-board transform.)
         }
         function undo() {
             if (isBuilding || isReplaying || boardRotating) return;
@@ -555,6 +560,53 @@
             // machine would otherwise fire spurious applause/awww on the state
             // jump (or, in debug, re-run win handling). The next real move
             // diffs cleanly against these baselines.
+            resetSfxBaselines();
+            if (typeof Sfx !== 'undefined' && Sfx.click) Sfx.click();
+            updateUndoButtons();
+        }
+
+        // RESET — one committed action that takes the board back to the
+        // puzzle's starting point: recording.initialState + its gates, the
+        // same source replays load. Deliberately does NOT touch timers or
+        // the recorded history — prior moves stay in the recording, so
+        // stats can never go DOWN by resetting. Routed through recordMove
+        // like any other move, which both makes the reset itself undoable
+        // (the pre-reset board is banked on undoStack — an accidental
+        // reset is one Undo from recovered) and records a `reset` move so
+        // replays reproduce it (applyReplayMove's mirror branch). Loading
+        // initialState rather than walking undoStack reaches the true
+        // start even past MAX_UNDO_DEPTH, and drops player locks with it —
+        // the starting point has none (initialState never carries a
+        // `locked` array, exactly as in replay's initial load).
+        function resetPuzzle() {
+            // Same guard set as undo() — see the comments there.
+            if (isBuilding || isReplaying || boardRotating) return;
+            if (typeof Tutorial !== 'undefined' && Tutorial.isOpen && Tutorial.isOpen()) return;
+            if (typeof Marathon !== 'undefined' && Marathon.isInTransition && Marathon.isInTransition()) return;
+            if (typeof Potd !== 'undefined' && Potd.isInSolveTransition && Potd.isInSolveTransition()) return;
+            if (!Maze.grid) return;
+            if (undoStack.length === 0) return;
+            if (!recording || !recording.initialState) return;
+
+            const init = recording.initialState;
+            // Dims differ when a rotateBoard penalty struck since the
+            // puzzle started — same refit dance as undoing past one.
+            const dimsChanged = init.rows !== Maze.ROWS || init.cols !== Maze.COLS;
+            Maze.loadSnapshot(deepCloneSnapshot(init));
+            if (typeof Gates !== 'undefined') {
+                if (recording.gates && Gates.restore) Gates.restore(recording.gates);
+                else if (Gates.clear) Gates.clear();
+                if (Maze.recompute) Maze.recompute();
+            }
+            if (dimsChanged) Render.refit();
+            recordMove({ type: 'reset' });
+
+            if (banner) banner.classList.remove('visible');
+            if (Render.clearFadingLanes) Render.clearFadingLanes();
+            // Whole-board jump — no per-tile inverse animation exists
+            // (same stance as the penalty transforms); just draw.
+            Render.draw();
+            // Silent state jump for the SFX machine, same as undo().
             resetSfxBaselines();
             if (typeof Sfx !== 'undefined' && Sfx.click) Sfx.click();
             updateUndoButtons();
@@ -996,7 +1048,7 @@
             Render.draw();
             resetSfxBaselines();
         }
-        function applyReplayMove(move) {
+        function applyReplayMove(move, rec) {
             if (move.type === 'rotate') {
                 if (Maze.rotate(move.r, move.c, move.ccw)) {
                     Render.animateRotationAt(move.r, move.c, move.ccw);
@@ -1046,6 +1098,24 @@
                     });
                 } else {
                     applyBoardFlip(move.vertical);
+                }
+            } else if (move.type === 'reset') {
+                // Board back to the recording's starting point — the exact
+                // mirror of live resetPuzzle(): initial snapshot + initial
+                // gates, with a refit when a rotateBoard penalty had
+                // swapped the dims. The caller (playOneRecording's move
+                // loop) skips refresh() for resets, matching the live
+                // reset's silent state jump.
+                const init = rec && rec.initialState;
+                if (init) {
+                    const dimsChanged = init.rows !== Maze.ROWS || init.cols !== Maze.COLS;
+                    Maze.loadSnapshot(deepCloneSnapshot(init));
+                    if (typeof Gates !== 'undefined') {
+                        if (rec.gates && Gates.restore) Gates.restore(rec.gates);
+                        else if (Gates.clear) Gates.clear();
+                        if (Maze.recompute) Maze.recompute();
+                    }
+                    if (dimsChanged) Render.refit();
                 }
             }
         }
@@ -1131,12 +1201,13 @@
             // refresh() would diff against those and could fire spurious
             // applause / leak a stale glitch-loop into the new playback.
             resetSfxBaselines();
-            // Between-puzzle tumble-IN: replayAll fired spinOutBoard just
-            // before this call, so the board drawn above is sitting hidden
-            // behind the hold class — spinInBoard waits out the spin-out's
-            // remainder and tumbles it in, exactly like live play. Returns
-            // 0 when no spin is pending (the single-recording replay
-            // button, puzzle 1 of a Watch, reduced-motion) → no wait. The
+            // Between-puzzle tumble-IN: replayAll fired spinOutBoard (or,
+            // for puzzle 1, primeSpinIn) just before this call, so the
+            // board drawn above is sitting hidden behind the hold class —
+            // spinInBoard waits out the spin-out's remainder and tumbles
+            // it in, exactly like live play. Returns 0 when no spin is
+            // pending (the single-recording replay button, which replays
+            // the board already on-screen, and reduced-motion) → no wait. The
             // move/music timeline is HELD until the board lands so the
             // first moves aren't applied to a board mid-tumble; the wait
             // rides replayTimer/replayResolve so Stop interrupts it like
@@ -1194,16 +1265,26 @@
                         // order recordMove uses live, so the replay stack tracks
                         // the live one move-for-move.
                         replayUndoStack.push({ state: replayBase, move: move });
-                        applyReplayMove(move);
+                        applyReplayMove(move, rec);
                         replayBase = captureUndoSnap();
-                        // refresh() — not just Render.draw() — so the SFX
-                        // state machine runs after every replay move (the
-                        // gate that previously suppressed SFX during replay
-                        // was removed). refresh() also handles the win-state
-                        // banner add via its justWon branch, so the explicit
-                        // `if (Maze.won) banner...` line below is no longer
-                        // needed.
-                        refresh();
+                        if (move.type === 'reset') {
+                            // Mirror live resetPuzzle(): a reset is a silent
+                            // state jump — draw + re-seed the SFX baselines
+                            // instead of refresh(), whose diff against the
+                            // pre-reset board would fire spurious path-break
+                            // / awww SFX.
+                            Render.draw();
+                            resetSfxBaselines();
+                        } else {
+                            // refresh() — not just Render.draw() — so the SFX
+                            // state machine runs after every replay move (the
+                            // gate that previously suppressed SFX during replay
+                            // was removed). refresh() also handles the win-state
+                            // banner add via its justWon branch, so the explicit
+                            // `if (Maze.won) banner...` line below is no longer
+                            // needed.
+                            refresh();
+                        }
                     }
                 }
             } finally {
@@ -1250,8 +1331,10 @@
                 // 800ms breath below stands in for the solve popup's dwell).
                 // The matching spin-IN fires inside playOneRecording once
                 // the next board is drawn; puzzle 1 has no predecessor, so
-                // no spin (matches live: a run's first puzzle doesn't spin).
+                // it primes a tumble-IN only (matches live: a run's first
+                // puzzle tumbles in without a spin-out).
                 if (i > 0 && Render.spinOutBoard) Render.spinOutBoard();
+                else if (i === 0 && Render.primeSpinIn) Render.primeSpinIn();
                 if (typeof onPuzzleChange === 'function') {
                     try { onPuzzleChange(i, events.length); } catch (e) {}
                 }
@@ -1547,6 +1630,9 @@
             // gamepad or controls-config bindings.
             undo: undo,
             get canUndo() { return undoStack.length > 0; },
+            // Board back to the puzzle's starting point as one recorded
+            // (and undoable) move. Same exposure rationale as undo.
+            reset: resetPuzzle,
             // Same bypass concern as startRecording — PotD doesn't route
             // through newPuzzle, so it needs to re-seed the SFX diff
             // baselines explicitly. Without this call, the first refresh()
@@ -2160,6 +2246,12 @@
         undoBtnIds.forEach((id) => {
             const el = document.getElementById(id);
             if (el) el.addEventListener('click', (ev) => { ev.stopPropagation(); undo(); });
+        });
+        // Reset: same two-button pattern (#resetBtn debug / #hudResetBtn
+        // HUD, sitting beside its Undo sibling in both places).
+        resetBtnIds.forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('click', (ev) => { ev.stopPropagation(); resetPuzzle(); });
         });
         // Keyboard parity: Ctrl/⌘+Z is the universal undo gesture. Skip when a
         // text field is focused (name entry) so the browser's native input
