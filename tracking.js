@@ -509,6 +509,7 @@ const Tracking = (function () {
                 body: JSON.stringify({
                     sessionId:         sid,
                     puzzles:           st.p || 0,
+                    variant:           st.v || null,
                     howtoClicked:      !!st.howto,
                     tutorialCompleted: !!st.tut,
                     nudgeClicked:      !!st.nudge,
@@ -553,12 +554,15 @@ const Tracking = (function () {
     }
     // Called by marathon.js autoStartFirstPractice — begins tracking for
     // this browser. One-shot: an existing state object (even a fully
-    // synced one) is never reset.
-    function firstRunBegin() {
+    // synced one) is never reset. `variant` is the player's randomly
+    // drawn first-run ladder ('fast'|'standard'|'extended'|'single' —
+    // see MARATHON.FIRST_RUN_* in config.js), stamped on the server row
+    // so the admin panel can compare engagement per variant.
+    function firstRunBegin(variant) {
         if (isSuppressed()) return;
         if (_frRead()) return;
         _frWrite({ p: 0, howto: 0, tut: 0, nudge: 0, daily: 0,
-                   oStart: 0, oSolve: 0, rev: 1, dirty: 1 });
+                   oStart: 0, oSolve: 0, v: variant || null, rev: 1, dirty: 1 });
         // If localStorage is unavailable the write silently failed and
         // _frRead stays null — the whole feature is inert, matching the
         // auto-start itself (which also bails without storage).

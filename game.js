@@ -2007,6 +2007,24 @@
             const rect = canvas.getBoundingClientRect();
             handlePointer(ev.clientX - rect.left, ev.clientY - rect.top, false); // right-click = CW
         });
+        // Suppress the browser context menu EVERYWHERE, not just on the
+        // canvas. Right-click is a GAME INPUT (CW rotate), so the default
+        // menu is pure hindrance — and the canvas-only handler above has
+        // gaps: during the penalty transforms the canvas rides
+        // pointer-events:none (spin-hold class), so a right-click lands on
+        // the page underneath and popped the default menu (user report
+        // 2026-07-29); same for right-clicks on the menu, popups, or
+        // background. Mirrors universal rule 10's text-selection ban,
+        // including its carve-out: text-entry fields keep their native
+        // menu (paste into the leaderboard name input). preventDefault
+        // doesn't stop propagation, so the capture-phase audio/music
+        // gesture-unlock listeners (which include 'contextmenu') still
+        // see the event.
+        document.addEventListener('contextmenu', (ev) => {
+            const t = ev.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+            ev.preventDefault();
+        });
 
         // Touch: long-press → lock; quick tap → rotate CW (single-input default).
         // touchend.preventDefault suppresses the synthetic 300ms click, so the

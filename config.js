@@ -300,8 +300,28 @@ const MARATHON = {
     // showing "Building puzzle…" at the worst possible moment.
     //
     // Sum is the knob that matters: raise entries to delay the quad
-    // reveal, lower them to pull it in. Setting this to null disables
-    // the fast track entirely (first run falls back to normal tiers).
+    // reveal, lower them to pull it in. (The tiers only apply to the
+    // 'fast' variant below.)
+    //
+    // FIRST-RUN A/B/C/D EXPERIMENT (user call 2026-07-29, replacing the
+    // short-lived FIRST_RUN_FAST_TRACK boolean): each NEW player's
+    // auto-start run randomly draws one of four ladder variants, the
+    // draw is stamped on their first_run_stats row, and the admin
+    // panel's First-Time Players section breaks engagement out per
+    // variant — after a few days of data the winner gets locked in for
+    // the rest of the CrazyGames trial via FIRST_RUN_VARIANT_FORCE.
+    //   'fast'     — the compressed FIRST_RUN_TIERS ladder above + quad
+    //                hand-off (the v1.16 behavior).
+    //   'standard' — the normal Zen ladder: TIER_LENGTH (4) whole
+    //                puzzles per path count.
+    //   'extended' — a slower ladder: FIRST_RUN_EXTENDED_TIER_LENGTH
+    //                (6) puzzles per path count.
+    //   'single'   — 1 path forever; the grid just keeps growing.
+    // FIRST_RUN_VARIANT_FORCE: null = random draw per new player;
+    // set to one of the four names to lock every new player to it.
+    FIRST_RUN_VARIANT_FORCE: null,
+    FIRST_RUN_VARIANTS: ['fast', 'standard', 'extended', 'single'],
+    FIRST_RUN_EXTENDED_TIER_LENGTH: 6,
     FIRST_RUN_TIERS: [3, 2, 2, 2],
     FIRST_RUN_QUAD_RESET_PATHS: 1,
 

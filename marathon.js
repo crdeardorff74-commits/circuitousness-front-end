@@ -696,13 +696,35 @@ const Marathon = (() => {
         return decoded.progressive ? pathCountForLevel(lev) : decoded.pathCount;
     }
 
-    // ----- First-visit fast track -----
-    // The auto-start run (autoStartFirstPractice) walks a compressed
-    // ladder — MARATHON.FIRST_RUN_TIERS puzzles per path count — and then
-    // hands off to QUAD tiles at 1 path. Rationale + tuning notes live on
-    // the constant in config.js. Everything here is inert (falsy tiers →
-    // normal progression) for every other run.
+    // ----- First-visit ladder experiment -----
+    // The auto-start run walks one of FOUR ladder variants, drawn
+    // randomly per new player in autoStartFirstPractice and stamped on
+    // the player's first_run_stats row (Tracking.firstRunBegin) so the
+    // admin panel can compare engagement per variant. Definitions + the
+    // FIRST_RUN_VARIANT_FORCE lock-in knob live on the MARATHON config.
+    // Everything here is inert for every other run (levelConfig only
+    // consults the variant while isFirstRunAutoStart).
+    let firstRunVariant = null;
+    const FIRST_RUN_VARIANT_KEY = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness')
+        + '_firstRunVariant_v1';
+    function pickFirstRunVariant() {
+        const pool = (Array.isArray(MARATHON.FIRST_RUN_VARIANTS) && MARATHON.FIRST_RUN_VARIANTS.length)
+            ? MARATHON.FIRST_RUN_VARIANTS
+            : ['fast', 'standard', 'extended', 'single'];
+        const forced = MARATHON.FIRST_RUN_VARIANT_FORCE;
+        const v = (forced && pool.indexOf(forced) !== -1)
+            ? forced
+            : pool[Math.floor(Math.random() * pool.length)];
+        firstRunVariant = v;
+        // Persisted for attribution durability (the stats row is keyed to
+        // the browser and outlives this session) — not read back by
+        // gameplay, which only cares during the one auto-start run.
+        try { localStorage.setItem(FIRST_RUN_VARIANT_KEY, v); } catch (e) {}
+        return v;
+    }
+    // The compressed 'fast' ladder — only that variant uses the tiers.
     function firstRunTiers() {
+        if (!isFirstRunAutoStart || firstRunVariant !== 'fast') return null;
         const t = MARATHON.FIRST_RUN_TIERS;
         return (Array.isArray(t) && t.length) ? t : null;
     }
@@ -737,6 +759,34 @@ const Marathon = (() => {
     // than being fixed by the type string.
     function levelConfig(lev) {
         const decoded = decodeType(activeType);
+        // First-run experiment variants (see the MARATHON.FIRST_RUN_*
+        // comment in config.js). 'fast' routes through the tier machinery
+        // below via onFirstRunFastTrack; 'standard' (and a missing
+        // variant — stale cached config, defensive) falls through to the
+        // normal ladder; 'extended' and 'single' get their own ladders
+        // here. Growth accrues one step per solve in every variant — the
+        // experiment only varies the PATH-COUNT axis, exactly like the
+        // fast track always did.
+        if (isFirstRunAutoStart && decoded.progressive) {
+            if (firstRunVariant === 'extended') {
+                const len = MARATHON.FIRST_RUN_EXTENDED_TIER_LENGTH || (MARATHON.TIER_LENGTH + 2);
+                const paths = Math.min(MARATHON.MAX_PATHS, Math.floor((lev - 1) / len) + 1);
+                return {
+                    quadMode:    false,
+                    pathCount:   paths,
+                    growthSteps: growthStepsFor(lev, paths),
+                    progressive: true
+                };
+            }
+            if (firstRunVariant === 'single') {
+                return {
+                    quadMode:    false,
+                    pathCount:   1,
+                    growthSteps: lev - 1,
+                    progressive: true
+                };
+            }
+        }
         if (!onFirstRunFastTrack()) {
             const paths = pathCountFor(decoded, lev);
             return {
@@ -1282,13 +1332,17 @@ const Marathon = (() => {
         // still never re-trigger, and the player gets the normal menu on
         // their next load rather than a repeating broken auto-start.
         try { localStorage.setItem(AUTO_START_KEY, '1'); } catch (e) {}
+        // Draw this player's ladder variant BEFORE opening the stats row
+        // so the row is stamped with it from the first sync (the A/B/C/D
+        // engagement comparison keys off that stamp).
+        const variant = pickFirstRunVariant();
         // First-time-player funnel: this is the ONE moment we know the
         // browser is brand new, so open its FirstRunStats row now — a
         // player who bails without touching anything should still count
         // (as 0 initial-run puzzles), unlike the deferred recordStart
         // below which deliberately requires an interaction.
         if (typeof Tracking !== 'undefined' && Tracking.firstRunBegin) {
-            Tracking.firstRunBegin();
+            Tracking.firstRunBegin(variant);
         }
         startGame('s', true, true);
         return true;
@@ -1454,32 +1508,22 @@ const Marathon = (() => {
         // above keeps replays (state REPLAYING) from ever reporting.
         if (typeof CgSdk !== 'undefined') CgSdk.gameplayStart();
         // One-time PotD nudge for the first-visit auto-start run: fires as
-        // the next puzzle appears after the player's FIRST 2-PATH SOLVE
-        // (level 6 under TIER_LENGTH 4 — the tier math below derives it,
-        // so tuning the tier constants moves the nudge automatically).
-        // This is the retention pitch the auto-start otherwise hides (a
-        // menu-skipping first-timer never sees the Puzzle of the Day
-        // exists). History: puzzle 3 (2026-07-22 original) → first 3-path
-        // solve (user call: let them grasp that paths ramp too) → first
-        // 2-path solve (2026-07-23): the tier-up banner at the end of
-        // tier 1 ANNOUNCES the multi-path mechanic and solving one
-        // 2-path proves it landed — a 3-path solve adds confirmation,
-        // not comprehension, and the deeper trigger filtered out most
-        // first sessions (D1 is the failed CG metric). The shallow-quit
-        // case is covered by the SAME-KEY pitch in quitToMenu —
-        // whichever surface fires first wins, the seen-flag silences the
-        // other. The action jumps straight into today's 1-path daily:
-        // tear the Zen run down, flip the picker, start the slot.
-        // (level-2 is safe: level ≥ 6 by the first condition, and
-        // pathCountForLevel(level-2) === 1 gates the rest of tier 2
-        // out — only the tier's first level passes.)
-        // levelConfig (not pathCountForLevel) so the trigger tracks the
-        // ladder the run is ACTUALLY walking — the first-run fast track
-        // reaches its first 2-path solve earlier than the normal tiers
-        // would, and this condition has to move with it.
-        if (isFirstRunAutoStart && level > 2
-            && levelConfig(level - 1).pathCount === 2
-            && levelConfig(level - 2).pathCount === 1
+        // puzzle 5 appears — i.e. right after the player's FOURTH SOLVE —
+        // in EVERY ladder variant. This is the retention pitch the
+        // auto-start otherwise hides (a menu-skipping first-timer never
+        // sees the Puzzle of the Day exists). History: puzzle 3
+        // (2026-07-22 original) → first 3-path solve (user call: let them
+        // grasp that paths ramp too) → first 2-path solve (2026-07-23:
+        // proves the multi-path mechanic landed) → FIXED at 4 solves
+        // (2026-07-29, user call): the ladder A/B/C/D experiment made a
+        // path-count trigger uneven — the 'single' variant never reaches
+        // 2 paths at all — and a variant-independent trigger keeps the
+        // nudge column comparable across variants. The shallow-quit case
+        // is covered by the SAME-KEY pitch in quitToMenu — whichever
+        // surface fires first wins, the seen-flag silences the other. The
+        // action jumps straight into today's 1-path daily: tear the Zen
+        // run down, flip the picker, start the slot.
+        if (isFirstRunAutoStart && level === 5
             && typeof Tooltip !== 'undefined' && Tooltip.showOnce) {
             Tooltip.showOnce('potdNudge', I18n.t('tooltip.potdNudge'), {
                 label: I18n.t('mode.potd.name'),
