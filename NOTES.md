@@ -2,6 +2,14 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-07-30 — Release v1.36 (RESET button; run-start tumble-in; ⭐ tooltip rename; phone HUD reshuffle)
+- **RESET button beside UNDO** (both HUD + debug): one recorded `reset` move through recordMove — undoable (pre-reset board banked; no confirm dialog needed), replayable (applyReplayMove branch reloads rec.initialState; silent-SFX jump like live), counts as ONE twist in the Zen stat and never refunds prior moves (user requirement: no timer/stat reset). Loads recording.initialState so it works past the 200-undo cap; drops player locks. Old cached clients desync watching reset-bearing recordings — accepted, same as the penalty move types. No keyboard shortcut (deliberate).
+- **First puzzle of any run tumbles in** like consecutive ones: `Render.primeSpinIn()` (hold class + spin-out window pre-elapsed → spinInBoard fires with zero wait). Covers startGame, boundary resumes, Watch puzzle 1 (replayAll i===0). Mid-puzzle resumes deliberately excluded (clock already running). Timer compensation free via existing onPuzzleReady path.
+- **⭐ tooltip renamed** "Perfect streak" → "Hint-free streak — consecutive days with at least one solve without hints" (all 15 langs + index.html aria-label fallback). Mechanics untouched; "Perfect" overclaimed (≥1 hint-free solve qualifies the day). Companion strings already said hint-free.
+- **Phone HUD (≤700px) reshuffle** after RESET made the bottom-left Undo cluster overlap the Now Playing chip (user screenshot): Undo+Reset → strip CENTER in Practice (timer hidden = slot free, user call) / below-strip LEFT in timed modes; readout below-strip RIGHT; Practice quit drops to row 2 left; first-run HOW TO SOLVE + DAILY & MORE take row 2 (user screenshot: they overlapped the centered pair), readout to row 3 (:has-gated). HINT keeps bottom-right. Watch: first-run pre-tip-ack shows DAILY & MORE row-2 LEFT, hops RIGHT when How-to appears — pin right if it reads badly.
+- Ann beta feedback investigated (claimed 6×6 first puzzle): current build can't start >4×4; her arc fingerprints the 'fast' variant + iOS tab-restore (auto-start never saves). Old builds DID start 6×6 — check her first_run_stats variant stamp to settle.
+- Version bumped 1.35 → 1.36.
+
 ## 2026-07-29 — Post-v1.35: broken-path fade halved AGAIN (750 → 375)
 - `BROKEN_FADE_MS` 750 → 375 (render.js) — second same-day halving of the same knob (1500 → 750 shipped in v1.20); 200ms flash unchanged, total flash+fade now ~575ms. Ships in whichever zip goes out next.
 - Same session, NOT in this zip: the admin ladder-experiment table's engagement bar moved to ≥3 initial-run solves (back-end + umbrella admin page — see circuitousness-back-end/NOTES.md 2026-07-29; the four ladders are identical through puzzle 3, so shallower runs can't distinguish variants).
