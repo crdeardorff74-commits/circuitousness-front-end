@@ -411,13 +411,19 @@ const Maze = (() => {
     // as an array of {r, c, in, out} steps (in/out are the entry/exit ports
     // at that cell). Used by smartReroll to identify and break shortcut
     // tiles. Returns null if no path exists.
-    function shortestPossiblePath(blockedSet) {
+    function shortestPossiblePath(blockedSet, excludedEdgeKey) {
         // Map each visited (cell, entryPort) state to {parent: parent_state_key,
         // childExit: the exit port at THIS cell that led to the parent's child}.
         // We can reconstruct the full path by walking parents back to start.
         // blockedSet (optional): "r,c" keys of cells excluded from traversal.
         // Used by 2-path canonical to forbid the BFS from threading through
         // tiles that belong exclusively to the OTHER path's solution.
+        // excludedEdgeKey (optional): ONE canonical cell-edge the search may
+        // not cross. The equal-alternate detector runs this BFS once per
+        // designed edge: any route of length ≤ the designed one that avoids
+        // some designed edge is, by definition, a distinct alternate — the
+        // plain BFS can't see those because it always rediscovers the
+        // designed route itself at equal length.
         const parent = new Map();
         const startKey = entry.row + ',' + entry.col + ',' + entry.port;
         parent.set(startKey, null);
@@ -440,6 +446,7 @@ const Maze = (() => {
                     continue;
                 }
                 if (blockedSet && blockedSet.has(nr + ',' + nc)) continue;
+                if (excludedEdgeKey && canonicalEdgeKey(r, c, nr, nc) === excludedEdgeKey) continue;
                 const nextP = (exitP + 2) & 3;
                 const k = nr + ',' + nc + ',' + nextP;
                 if (parent.has(k)) continue;
@@ -472,32 +479,178 @@ const Maze = (() => {
     // carry the (in, out) connection used at that cell. Repeat until BFS
     // shortest is >= intendedLen, or no more filler tiles can be broken.
     // Returns true on success, false if we ran out of breakable tiles.
+    // Break one filler tile on `path` so it can no longer carry the
+    // connection the route uses at that cell. Shared by smartReroll
+    // (shorter-route shortcuts) and breakEqualAlternates (equal-length
+    // alternates). Returns true if a tile was changed, false when every
+    // tile on the route is fixed (path/entry/exit).
+    function breakFillerOnRoute(path) {
+        for (const step of path) {
+            const tile = grid[step.r][step.c];
+            if (tile._solution !== undefined) continue;             // path tile, can't change
+            if (step.r === entry.row && step.c === entry.col) continue; // entry tile, fixed by notch
+            if (step.r === exit.row  && step.c === exit.col)  continue; // exit tile, fixed by notch
+            const isOpposite = ((step.in + 2) & 3) === step.out;
+            // Straight & cross both carry opposite-port pairs; elbow
+            // carries adjacent. Switch to whichever can't carry the
+            // current shortcut connection.
+            const newType = isOpposite ? T_ELBOW : T_STRAIGHT;
+            if (tile.type === newType) continue; // already this type — would be a no-op, skip
+            tile.type = newType;
+            tile.rotation = Math.floor(Math.random() * 4);
+            return true;
+        }
+        return false;
+    }
     function smartReroll(intendedLen, blockedSet) {
         const cap = ROWS * COLS;  // upper bound — every filler can be touched once
         for (let iter = 0; iter < cap; iter++) {
             const path = shortestPossiblePath(blockedSet);
             if (!path || path.length >= intendedLen) return true;
-
-            let broke = false;
-            for (const step of path) {
-                const tile = grid[step.r][step.c];
-                if (tile._solution !== undefined) continue;             // path tile, can't change
-                if (step.r === entry.row && step.c === entry.col) continue; // entry tile, fixed by notch
-                if (step.r === exit.row  && step.c === exit.col)  continue; // exit tile, fixed by notch
-                const isOpposite = ((step.in + 2) & 3) === step.out;
-                // Straight & cross both carry opposite-port pairs; elbow
-                // carries adjacent. Switch to whichever can't carry the
-                // current shortcut connection.
-                const newType = isOpposite ? T_ELBOW : T_STRAIGHT;
-                if (tile.type === newType) continue; // already this type — would be a no-op, skip
-                tile.type = newType;
-                tile.rotation = Math.floor(Math.random() * 4);
-                broke = true;
-                break;
-            }
-            if (!broke) return false; // every shortcut tile is fixed (path/entry/exit)
+            if (!breakFillerOnRoute(path)) return false; // every shortcut tile is fixed
         }
         return false;
+    }
+
+    // ── Equal-length alternate suppression (2026-07-29) ──────────────
+    // smartReroll + the shortest-path floor stop STRICTLY SHORTER
+    // alternates; EQUAL-length alternates were always allowed because
+    // the plain BFS rediscovers the designed route itself — it can't
+    // tell "found the designed path" from "found a distinct path of the
+    // same length". The detector below can: any route of length ≤ the
+    // designed one that avoids at least one designed edge is a distinct
+    // alternate (equal length + different edges ⇒ different route), so
+    // it runs the BFS once per designed edge with that edge excluded.
+    // Cost: ~pathLen extra BFS passes per check on ≤100-cell singular
+    // grids — microseconds-scale, bounded, no worst-case cliffs. Wired
+    // into the 1-path isHardEnough and the 2-path canonical only (3/4-
+    // path boards skip canonical entirely by design — their alternate
+    // pressure comes from alternateRouteEdges-targeted gates instead).
+    //
+    // SINGULAR grids only: tiles sit at fixed positions so designed
+    // lanes derive directly from _solution; quad mode scrambles
+    // POSITIONS and would need the un-scramble dance (canonical checks
+    // never run for quad builds, so it never comes up).
+    function designedEdgesForPath(pathIdx) {
+        const edges = [];
+        const seen = new Set();
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                const t = grid[r][c];
+                if (!t || t._solution === undefined) continue;
+                if (!cellIsOnPath(r, c, pathIdx)) continue;
+                // Cross tiles carry per-path lanes in _crossLanes (ports
+                // are absolute — crosses are rotation-invariant); single-
+                // lane tiles' designed lane is their base connection at
+                // the _solution rotation.
+                const lanes = t._crossLanes
+                    ? t._crossLanes.filter((l) => l[2] === pathIdx)
+                    : BASE_CONNECTIONS[t.type].map(([a, b]) => [rot(a, t._solution), rot(b, t._solution)]);
+                for (const lane of lanes) {
+                    for (const p of [lane[0], lane[1]]) {
+                        const nr = r + DELTA[p].dr;
+                        const nc = c + DELTA[p].dc;
+                        if (!inBounds(nr, nc)) continue;   // terminal notch port
+                        const k = canonicalEdgeKey(r, c, nr, nc);
+                        if (!seen.has(k)) { seen.add(k); edges.push(k); }
+                    }
+                }
+            }
+        }
+        return edges;
+    }
+    function hasEqualAlternate(intendedLen, blockedSet, pathIdx) {
+        for (const e of designedEdgesForPath(pathIdx)) {
+            const p = shortestPossiblePath(blockedSet, e);
+            if (p && p.length <= intendedLen) return true;
+        }
+        return false;
+    }
+    // smartReroll's sibling for equal-length alternates: find an
+    // offending route, break a filler on it, repeat. Returns true when
+    // no equal-or-shorter alternate remains, false when stuck (an
+    // alternate exists but runs entirely through fixed tiles).
+    function breakEqualAlternates(intendedLen, blockedSet, pathIdx) {
+        const cap = ROWS * COLS;
+        for (let iter = 0; iter < cap; iter++) {
+            let offending = null;
+            for (const e of designedEdgesForPath(pathIdx)) {
+                const p = shortestPossiblePath(blockedSet, e);
+                if (p && p.length <= intendedLen) { offending = p; break; }
+            }
+            if (!offending) return true;
+            if (!breakFillerOnRoute(offending)) return false;
+        }
+        return false;
+    }
+
+    // Best-effort alternate-route edge collection for GATE placement:
+    // one leftover equal-or-shorter alternate per path (3/4-path boards
+    // skip the suppression above, so this is where their alternates get
+    // pressure). Gates.assignGates prefers vertices whose solved-state
+    // prong severs one of these edges — the gates the player must open
+    // anyway then double as alternate-blockers at the solved delta.
+    // Returns null in quad mode (the type-level BFS runs on the
+    // SCRAMBLED grid, where positions don't match the solved layout —
+    // a preference computed there would be noise) and when no
+    // alternates are found. Runs once per puzzle at gate-assignment
+    // time: ≤ paths × pathLen BFS passes ≈ single-digit milliseconds.
+    function alternateRouteEdges() {
+        if (quadMode || !grid) return null;
+        const out = new Set();
+        const pairs = [[entry, exit, 0], [entry2, exit2, 1], [entry3, exit3, 2], [entry4, exit4, 3]];
+        const savedEntry = entry, savedExit = exit;
+        try {
+            for (const [e, x, idx] of pairs) {
+                if (!e || !x) continue;
+                entry = e; exit = x;
+                const len = pathCellCount(idx);
+                for (const de of designedEdgesForPath(idx)) {
+                    const p = shortestPossiblePath(null, de);
+                    if (p && p.length <= len) {
+                        for (let i = 0; i + 1 < p.length; i++) {
+                            out.add(canonicalEdgeKey(p[i].r, p[i].c, p[i + 1].r, p[i + 1].c));
+                        }
+                        break;   // one alternate per path is enough signal
+                    }
+                }
+            }
+        } finally {
+            entry = savedEntry;
+            exit = savedExit;
+        }
+        return out.size ? out : null;
+    }
+
+    // Achieved-vs-designed route comparator for the alternate-solve
+    // telemetry: true when the just-won board's lit route differs from
+    // the designed one (the player found an alternative completion).
+    // Compares canonical cell-edge sets — same edges = same route for
+    // this purpose. solutionEdges handles the quad un-scramble dance;
+    // `highlighted` is the achieved lit walk (both directions, deduped
+    // by the canonical keys; terminal notch ports fall out via the
+    // inBounds check). Called once per solve — cheap. Any internal
+    // error returns false: telemetry must never break a solve.
+    function solvedViaAlternate() {
+        if (!grid || !won) return false;
+        try {
+            const designed = solutionEdges();
+            const achieved = new Set();
+            for (const h of highlighted) {
+                for (const port of [h.inPort, h.outPort]) {
+                    const nr = h.row + DELTA[port].dr;
+                    const nc = h.col + DELTA[port].dc;
+                    if (inBounds(nr, nc)) achieved.add(canonicalEdgeKey(h.row, h.col, nr, nc));
+                }
+            }
+            if (achieved.size !== designed.size) return true;
+            for (const k of achieved) {
+                if (!designed.has(k)) return true;
+            }
+            return false;
+        } catch (e) {
+            return false;
+        }
     }
 
     // "r,c" of EVERY path's entry/exit cell. Terminal-lit rule
@@ -1750,32 +1903,38 @@ const Maze = (() => {
                 const blk1 = blockedCellsExceptPath(1);
                 const savedEntry = entry, savedExit = exit;
 
-                function isCanon(eRef, xRef, len, blk) {
+                function isCanon(eRef, xRef, len, blk, pathIdx) {
                     entry = eRef; exit = xRef;
                     const ok = !hasShortcutWithin(minShortcutTwists(), blk) &&
-                               shortestPossiblePathLength(blk) >= len;
+                               shortestPossiblePathLength(blk) >= len &&
+                               // Equal-length alternates too (2026-07-29 —
+                               // see the section above smartReroll).
+                               !hasEqualAlternate(len, blk, pathIdx);
                     entry = savedEntry; exit = savedExit;
                     return ok;
                 }
                 function bothCanon() {
-                    return isCanon(savedEntry, savedExit, len0, blk0) &&
-                           isCanon(entry2, exit2, len1, blk1);
+                    return isCanon(savedEntry, savedExit, len0, blk0, 0) &&
+                           isCanon(entry2, exit2, len1, blk1, 1);
                 }
-                function rerollFor(eRef, xRef, len, blk) {
+                function rerollFor(eRef, xRef, len, blk, pathIdx) {
                     entry = eRef; exit = xRef;
-                    const ok = smartReroll(len, blk);
+                    const shortOk = smartReroll(len, blk);
+                    const equalOk = breakEqualAlternates(len, blk, pathIdx);
                     entry = savedEntry; exit = savedExit;
-                    return ok;
+                    // "Progress" for the caller's loop: false only when BOTH
+                    // suppressors are stuck.
+                    return shortOk || equalOk;
                 }
 
                 let smart = 0;
                 while (smart < 6 && !bothCanon()) {
                     let progress = false;
-                    if (!isCanon(savedEntry, savedExit, len0, blk0)) {
-                        progress = rerollFor(savedEntry, savedExit, len0, blk0) || progress;
+                    if (!isCanon(savedEntry, savedExit, len0, blk0, 0)) {
+                        progress = rerollFor(savedEntry, savedExit, len0, blk0, 0) || progress;
                     }
-                    if (!isCanon(entry2, exit2, len1, blk1)) {
-                        progress = rerollFor(entry2, exit2, len1, blk1) || progress;
+                    if (!isCanon(entry2, exit2, len1, blk1, 1)) {
+                        progress = rerollFor(entry2, exit2, len1, blk1, 1) || progress;
                     }
                     if (!progress) break;
                     let rotR = 0;
@@ -1869,13 +2028,16 @@ const Maze = (() => {
                 }
                 if (pathLength < baseFloor && attempt < MAX_INIT_ATTEMPTS - 1) continue;
 
-                // A puzzle is acceptable when both:
+                // A puzzle is acceptable when all three hold:
                 //   (a) no path exists with rotation cost < minShortcutTwists()
                 //   (b) no shorter alternate path exists — the shortest possible
                 //       entry→exit path is at least as long as the intended one.
+                //   (c) no EQUAL-length alternate exists either (2026-07-29 —
+                //       see the equal-alternate section above smartReroll).
                 const isHardEnough = () =>
                     !hasShortcutWithin(minShortcutTwists()) &&
-                    shortestPossiblePathLength() >= pathLength;
+                    shortestPossiblePathLength() >= pathLength &&
+                    !hasEqualAlternate(pathLength, null, 0);
 
                 // Phase 1: random rerolls (types + rotations).
                 let rerolls = 0;
@@ -1885,11 +2047,15 @@ const Maze = (() => {
                 }
 
                 // Phase 2: smartReroll breaks BFS shortcuts by changing
-                // filler tile types on the shortest path. Rotation-only
-                // rerolls in between handle rotation-cost shortcuts without
-                // undoing the type changes.
+                // filler tile types on the shortest path;
+                // breakEqualAlternates does the same for equal-length
+                // alternates. Rotation-only rerolls in between handle
+                // rotation-cost shortcuts without undoing the type
+                // changes. Break only when BOTH are stuck.
                 for (let smart = 0; smart < 6 && !isHardEnough(); smart++) {
-                    if (!smartReroll(pathLength)) break;
+                    const shortOk = smartReroll(pathLength);
+                    const equalOk = breakEqualAlternates(pathLength, null, 0);
+                    if (!shortOk && !equalOk) break;
                     let rotRerolls = 0;
                     while (rotRerolls < 8 && !isHardEnough()) {
                         rerollRotationsOnly();
@@ -3648,6 +3814,8 @@ const Maze = (() => {
         init, rotate, hint, applyHintAt, togglePlayerLock, setDimensions, setHurry, setAbort, setTwoPathMode, setPathCount, setQuadMode,
         rotateBoard,   // whole-board 90° penalty rotation — see its comment; Gates.rotateBoard must run alongside
         flipBoard,     // whole-board mirror penalty (variant 2) — Gates.flipBoard must run alongside
+        alternateRouteEdges,  // leftover-alternate edges for targeted gate placement (null in quad mode)
+        solvedViaAlternate,   // achieved-vs-designed route comparator for the alternate-solve telemetry
         snapshotState, loadSnapshot, clear,
         getConnections,
         hasShortcutWithin,

@@ -1464,7 +1464,13 @@
                 // Quad mode: anchor gates at quad-corners only (every other
                 // sub-tile vertex). The prong is still one sub-tile long.
                 const stride = Maze.quadMode ? 2 : 1;
-                Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), target, stride);
+                // Alternate-aware placement: hand assignGates the edges of
+                // any leftover equal-or-shorter alternate routes so gates
+                // land where their solved-state prongs sever them (null in
+                // quad mode / when the board has none — placement is then
+                // random-safe exactly as before). See Maze.alternateRouteEdges.
+                const altEdges = (Maze.alternateRouteEdges) ? Maze.alternateRouteEdges() : null;
+                Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), target, stride, altEdges);
                 if (Maze.recompute) Maze.recompute();
             }
             resetSfxBaselines();

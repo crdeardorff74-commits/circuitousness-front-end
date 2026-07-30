@@ -1797,7 +1797,11 @@ const Marathon = (() => {
         if (typeof Tracking !== 'undefined' && Tracking.recordSolve) {
             Tracking.recordSolve(
                 (typeof Music !== 'undefined' && Music.isEffectivelyMuted) ? !Music.isEffectivelyMuted() : false,
-                (typeof Sfx   !== 'undefined' && Sfx.isEffectivelyMuted)   ? !Sfx.isEffectivelyMuted()   : false
+                (typeof Sfx   !== 'undefined' && Sfx.isEffectivelyMuted)   ? !Sfx.isEffectivelyMuted()   : false,
+                // Alternate-solve telemetry: did the winning route differ
+                // from the designed one? (Measures how often alternates
+                // actually happen in the wild — see Maze.solvedViaAlternate.)
+                (typeof Maze !== 'undefined' && Maze.solvedViaAlternate) ? Maze.solvedViaAlternate() : false
             );
         }
 

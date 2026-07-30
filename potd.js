@@ -1655,7 +1655,9 @@ const Potd = (() => {
         if (typeof Tracking !== 'undefined' && Tracking.recordSolve) {
             Tracking.recordSolve(
                 (typeof Music !== 'undefined' && Music.isEffectivelyMuted) ? !Music.isEffectivelyMuted() : false,
-                (typeof Sfx   !== 'undefined' && Sfx.isEffectivelyMuted)   ? !Sfx.isEffectivelyMuted()   : false
+                (typeof Sfx   !== 'undefined' && Sfx.isEffectivelyMuted)   ? !Sfx.isEffectivelyMuted()   : false,
+                // Alternate-solve telemetry — same call marathon.onSolve makes.
+                (typeof Maze !== 'undefined' && Maze.solvedViaAlternate) ? Maze.solvedViaAlternate() : false
             );
         }
         // First-time-player funnel: a PotD solve is a solve outside the

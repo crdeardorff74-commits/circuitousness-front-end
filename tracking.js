@@ -410,8 +410,12 @@ const Tracking = (function () {
     // audible at that moment. The server accumulates per-visit on/off
     // counters so the admin page can show "% of puzzles solved with
     // music on" — a per-solve tally, unlike the sticky funnel booleans.
-    function recordSolve(musicOn, sfxOn) {
-        const payload = { music: !!musicOn, sfx: !!sfxOn };
+    // Third arg (2026-07-29): `alternate` — the winning route differed
+    // from the designed solution (Maze.solvedViaAlternate). Server keeps
+    // a per-visit counter so the admin page can report how often
+    // alternates happen in the wild.
+    function recordSolve(musicOn, sfxOn, alternate) {
+        const payload = { music: !!musicOn, sfx: !!sfxOn, alternate: !!alternate };
         const qid = _queueAdd('solved', payload);
         withVisit(function (id) {
             _confirmDelivery(

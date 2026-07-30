@@ -110,7 +110,7 @@ const Gates = (() => {
         blockedEdgesCache = null;
     }
 
-    function assignGates(rows, cols, solutionEdges, target, vertexStride) {
+    function assignGates(rows, cols, solutionEdges, target, vertexStride, preferredEdges) {
         list = [];
         blockedEdgesCache = null;
         delta = 0;
@@ -123,22 +123,44 @@ const Gates = (() => {
         // candidates: stride 1 = every sub-tile vertex (non-quad mode),
         // stride 2 = only quad-corner vertices (every other sub-tile vertex),
         // so gates in quad mode anchor at the visible-tile corners only.
+        //
+        // preferredEdges (optional, Maze.alternateRouteEdges): canonical
+        // edge keys of detected leftover alternate routes. A safe dir whose
+        // edge is on an alternate is a PREFERRED dir — at the solved delta
+        // the gate sits at solutionDir and blocks exactly that edge, so
+        // gates the player must open anyway double as alternate-blockers
+        // (2026-07-29; the main pressure valve for 3/4-path boards, which
+        // skip the canonical equal-alternate suppression entirely).
         const candidates = [];
         for (let vr = stride; vr < rows; vr += stride) {
             for (let vc = stride; vc < cols; vc += stride) {
                 const safeDirs = [];
+                const preferredDirs = [];
                 for (let d = 0; d < 4; d++) {
                     if (!solutionEdges.has(edgeKeyForGateDir(vr, vc, d))) {
                         safeDirs.push(d);
+                        if (preferredEdges && preferredEdges.has(edgeKeyForGateDir(vr, vc, d))) {
+                            preferredDirs.push(d);
+                        }
                     }
                 }
-                if (safeDirs.length > 0) candidates.push({ vr, vc, safeDirs });
+                if (safeDirs.length > 0) candidates.push({ vr, vc, safeDirs, preferredDirs });
             }
         }
         // Fisher-Yates shuffle.
         for (let i = candidates.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             const tmp = candidates[i]; candidates[i] = candidates[j]; candidates[j] = tmp;
+        }
+        // Stable partition after the shuffle: alternate-severing candidates
+        // first (random among themselves, random among the rest — only the
+        // PRIORITY is deterministic). No-op when preferredEdges is absent.
+        if (preferredEdges) {
+            const pref = candidates.filter((c) => c.preferredDirs.length > 0);
+            const rest = candidates.filter((c) => c.preferredDirs.length === 0);
+            candidates.length = 0;
+            Array.prototype.push.apply(candidates, pref);
+            Array.prototype.push.apply(candidates, rest);
         }
         // Greedy pick from the shuffled order, skipping any candidate
         // adjacent to an already-placed gate — orthogonally OR diagonally
@@ -162,7 +184,10 @@ const Gates = (() => {
                 }
             }
             if (tooClose) continue;
-            const solutionDir = c.safeDirs[Math.floor(Math.random() * c.safeDirs.length)];
+            // Preferred (alternate-severing) dirs win when present; the
+            // pick within either pool stays random.
+            const pool = (c.preferredDirs && c.preferredDirs.length > 0) ? c.preferredDirs : c.safeDirs;
+            const solutionDir = pool[Math.floor(Math.random() * pool.length)];
             list.push({ vr: c.vr, vc: c.vc, solutionDir });
         }
         // Randomize the global delta so the player doesn't start at the
