@@ -2323,30 +2323,58 @@ html.mode-debug #settingsOverlay { display: none !important; }
 }
 
 /* Narrow-viewport HUD (portrait phones). The symmetric inner cluster
-   anchors Undo/Hint ±10rem from center, which hangs both off the screen
-   edges below ~700px. Move them to the bottom corners: thumb-reachable,
-   and the space beside a width-bound grid's lower half is empty in
-   portrait. position: fixed anchors to the viewport (no transformed/
-   filtered ancestors above #hud) and keeps them out of #hud's measured
-   height, so render.js's hudReserve is unaffected — same as before,
-   since they were already out of the flex flow. The first-run
-   How-to-Solve button takes the bottom-center slot for the same reason
-   (its center-top slot collides with the Quit + ⚙ cluster at this
-   width). Known accepted overlap: on tall late-run grids a bottom-edge
-   terminal pad can render near a corner button — visual only, pads
-   aren't interactive. Placement matters: this block must stay AFTER
-   every base #hud* rule (equal specificity → source order wins). */
+   anchors Undo+Reset / Hint ±10rem from center, which hangs both off
+   the screen edges below ~700px. Hint moves to the bottom-right corner:
+   thumb-reachable, and the space beside a width-bound grid's lower half
+   is empty in portrait. position: fixed anchors it to the viewport (no
+   transformed/filtered ancestors above #hud) and keeps it out of #hud's
+   measured height, so render.js's hudReserve is unaffected — same as
+   before, since it was already out of the flex flow.
+   The Undo+Reset cluster instead moves to the top. It lived in the
+   bottom-LEFT corner until RESET joined (2026-07-30, user screenshot):
+   the two-button row reached the bottom-center Now Playing chip and
+   overlapped it. Where at the top depends on the timer: in untimed
+   Practice/Zen (body.mode-practice hides #hudTimer) the strip's center
+   slot is genuinely free at phone widths, so the pair sits IN the
+   strip there (user call — rule below); in timed modes (Marathon,
+   PotD) the timer owns that slot and the strip has no other free
+   width at ~390px (Quit + timer + ⚙), so the pair drops just BELOW
+   the strip, left-aligned. Below-the-strip is the same treatment the
+   level readout gets; the readout
+   moves from below-center to below-RIGHT so the two second-row
+   occupants can't meet (centered, they'd overlap at ~390px — sooner in
+   long-label locales, which may still graze on ~320px screens in e.g.
+   French; accepted). Both hang into the canvas's top pad region —
+   accepted, as the readout always was: the pad is empty except
+   top-edge terminal stubs, and stub overlap is visual only.
+   The first-run How-to-Solve button keeps its in-strip top-left slot
+   (rule below). Known accepted overlap: on tall late-run grids a
+   bottom-edge terminal pad can render near the Hint corner button —
+   visual only, pads aren't interactive. Placement matters: this block
+   must stay AFTER every base #hud* rule (equal specificity → source
+   order wins). */
 @media (max-width: 700px) {
     #hud > #hudUndoCluster {
-        position: fixed;
-        left: max(0.75rem, env(safe-area-inset-left));
         right: auto;
-        top: auto;
-        bottom: max(0.75rem, env(safe-area-inset-bottom));
+        left: max(0.75rem, env(safe-area-inset-left));
+        top: calc(100% + 0.4rem);
         transform: none;
-        /* row-reverse keeps UNDO (last in DOM) at the corner-most spot
-           the thumb already knows; Reset lands just to its right. */
+        /* row-reverse keeps UNDO hugging the anchored (left) edge —
+           primary button outermost — with RESET inboard, the same
+           Undo-at-the-anchor principle as the desktop cluster. */
         flex-direction: row-reverse;
+    }
+    /* Untimed modes: the hidden timer's center slot is free — the pair
+       takes it, in-strip (see the block comment above). The first-run
+       auto-start is Practice too; its How-to button sits in-strip
+       top-LEFT at this width, so the center stays free there as well.
+       Normal order again (Reset | Undo): centered, there's no anchored
+       edge for Undo to hug, so mirror the desktop visual. */
+    body.mode-practice #hud > #hudUndoCluster {
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        flex-direction: row;
     }
     #hudHintBtn {
         position: fixed;
@@ -2367,15 +2395,19 @@ html.mode-debug #settingsOverlay { display: none !important; }
         top: 50%;
         transform: translateY(-50%);
     }
-    /* Level readout ("Puzzle N · C×R"): dropped just BELOW the HUD strip
-       and centered — its far-left slot is the How-to button's now, and
-       at ~390px it couldn't clear the centered timer anyway. It hangs
-       into the canvas's top pad region; accepted — the pad is empty
-       except top-edge terminal stubs, and the pill is small. */
+    /* Level readout ("Puzzle N · C×R"): dropped just BELOW the HUD strip,
+       right-aligned — its far-left slot is the How-to button's now, at
+       ~390px it couldn't clear the centered timer anyway, and its brief
+       below-CENTER placement ended when the Undo+Reset cluster took the
+       second row's left side (they'd have met at ~390px — see the block
+       comment above). It hangs into the canvas's top pad region;
+       accepted — the pad is empty except top-edge terminal stubs, and
+       the pill is small. */
     #hudLevel {
-        left: 50%;
+        left: auto;
+        right: max(0.75rem, env(safe-area-inset-right));
         top: calc(100% + 0.4rem);
-        transform: translate(-50%, 0);
+        transform: none;
     }
     /* Tighter label bubbles at ~390px. */
     #hud > div { padding: 0.3rem 0.45rem; }
