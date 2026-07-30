@@ -2347,8 +2347,16 @@ html.mode-debug #settingsOverlay { display: none !important; }
    French; accepted). Both hang into the canvas's top pad region —
    accepted, as the readout always was: the pad is empty except
    top-edge terminal stubs, and stub overlap is visual only.
-   The first-run How-to-Solve button keeps its in-strip top-left slot
-   (rule below). Known accepted overlap: on tall late-run grids a
+   In Practice the centered pair owns the strip, so the quit button
+   drops to the second row too (normal runs: PAUSE/QUIT lands second-
+   row LEFT beside the readout; without this it grazed the centered
+   pair at ≤390px, sooner in long-label locales). The first-run layout
+   (How-to visible) fills the second row with HOW TO SOLVE (left) +
+   the "Daily & More" quit (right) — both overlapped the centered pair
+   in-strip (user screenshot 2026-07-30) — and the readout steps down
+   to a third row there (:has-gated; a pre-:has browser shows it
+   under the quit — accepted degradation on the one-time first run).
+   Known accepted overlap: on tall late-run grids a
    bottom-edge terminal pad can render near the Hint corner button —
    visual only, pads aren't interactive. Placement matters: this block
    must stay AFTER every base #hud* rule (equal specificity → source
@@ -2384,16 +2392,18 @@ html.mode-debug #settingsOverlay { display: none !important; }
         bottom: max(0.75rem, env(safe-area-inset-bottom));
         transform: none;
     }
-    /* First-run How-to-Solve button: takes the level readout's top-LEFT
-       slot — its desktop slot (HUD center) collides with Quit/⚙ at
-       phone widths, and bottom-center belongs to the Now Playing chip.
-       Base position:absolute stands; only the anchor changes. It never
-       coexists with a visible timer (practice mode hides #hudTimer) and
-       the readout it displaces is moved below the strip (next rule). */
+    /* First-run How-to-Solve button: second row, LEFT. Its desktop slot
+       (HUD center) collides with Quit/⚙ at phone widths, bottom-center
+       belongs to the Now Playing chip, and its brief in-strip top-left
+       era ended when the Undo+Reset pair took the strip's center
+       (2026-07-30, user screenshot: the two overlapped). Base
+       position:absolute stands; only the anchor changes. It never
+       coexists with a visible timer (the run is Practice, which hides
+       #hudTimer). */
     #hudHowToBtn {
-        left: max(1rem, env(safe-area-inset-left));
-        top: 50%;
-        transform: translateY(-50%);
+        left: max(0.75rem, env(safe-area-inset-left));
+        top: calc(100% + 0.4rem);
+        transform: none;
     }
     /* Level readout ("Puzzle N · C×R"): dropped just BELOW the HUD strip,
        right-aligned — its far-left slot is the How-to button's now, at
@@ -2409,35 +2419,65 @@ html.mode-debug #settingsOverlay { display: none !important; }
         top: calc(100% + 0.4rem);
         transform: none;
     }
+    /* First-run only: the second row's right side belongs to the
+       "Daily & More" quit (rule below), so the readout steps down one
+       more row. The 2.8rem clears the ~1.9rem-tall second-row buttons
+       plus the 0.4rem gaps — retune if button padding changes. Pre-:has
+       browsers skip this and show the readout under the quit; accepted
+       degradation on the one-time first run. */
+    #hud:has(#hudHowToBtn:not([hidden])) #hudLevel {
+        top: calc(100% + 2.8rem);
+    }
     /* Tighter label bubbles at ~390px. */
     #hud > div { padding: 0.3rem 0.45rem; }
-    /* Quit → top-LEFT: the label grew to "PAUSE/QUIT" (saved-run
-       resume, 2026-07-22) and at ~390px its right-flow slot reaches
-       the centered timer. The left slot is free at this width —
+    /* Quit → top-LEFT (timed modes): the label grew to "PAUSE/QUIT"
+       (saved-run resume, 2026-07-22) and at ~390px its right-flow slot
+       reaches the centered timer. The left slot is free at this width —
        #hudLevel already moved below the strip (rule above). Absolute
        pulls it out of the flex flow, leaving ⚙ alone at the right
-       edge. Gated on the How-to button being hidden: the one run
-       where How-to IS visible (first-visit auto-start) owns top-left,
-       but that run is Practice, whose hidden timer frees the right
-       edge — so its "📅 Daily & More" quit keeps the flow slot. */
+       edge. Gated on the How-to button being hidden — when How-to IS
+       visible (first-visit auto-start) the practice rules below place
+       the quit instead. */
     #hudHowToBtn[hidden] ~ #hudQuitBtn {
         position: absolute;
         left: max(1rem, env(safe-area-inset-left));
         top: 50%;
         transform: translateY(-50%);
     }
+    /* Practice: the centered Undo+Reset pair owns the strip, so the
+       quit drops to the second row's LEFT slot (the readout holds the
+       right one). In-strip top-left it grazed the centered pair at
+       ≤390px — sooner with long-label locales. */
+    body.mode-practice #hudHowToBtn[hidden] ~ #hudQuitBtn {
+        left: max(0.75rem, env(safe-area-inset-left));
+        top: calc(100% + 0.4rem);
+        transform: none;
+    }
+    /* First-run auto-start (How-to visible, Practice by construction):
+       the "📅 Daily & More" quit takes the second row's RIGHT slot,
+       opposite HOW TO SOLVE — both dropped out of the strip 2026-07-30
+       (user call: they overlapped the centered pair). The readout
+       cedes the slot and steps to row three (:has rule above). */
+    #hudHowToBtn:not([hidden]) ~ #hudQuitBtn {
+        position: absolute;
+        right: max(0.75rem, env(safe-area-inset-right));
+        left: auto;
+        top: calc(100% + 0.4rem);
+        transform: none;
+    }
 }
 /* Portrait phones. (The Now Playing chip's title-sized max-width used
    to live here before moving into the base rule — the chip is handled
    entirely by its base styles now, on every device/orientation.) */
 @media (max-width: 700px) and (orientation: portrait) {
-    /* Top-strip buttons on the first-run layout: HOW TO SOLVE (top-left)
-       + "DAILY & MORE" + ⚙ overlapped by ~26px at 390px. Slim the side
-       padding (0.9rem → 0.5rem) and the strip gap, and drop How-to's
-       letter-spacing to Quit's 0.06em — 0.12em pads EVERY glyph gap
-       including the ❓-to-text space, which is why its icon looked more
-       detached than DAILY's 📅. Undo/Hint keep their 0.12em (bottom
-       corners, no crowding). */
+    /* First-run How-to/Quit slimming. (History: when both lived in the
+       top strip they overlapped by ~26px at 390px; they're on the
+       second row now, where the slimming still buys clearance for
+       long-label locales.) Side padding 0.9rem → 0.5rem, tighter strip
+       gap, and How-to's letter-spacing drops to Quit's 0.06em — 0.12em
+       pads EVERY glyph gap including the ❓-to-text space, which is why
+       its icon looked more detached than DAILY's 📅. Undo/Reset/Hint
+       keep their 0.12em (roomier slots, no crowding). */
     #hud { gap: 0.5rem; }
     #hudHowToBtn,
     #hudQuitBtn { padding: 0.4rem 0.5rem; }
