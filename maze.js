@@ -342,21 +342,61 @@ const Maze = (() => {
     // success, null on failure. Lanes are stored as [enterPort, exitPort, pathIdx].
     function generateLanes(seedLanes, pathIdx) {
         const myPath = pathIdx || 0;
-        const cellLanes = seedLanes || new Map();
-        const seedKeys = seedLanes ? new Set(seedLanes.keys()) : null;
-        const k = (r, c) => r + ',' + c;
         let dfsSteps = 0;
         const dfsCap = maxDfsSteps();
+        const cells = ROWS * COLS;
+
+        // Hot path: the backtracking DFS visits millions of nodes on large
+        // grids (it was ~75% of a 12×12 build), so the search runs on flat
+        // typed arrays — no Map, no "r,c" strings, no per-lane array
+        // allocations. addLane/popLane fire once per DFS step (backtracking
+        // pops constantly), which is why the store can't afford either.
+        //   • laneCount[cell] = lanes at that cell (0..2).
+        //   • laneData[cell*6 ...] = up to two (enter, exit, path) triples
+        //     in add order — slot 0 first, matching the old lists' order,
+        //     which consumers rely on (a cross's _crossLanes ordering).
+        //   • Seed lanes (multi-path) are decoded in once; the DFS only
+        //     pops lanes it pushed, so seed slots are never disturbed.
+        //   • shuffles are in-place on the freshly-built per-node arrays
+        //     (same Fisher-Yates, same Math.random() call sequence — the
+        //     ordering distribution is identical to the old copy-shuffle).
+        // The public "r,c"-keyed Map contract is preserved by materializing
+        // the Map ONCE on success (consumers — place(), the quality floors,
+        // buildPuzzle's tile stamping — parse keys or aggregate over
+        // values; none depend on Map insertion order). On failure nothing
+        // is built at all — the old version mutated and un-mutated a Map
+        // the caller was about to discard anyway.
+        const laneCount = new Uint8Array(cells);
+        const laneData  = new Int8Array(cells * 6);
+        if (seedLanes) {
+            for (const [key, ls] of seedLanes) {
+                const comma = key.indexOf(',');
+                const cell = (+key.slice(0, comma)) * COLS + (+key.slice(comma + 1));
+                laneCount[cell] = ls.length;
+                for (let i = 0; i < ls.length && i < 2; i++) {
+                    laneData[cell * 6 + i * 3]     = ls[i][0];
+                    laneData[cell * 6 + i * 3 + 1] = ls[i][1];
+                    laneData[cell * 6 + i * 3 + 2] = ls[i][2];
+                }
+            }
+        }
 
         function isOppositePair(a, b) { return ((a + 2) & 3) === b; }
-        function getLanes(r, c)       { return cellLanes.get(k(r, c)) || []; }
+        function shuf(a) {
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = (Math.random() * (i + 1)) | 0;
+                const t = a[i]; a[i] = a[j]; a[j] = t;
+            }
+            return a;
+        }
 
         // Can a new lane (a, b) be added to (r, c) without violating the cross constraint?
         function canAddLane(r, c, a, b) {
-            const ls = getLanes(r, c);
-            if (ls.length === 0) return true;
-            if (ls.length >= 2)  return false;
-            const [pa, pb] = ls[0];
+            const cell = r * COLS + c;
+            const n = laneCount[cell];
+            if (n === 0) return true;
+            if (n >= 2)  return false;
+            const pa = laneData[cell * 6], pb = laneData[cell * 6 + 1];
             if (!isOppositePair(pa, pb)) return false;     // existing is elbow → no cross possible
             if (a === pa || a === pb || b === pa || b === pb) return false; // overlap
             return isOppositePair(a, b);                    // new must also be opposite pair
@@ -364,25 +404,23 @@ const Maze = (() => {
 
         // Can we ENTER (r, c) via `port` (i.e. is there room for a lane that uses this port)?
         function canEnter(r, c, port) {
-            const ls = getLanes(r, c);
-            if (ls.length === 0) return true;
-            if (ls.length >= 2)  return false;
-            const [pa, pb] = ls[0];
+            const cell = r * COLS + c;
+            const n = laneCount[cell];
+            if (n === 0) return true;
+            if (n >= 2)  return false;
+            const pa = laneData[cell * 6], pb = laneData[cell * 6 + 1];
             if (port === pa || port === pb) return false;
             return isOppositePair(pa, pb); // existing must be a straight to allow a perpendicular lane
         }
 
         function addLane(r, c, a, b) {
-            const key = k(r, c);
-            const ls  = cellLanes.get(key) || [];
-            ls.push([a, b, myPath]);
-            cellLanes.set(key, ls);
+            const cell = r * COLS + c;
+            const o = cell * 6 + laneCount[cell] * 3;
+            laneData[o] = a; laneData[o + 1] = b; laneData[o + 2] = myPath;
+            laneCount[cell]++;
         }
         function popLane(r, c) {
-            const key = k(r, c);
-            const ls  = cellLanes.get(key);
-            ls.pop();
-            if (ls.length === 0) cellLanes.delete(key);
+            laneCount[r * COLS + c]--;
         }
 
         function dfs(r, c, enterPort) {
@@ -400,28 +438,42 @@ const Maze = (() => {
             // floors don't apply. Softened by a coin flip so paths still
             // vary and the center doesn't congest on dense multi-path
             // builds; backtracking explores the other orders on failure.
-            const candidates = [N, E, S, W].filter((p) => p !== enterPort);
-            const virgin = [], rest = [];
-            const deeper = [];
-            for (const ep of candidates) {
+            const hereDepth = Math.min(r, c, ROWS - 1 - r, COLS - 1 - c);
+            const deeper = [], virgin = [], rest = [];
+            for (let ep = 0; ep < 4; ep++) {
+                if (ep === enterPort) continue;
                 const nr = r + DELTA[ep].dr;
                 const nc = c + DELTA[ep].dc;
-                if (inBounds(nr, nc) && getLanes(nr, nc).length === 0) {
-                    if (borderDist(nr, nc) > borderDist(r, c)) deeper.push(ep);
+                if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS
+                        && laneCount[nr * COLS + nc] === 0) {
+                    if (Math.min(nr, nc, ROWS - 1 - nr, COLS - 1 - nc) > hereDepth) deeper.push(ep);
                     else virgin.push(ep);
                 } else {
                     rest.push(ep);
                 }
             }
-            const exits = (Math.random() < 0.6)
-                ? shuffle(deeper).concat(shuffle(virgin)).concat(shuffle(rest))
-                : shuffle(deeper.concat(virgin)).concat(shuffle(rest));
-            for (const ep of exits) {
+            // Assemble the try-order into `deeper` in place. Both branches
+            // preserve the original's ordering distribution exactly (see
+            // the shuf note above).
+            let exits;
+            if (Math.random() < 0.6) {
+                shuf(deeper); shuf(virgin); shuf(rest);
+                for (let i = 0; i < virgin.length; i++) deeper.push(virgin[i]);
+                for (let i = 0; i < rest.length; i++)   deeper.push(rest[i]);
+                exits = deeper;
+            } else {
+                for (let i = 0; i < virgin.length; i++) deeper.push(virgin[i]);
+                shuf(deeper); shuf(rest);
+                for (let i = 0; i < rest.length; i++)   deeper.push(rest[i]);
+                exits = deeper;
+            }
+            for (let i = 0; i < exits.length; i++) {
+                const ep = exits[i];
                 if (!canAddLane(r, c, enterPort, ep)) continue;
                 const nr = r + DELTA[ep].dr;
                 const nc = c + DELTA[ep].dc;
 
-                if (!inBounds(nr, nc)) {
+                if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) {
                     // Off-grid via this exit: only valid if it matches the puzzle's exit port
                     if (r === exit.row && c === exit.col && ep === exit.port) {
                         addLane(r, c, enterPort, ep);
@@ -439,23 +491,60 @@ const Maze = (() => {
             return false;
         }
 
-        return dfs(entry.row, entry.col, entry.port) ? cellLanes : null;
+        if (!dfs(entry.row, entry.col, entry.port)) return null;
+
+        // Success: materialize the public "r,c"-keyed Map from the flat
+        // store. Reuses the seed Map when given (callers treat the return
+        // value as THE map either way); every cell that holds lanes is
+        // re-set wholesale, and a cell the DFS visited-then-backtracked
+        // out of holds none, so no stale entries can linger — seed cells
+        // always retain at least their seed lanes.
+        const cellLanes = seedLanes || new Map();
+        for (let cell = 0; cell < cells; cell++) {
+            const n = laneCount[cell];
+            if (n === 0) continue;
+            const ls = [];
+            for (let i = 0; i < n; i++) {
+                ls.push([laneData[cell * 6 + i * 3],
+                         laneData[cell * 6 + i * 3 + 1],
+                         laneData[cell * 6 + i * 3 + 2]]);
+            }
+            cellLanes.set(((cell / COLS) | 0) + ',' + (cell % COLS), ls);
+        }
+        return cellLanes;
     }
 
     // Min rotations to make `tile` carry a lane from port a to port b.
     // Returns Infinity if no rotation of this tile type supports the lane.
-    function minRotCost(tile, a, b) {
-        let best = Infinity;
-        for (let r = 0; r < 4; r++) {
-            for (const [pa, pb] of BASE_CONNECTIONS[tile.type]) {
-                const ra = rot(pa, r), rb = rot(pb, r);
-                if ((ra === a && rb === b) || (ra === b && rb === a)) {
-                    const cost = (r - tile.rotation + 4) & 3;
-                    if (cost < best) best = cost;
+    //
+    // Precomputed: the answer depends only on (type, rotation, a, b) —
+    // 3 × 4 × 4 × 4 = 192 entries — and this is one of the two hottest
+    // calls in generation (27M calls building a 12×12; was ~14% of total
+    // runtime as a computed loop). Table is derived from BASE_CONNECTIONS
+    // at module load so it can never drift from the tile definitions.
+    const MIN_ROT_COST = (() => {
+        const t = [];
+        for (const type of [T_STRAIGHT, T_ELBOW, T_CROSS]) {
+            t[type] = [];
+            for (let rotation = 0; rotation < 4; rotation++) {
+                const flat = new Array(16).fill(Infinity);
+                for (let r = 0; r < 4; r++) {
+                    const cost = (r - rotation + 4) & 3;
+                    for (const [pa, pb] of BASE_CONNECTIONS[type]) {
+                        const ra = rot(pa, r), rb = rot(pb, r);
+                        if (cost < flat[ra * 4 + rb]) {
+                            flat[ra * 4 + rb] = cost;
+                            flat[rb * 4 + ra] = cost;
+                        }
+                    }
                 }
+                t[type][rotation] = flat;
             }
         }
-        return best;
+        return t;
+    })();
+    function minRotCost(tile, a, b) {
+        return MIN_ROT_COST[tile.type][tile.rotation][a * 4 + b];
     }
 
     // Bounded threshold search: returns true iff some entry→exit path exists
@@ -527,65 +616,108 @@ const Maze = (() => {
     // as an array of {r, c, in, out} steps (in/out are the entry/exit ports
     // at that cell). Used by smartReroll to identify and break shortcut
     // tiles. Returns null if no path exists.
+    //
+    // blockedSet (optional): "r,c" keys of cells excluded from traversal.
+    // Used by 2-path canonical to forbid the BFS from threading through
+    // tiles that belong exclusively to the OTHER path's solution.
+    // excludedEdgeKey (optional): ONE canonical cell-edge the search may
+    // not cross. The equal-alternate detector runs this BFS once per
+    // designed edge: any route of length ≤ the designed one that avoids
+    // some designed edge is, by definition, a distinct alternate — the
+    // plain BFS can't see those because it always rediscovers the
+    // designed route itself at equal length.
+    //
+    // Hot path: the suppressor loops run this BFS tens of thousands of
+    // times per large-grid build. States are (cell, entryPort) packed as
+    // the integer (r*COLS + c)*4 + p into flat typed arrays — the
+    // original string-keyed Map version allocated millions of transient
+    // key strings per build (13M measured at 12×12, ~half of generation
+    // time together with the computed minRotCost this table-ified).
+    // Scratch buffers are reused across calls, reallocated only when the
+    // grid grows past their capacity.
+    let bfsParent = null;   // state → parent state index, -1 unvisited, self at start
+    let bfsQueue  = null;   // states enqueued this run (each at most once)
+    let bfsBlocked = null;  // per-cell 0/1, decoded from blockedSet each call
     function shortestPossiblePath(blockedSet, excludedEdgeKey) {
-        // Map each visited (cell, entryPort) state to {parent: parent_state_key,
-        // childExit: the exit port at THIS cell that led to the parent's child}.
-        // We can reconstruct the full path by walking parents back to start.
-        // blockedSet (optional): "r,c" keys of cells excluded from traversal.
-        // Used by 2-path canonical to forbid the BFS from threading through
-        // tiles that belong exclusively to the OTHER path's solution.
-        // excludedEdgeKey (optional): ONE canonical cell-edge the search may
-        // not cross. The equal-alternate detector runs this BFS once per
-        // designed edge: any route of length ≤ the designed one that avoids
-        // some designed edge is, by definition, a distinct alternate — the
-        // plain BFS can't see those because it always rediscovers the
-        // designed route itself at equal length.
-        const parent = new Map();
-        const startKey = entry.row + ',' + entry.col + ',' + entry.port;
-        parent.set(startKey, null);
-        const queue = [[entry.row, entry.col, entry.port]];
-        let head = 0;
-        let exitFromR = -1, exitFromC = -1, exitFromPort = -1, exitOutPort = -1;
-        outer: while (head < queue.length) {
-            const [r, c, p] = queue[head++];
+        const cells = ROWS * COLS;
+        const states = cells * 4;
+        if (!bfsParent || bfsParent.length < states) {
+            bfsParent  = new Int32Array(states);
+            bfsQueue   = new Int32Array(states);
+            bfsBlocked = new Uint8Array(cells);
+        }
+        bfsParent.fill(-1, 0, states);
+        bfsBlocked.fill(0, 0, cells);
+        if (blockedSet) {
+            for (const key of blockedSet) {
+                const comma = key.indexOf(',');
+                const br = +key.slice(0, comma), bc = +key.slice(comma + 1);
+                if (br >= 0 && br < ROWS && bc >= 0 && bc < COLS) bfsBlocked[br * COLS + bc] = 1;
+            }
+        }
+        // Excluded edge, parsed once to cell indices (-1 = none). The BFS
+        // step (r,c)→(nr,nc) crosses it iff the unordered cell pair
+        // matches — equivalent to the old canonicalEdgeKey string compare.
+        let exA = -1, exB = -1;
+        if (excludedEdgeKey) {
+            const [a, b] = excludedEdgeKey.split('|');
+            const ac = a.indexOf(','), bc2 = b.indexOf(',');
+            exA = (+a.slice(0, ac)) * COLS + (+a.slice(ac + 1));
+            exB = (+b.slice(0, bc2)) * COLS + (+b.slice(bc2 + 1));
+        }
+
+        const startState = (entry.row * COLS + entry.col) * 4 + entry.port;
+        bfsParent[startState] = startState;   // self-parent marks the root
+        bfsQueue[0] = startState;
+        let head = 0, tail = 1;
+        const exitCell = exit.row * COLS + exit.col;
+        let exitState = -1, exitOutPort = -1;
+        outer: while (head < tail) {
+            const state = bfsQueue[head++];
+            const cell = state >> 2;
+            const p = state & 3;
+            const r = (cell / COLS) | 0, c = cell % COLS;
             const tile = grid[r][c];
-            for (const exitP of [N, E, S, W]) {
+            const costRow = MIN_ROT_COST[tile.type][tile.rotation];
+            for (let exitP = 0; exitP < 4; exitP++) {
                 if (exitP === p) continue;
-                if (minRotCost(tile, p, exitP) === Infinity) continue;
+                if (costRow[p * 4 + exitP] === Infinity) continue;
                 const nr = r + DELTA[exitP].dr;
                 const nc = c + DELTA[exitP].dc;
-                if (!inBounds(nr, nc)) {
-                    if (r === exit.row && c === exit.col && exitP === exit.port) {
-                        exitFromR = r; exitFromC = c; exitFromPort = p; exitOutPort = exitP;
+                if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) {
+                    if (cell === exitCell && exitP === exit.port) {
+                        exitState = state; exitOutPort = exitP;
                         break outer;
                     }
                     continue;
                 }
-                if (blockedSet && blockedSet.has(nr + ',' + nc)) continue;
-                if (excludedEdgeKey && canonicalEdgeKey(r, c, nr, nc) === excludedEdgeKey) continue;
-                const nextP = (exitP + 2) & 3;
-                const k = nr + ',' + nc + ',' + nextP;
-                if (parent.has(k)) continue;
-                parent.set(k, r + ',' + c + ',' + p);
-                queue.push([nr, nc, nextP]);
+                const nCell = nr * COLS + nc;
+                if (bfsBlocked[nCell]) continue;
+                if (exA >= 0 && ((cell === exA && nCell === exB) || (cell === exB && nCell === exA))) continue;
+                const nState = nCell * 4 + ((exitP + 2) & 3);
+                if (bfsParent[nState] >= 0) continue;
+                bfsParent[nState] = state;
+                bfsQueue[tail++] = nState;
             }
         }
-        if (exitFromR < 0) return null;
+        if (exitState < 0) return null;
 
-        // Backtrack: at each cell, entry port is `p` from the state key.
-        // Exit port is the OPPOSITE of the next cell's entry port (or, for
-        // the last cell, exitOutPort itself).
+        // Backtrack root-ward (then reverse): at each cell, entry port is
+        // the state's port; exit port is the OPPOSITE of the next cell's
+        // entry port (or, for the last cell, exitOutPort itself).
         const path = [];
-        let curKey = exitFromR + ',' + exitFromC + ',' + exitFromPort;
+        let cur = exitState;
         let outAtCur = exitOutPort;
-        while (curKey) {
-            const [r, c, p] = curKey.split(',').map(Number);
-            path.unshift({ r, c, in: p, out: outAtCur });
-            const pKey = parent.get(curKey);
-            if (!pKey) break;
+        for (;;) {
+            const cell = cur >> 2;
+            const p = cur & 3;
+            path.push({ r: (cell / COLS) | 0, c: cell % COLS, in: p, out: outAtCur });
+            const par = bfsParent[cur];
+            if (par === cur) break;
             outAtCur = (p + 2) & 3; // parent's exit = opposite of this cell's entry
-            curKey = pKey;
+            cur = par;
         }
+        path.reverse();
         return path;
     }
 
@@ -686,13 +818,29 @@ const Maze = (() => {
     // offending route, break a filler on it, repeat. Returns true when
     // no equal-or-shorter alternate remains, false when stuck (an
     // alternate exists but runs entirely through fixed tiles).
+    //
+    // Two scan optimizations (this loop was ~27% of large-grid build
+    // time, one full BFS per designed edge per iteration):
+    //   • The edge list is computed ONCE — designed edges derive from
+    //     path tiles' _solution/_crossLanes only, and breakFillerOnRoute
+    //     mutates fillers only, so the list is invariant across breaks.
+    //   • Each scan starts at the edge that offended LAST time (the same
+    //     edge usually still offends after one filler break, so the
+    //     common case finds it in one BFS instead of re-verifying every
+    //     clean edge before it). Correctness is unchanged: `true` is
+    //     still returned only after one FULL wrap of the list — checked
+    //     entirely against the current grid, since no break happened
+    //     during that wrap — finds no offender.
     function breakEqualAlternates(intendedLen, blockedSet, pathIdx) {
         const cap = ROWS * COLS;
+        const edges = designedEdgesForPath(pathIdx);
+        let scanFrom = 0;
         for (let iter = 0; iter < cap; iter++) {
             let offending = null;
-            for (const e of designedEdgesForPath(pathIdx)) {
-                const p = shortestPossiblePath(blockedSet, e);
-                if (p && p.length <= intendedLen) { offending = p; break; }
+            for (let i = 0; i < edges.length; i++) {
+                const idx = (scanFrom + i) % edges.length;
+                const p = shortestPossiblePath(blockedSet, edges[idx]);
+                if (p && p.length <= intendedLen) { offending = p; scanFrom = idx; break; }
             }
             if (!offending) return true;
             if (!breakFillerOnRoute(offending)) return false;
