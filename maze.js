@@ -48,7 +48,6 @@ const Maze = (() => {
     //                         must be at least as long as the intended.
     //   minShortcutTwists() — rotation-cost floor across all paths.  [10 at 8×8]
     //   twinGroupSize()     — tiles per locked-rotation group.        [3 at 8×8]
-    //   twinGroupCount()    — # of those groups.                      [6 at 8×8]
     //   maxDfsSteps()       — bail-out cap on the lane-DFS, scales with
     //                         the cell × port state space.       [8000 at 8×8]
     // Retry/sample counts (below) don't depend on grid size — they bound the
@@ -63,9 +62,11 @@ const Maze = (() => {
     const ENDPOINT_SAMPLES      = 5;   // pick farthest of N random endpoint configs
 
     // ── Twin GROUP sizing ─────────────────────────────────────────────
-    // A twin group is N tiles that rotate in lockstep: one path tile plus
-    // (N-1) fillers, tagged with a shared pastel color. Groups grow with
-    // the board — twins (2) → triplets (3) → quadruplets (4) → …
+    // A twin group is N tiles that rotate in lockstep: one anchor path
+    // tile plus (N-1) random members (path or filler — see assignTwins
+    // for membership + the solvability invariant), tagged with a shared
+    // pastel color. Groups grow with the board — twins (2) →
+    // triplets (3) → quadruplets (4) → …
     //
     // Two rules govern the sizing, and they pull in opposite directions:
     //
@@ -109,16 +110,15 @@ const Maze = (() => {
         if (s < 17) return 5;
         return 6 + Math.floor((s - 17) / 2);
     }
-    // Ladder size, raised if the palette couldn't otherwise give every
-    // group its own color. Never below 2 — a "group" of 1 is just a tile.
-    function twinGroupSize() {
-        const paletteFloor = Math.ceil(twinCoverageTiles() / TWIN_COLORS.length);
-        return Math.max(2, twinLadderSize(), paletteFloor);
+    // The palette floor: the group size below which the group count would
+    // exceed the 16-color palette and colors would repeat. Group sizing
+    // never goes under this. Never below 2 — a "group" of 1 is just a tile.
+    function twinPaletteFloor() {
+        return Math.max(2, Math.ceil(twinCoverageTiles() / TWIN_COLORS.length));
     }
-    // Groups to place. assignTwins clamps further when the board doesn't
-    // actually hold enough path/filler cells to fill them.
-    function twinGroupCount() {
-        return Math.max(1, Math.round(twinCoverageTiles() / twinGroupSize()));
+    // Group size at the current dims (ladder + palette floor).
+    function twinGroupSize() {
+        return Math.max(twinPaletteFloor(), twinLadderSize());
     }
 
     // ── Twin group colors ─────────────────────────────────────────────
@@ -2655,9 +2655,18 @@ const Maze = (() => {
     //   cross     4-symmetric → always solved (0 moves)
     //   straight  2-symmetric → 0 or 1 move
     //   elbow     asymmetric  → min(d, 4−d) moves
-    // Filler tiles never need touching (only gates can block a lit path),
-    // and singular twins pair path+filler (assignTwins), so fixing the
-    // path member never conflicts with its partner.
+    // Filler tiles never need touching (only gates can block a lit path).
+    //
+    // TWIN GROUPS price as ONE unit, same idea as quadMinMoves: a group
+    // rotates in lockstep, so one move advances every member, and
+    // assignTwins guarantees all path members share one offset-from-
+    // solution (the normalization invariant — see its comment). One
+    // shared offset d therefore solves them all together:
+    //   any elbow in the group  → min(d, 4−d) moves
+    //   straights only          → d & 1
+    // Crosses stay free (never grouped, always port-equivalent), and a
+    // group's fillers ride along at no cost. Legacy pairs (one path
+    // tile + one filler) fall out as the trivial case.
     //
     // The floor is exact for the intended solution. An alternate
     // completion could in principle cost less, but the generator's
@@ -2668,13 +2677,24 @@ const Maze = (() => {
         if (quadMode && quadScramble) {
             total += quadMinMoves();
         } else {
+            const seen = new Set();
             for (let r = 0; r < ROWS; r++) {
                 for (let c = 0; c < COLS; c++) {
                     const t = grid[r][c];
                     if (!t || t._solution === undefined) continue;
                     if (t.type === T_CROSS) continue;
+                    if (seen.has(r + ',' + c)) continue;
+                    seen.add(r + ',' + c);
                     const d = (t._solution - t.rotation + 4) & 3;
-                    total += (t.type === T_STRAIGHT) ? (d & 1) : Math.min(d, 4 - d);
+                    let hasElbow = t.type === T_ELBOW;
+                    for (const [pr, pc] of twinPartnerCells(r, c)) {
+                        seen.add(pr + ',' + pc);
+                        const p = grid[pr][pc];
+                        if (!p || p._solution === undefined || p.type === T_CROSS) continue;
+                        // Shared-offset invariant: p's offset equals d.
+                        if (p.type === T_ELBOW) hasElbow = true;
+                    }
+                    total += hasElbow ? Math.min(d, 4 - d) : (d & 1);
                 }
             }
         }
@@ -3012,9 +3032,15 @@ const Maze = (() => {
                     : (t._solution + 1 + Math.floor(Math.random() * 3)) & 3;
                 const turns = (newRot - t.rotation) & 3;
                 t.rotation = newRot;
-                // The rest of the twin group rotates in lockstep — all
-                // fillers (assignTwins gives each group exactly ONE path
-                // tile), so their new orientations are solve-irrelevant.
+                // The rest of the twin group rotates in lockstep. Group
+                // members can be path tiles too (random membership, see
+                // assignTwins) — the equal delta preserves their shared
+                // offset-from-solution, so solvability is untouched; a
+                // dragged path member just gets scrambled along. (A later
+                // path's pass may drag an earlier path's grouped tile back
+                // toward solution, marginally under-scrambling that path —
+                // accepted; breakPreWonPaths still runs after and prevents
+                // any path shipping pre-won.)
                 for (const [pr, pc] of twinPartnerCells(picks[i].r, picks[i].c)) {
                     grid[pr][pc].rotation = (grid[pr][pc].rotation + turns) & 3;
                 }
@@ -3971,19 +3997,38 @@ const Maze = (() => {
         return { r: pick.r, c: pick.c, turns: (result && result.turns) | 0 };
     }
 
-    // Build twinGroupCount() groups of twinGroupSize() tiles each, where
-    // every group = exactly ONE path tile + the rest fillers. Tiles store
-    // `_twin = { partner, color }` forming a ring; rotate() and hint()
-    // walk it to keep the group in lockstep.
+    // Build uniform-size twin groups: each holds AT LEAST one path tile
+    // (its anchor) and otherwise draws members at RANDOM from the whole
+    // board — path or filler (policy change 2026-07-31, user call: the
+    // old one-path+fillers rule starved dense multi-path boards, where
+    // 4 paths can leave under 10 filler cells; random membership hits
+    // the TWIN_COVERAGE budget on any board). Tiles store `_twin =
+    // { partner, color }` forming a ring; rotate() and hint() walk it
+    // to keep the group in lockstep.
     //
-    // The one-path-tile rule is load-bearing, not incidental: the build-
-    // time scramblers (ensureMinScramble, breakPreWonPaths) twist a path
-    // tile to a chosen rotation and drag its group along, which is only
-    // sound while every OTHER member is solve-irrelevant. Two path tiles
-    // in one group would need a common scramble delta the generator
-    // doesn't produce. It's also where the mechanic's value lives: the
-    // player can't tell path from filler, so routing through a grouped
-    // filler yanks a settled tile and reveals the mistake early.
+    // SOLVABILITY — the load-bearing invariant: winning needs every
+    // path tile at its solution rotation (port-equivalent), and a group
+    // only ever rotates by EQUAL deltas, so a group is winnable iff all
+    // its path members share ONE offset-from-solution. Membership is
+    // random, so that equality is MANUFACTURED here: each non-anchor
+    // path member's rotation is snapped to the anchor's offset at
+    // assignment. Everything downstream preserves it — player/hint/
+    // scramble rotations are lockstep; the board penalties move
+    // rotation and _solution together (the mirror negates both offsets
+    // equally); recordings just replay those same moves. minSolveMoves
+    // prices each group as one shared turn count on this invariant.
+    // (Legacy recordings with path+filler pairs satisfy it trivially —
+    // one path member, nothing to equalize.)
+    //
+    // The snap perturbs some path rotations AFTER the canonical checks
+    // ran — same documented trade-off as ensureMinScramble and
+    // breakPreWonPaths, which both run after this and cover any path
+    // the snap accidentally completes.
+    //
+    // The anchor requirement is what keeps every group solve-relevant:
+    // an all-filler group would be inert decoration whose rotation can
+    // never matter, diluting the "you're off track" signal the
+    // mechanic exists to give.
     //
     // Entry/exit cells are excluded because their notch-aligned starting
     // rotation shouldn't be moved by a group rotation. Cross tiles are
@@ -4005,26 +4050,41 @@ const Maze = (() => {
                 else                           fillerCells.push({ r, c });
             }
         }
+        // Count clamps: one anchor per group caps groups at the path-tile
+        // supply; total membership caps at the eligible-cell supply. With
+        // random membership neither binds on any realistic board (even a
+        // dense 4-path 8×8 has ~50 path tiles), so the full budget is met
+        // and the old filler-scarcity fallback is gone.
+        const budget = twinCoverageTiles();
         const size = twinGroupSize();
-        // Clamp the count to what the board can actually supply: one path
-        // tile per group, (size-1) fillers per group. Small boards run out
-        // of path tiles first; the filler clamp only bites on very dense
-        // configurations. Either way the groups that DO get placed are
-        // full-size — a short group would read as a different color's
-        // group of the wrong size.
-        const maxByPath   = pathCells.length;
-        const maxByFiller = Math.floor(fillerCells.length / (size - 1));
-        const groups = Math.max(0, Math.min(twinGroupCount(), maxByPath, maxByFiller));
-        const pathPicks   = shuffle(pathCells);
-        const fillerPicks = shuffle(fillerCells);
+        const groups = Math.max(0, Math.min(
+            Math.round(budget / size),
+            pathCells.length,
+            Math.floor((pathCells.length + fillerCells.length) / size)
+        ));
+        const anchors = shuffle(pathCells).slice(0, groups);
+        const anchorSet = new Set(anchors.map((a) => a.r + ',' + a.c));
+        const pool = shuffle(pathCells.concat(fillerCells)
+            .filter((cell) => !anchorSet.has(cell.r + ',' + cell.c)));
         for (let i = 0; i < groups; i++) {
             const color = TWIN_COLORS[i % TWIN_COLORS.length];
-            // Members: the path tile first, then this group's slice of
-            // fillers. Stored as a RING — each member points at the next,
+            // Members: the anchor, then this group's slice of the random
+            // pool. Stored as a RING — each member points at the next,
             // the last closes back to the first (see twinPartnerKeys).
-            const members = [pathPicks[i]];
+            const members = [anchors[i]];
             for (let j = 0; j < size - 1; j++) {
-                members.push(fillerPicks[i * (size - 1) + j]);
+                members.push(pool[i * (size - 1) + j]);
+            }
+            // Normalize: snap every path member to the anchor's current
+            // offset-from-solution (the solvability invariant above).
+            // Fillers have no solution and need no snap.
+            const at = grid[anchors[i].r][anchors[i].c];
+            const d = (at._solution - at.rotation + 4) & 3;
+            for (let m = 1; m < members.length; m++) {
+                const t = grid[members[m].r][members[m].c];
+                if (t._solution !== undefined) {
+                    t.rotation = (t._solution - d + 4) & 3;
+                }
             }
             const keys = members.map((m) => m.r + ',' + m.c);
             for (let m = 0; m < members.length; m++) {
