@@ -1807,9 +1807,12 @@
             if (!cell) return;
             // Snapshot pre-rotation state for the twin-twist-break SFX check.
             // Rules per the user:
-            //   1. SFX only when the PARTNER tile (B) is what breaks the path,
+            //   1. SFX only when a PARTNER tile (B) is what breaks the path,
             //      not the tile the player clicked (A) — directly breaking
-            //      your own twist is a choice, not a surprise.
+            //      your own twist is a choice, not a surprise. With groups
+            //      larger than 2, B is the union of every other member:
+            //      "something else in the group did it" is the same
+            //      surprise regardless of which member it was.
             //   2. Don't count it as a break if the only thing lost is the
             //      tip of the chain (the chain just shortens by B; everything
             //      else is intact).
@@ -1823,20 +1826,23 @@
                 bCells = new Set();
                 if (Maze.quadMode) {
                     // Quad-twin: rotation cascades over all 4 sub-tiles of
-                    // both quads. A-set = clicked quad, B-set = partner quad
-                    // (partner key in assignQuadTwins is the partner quad's TL).
+                    // every quad in the group. A-set = clicked quad,
+                    // B-set = all the other quads (keys in assignQuadTwins
+                    // are quad TLs).
                     const aQR = (cell.row >> 1) << 1, aQC = (cell.col >> 1) << 1;
                     for (let dr = 0; dr < 2; dr++) for (let dc = 0; dc < 2; dc++) {
                         aCells.add((aQR + dr) + ',' + (aQC + dc));
                     }
-                    const parts = preTile._twin.partner.split(',');
-                    const bQR = parseInt(parts[0], 10), bQC = parseInt(parts[1], 10);
-                    for (let dr = 0; dr < 2; dr++) for (let dc = 0; dc < 2; dc++) {
-                        bCells.add((bQR + dr) + ',' + (bQC + dc));
+                    for (const [bQR, bQC] of Maze.twinPartnerCells(aQR, aQC)) {
+                        for (let dr = 0; dr < 2; dr++) for (let dc = 0; dc < 2; dc++) {
+                            bCells.add((bQR + dr) + ',' + (bQC + dc));
+                        }
                     }
                 } else {
                     aCells.add(cell.row + ',' + cell.col);
-                    bCells.add(preTile._twin.partner);
+                    for (const [br, bc] of Maze.twinPartnerCells(cell.row, cell.col)) {
+                        bCells.add(br + ',' + bc);
+                    }
                 }
                 preByPath = [new Set(), new Set(), new Set(), new Set()];
                 // Snapshot the full entries (with port pairs) too — used to
@@ -1957,18 +1963,19 @@
                     }
                 }
             } else {
-                // Rotation rejected. If this tile is part of a twin pair
-                // and EITHER side is locked (hint OR player-lock), flash
-                // both tiles dramatically — telegraphs the lock
+                // Rotation rejected. If this tile is part of a twin group
+                // and ANY member is locked (hint OR player-lock), flash
+                // the whole group dramatically — telegraphs the lock
                 // relationship so the player understands why the click
                 // didn't twist anything.
                 const tile = Maze.grid[cell.row][cell.col];
                 if (tile._twin) {
-                    const parts = tile._twin.partner.split(',');
-                    const partner = Maze.grid[parseInt(parts[0], 10)][parseInt(parts[1], 10)];
-                    const eitherLocked = tile._hinted || partner._hinted ||
-                                          tile._playerLocked || partner._playerLocked;
-                    if (eitherLocked) {
+                    let anyLocked = tile._hinted || tile._playerLocked;
+                    for (const [pr, pc] of Maze.twinPartnerCells(cell.row, cell.col)) {
+                        const partner = Maze.grid[pr][pc];
+                        if (partner._hinted || partner._playerLocked) { anyLocked = true; break; }
+                    }
+                    if (anyLocked) {
                         Render.flashTwinPair(cell.row, cell.col);
                     }
                 }
@@ -2031,12 +2038,15 @@
             const tile = Maze.grid[r] && Maze.grid[r][c];
             if (!tile || !tile._playerLocked) return;        // fired a lock, not an unlock / blocked toggle
             if (tile.type !== Maze.T_STRAIGHT) return;       // the locked tile must be a straight
-            if (!tile._twin) return;                         // ...with a twin...
-            const parts = tile._twin.partner.split(',');
-            const tr = parseInt(parts[0], 10);
-            const tc = parseInt(parts[1], 10);
-            const twin = Maze.grid[tr] && Maze.grid[tr][tc];
-            if (!twin || twin.type !== Maze.T_ELBOW) return; // ...and that twin must be an elbow
+            if (!tile._twin) return;                         // ...with a twin group...
+            // ...containing at least one elbow. One is enough: the trap is
+            // that committing the symmetric straight 180° off freezes any
+            // non-symmetric member in the wrong orientation.
+            const hasElbowTwin = Maze.twinPartnerCells(r, c).some(([tr, tc]) => {
+                const twin = Maze.grid[tr] && Maze.grid[tr][tc];
+                return twin && twin.type === Maze.T_ELBOW;
+            });
+            if (!hasElbowTwin) return;
             Tooltip.showOnce('twinStraightLock',
                 (typeof I18n !== 'undefined' && I18n.t)
                     ? I18n.t('tooltip.twinStraightLock')

@@ -1720,18 +1720,16 @@ const Render = (() => {
             const qr0 = Math.floor(r / 2) * 2;
             const qc0 = Math.floor(c / 2) * 2;
             pushQuadAnim(qr0, qc0);
-            // Twin partner quad spins in lockstep, around ITS own center.
-            const tile = Maze.grid[qr0] && Maze.grid[qr0][qc0];
-            if (tile && tile._twin) {
-                const [pr0, pc0] = tile._twin.partner.split(',').map(Number);
-                if (pr0 !== qr0 || pc0 !== qc0) pushQuadAnim(pr0, pc0);
+            // Every other quad in the twin group spins in lockstep, each
+            // around ITS own center.
+            for (const [pr0, pc0] of Maze.twinPartnerCells(qr0, qc0)) {
+                pushQuadAnim(pr0, pc0);
             }
         } else {
             pushTileAnim(r, c);
-            // Twin partner spins in lockstep, around ITS own center.
-            const tile = Maze.grid[r] && Maze.grid[r][c];
-            if (tile && tile._twin) {
-                const [tr, tc] = tile._twin.partner.split(',').map(Number);
+            // Every other tile in the twin group spins in lockstep, each
+            // around ITS own center.
+            for (const [tr, tc] of Maze.twinPartnerCells(r, c)) {
                 pushTileAnim(tr, tc);
             }
         }
@@ -1940,8 +1938,9 @@ const Render = (() => {
         }
         return false;
     }
+    // Pulse the whole twin group of (r, c) — named for the pair case it
+    // was written for, but a group of any size flashes together.
     function flashTwinPair(r, c) {
-        const tile = Maze.grid[r][c];
         const tiles = [];
         function addQuad(qr0, qc0) {
             tiles.push({ r: qr0,     c: qc0     });
@@ -1950,22 +1949,20 @@ const Render = (() => {
             tiles.push({ r: qr0 + 1, c: qc0 + 1 });
         }
         if (Maze.quadMode) {
-            // Pulse spans the WHOLE clicked quad and the WHOLE partner quad —
-            // not just the clicked sub-tile and the partner-quad's TL — so the
-            // lock relationship reads at quad scale, matching how the player
-            // perceives a quad as one tile.
+            // Pulse spans the WHOLE clicked quad and every WHOLE partner
+            // quad — not just the clicked sub-tile and the partner quads'
+            // TLs — so the lock relationship reads at quad scale, matching
+            // how the player perceives a quad as one tile.
             const qr0 = Math.floor(r / 2) * 2;
             const qc0 = Math.floor(c / 2) * 2;
             addQuad(qr0, qc0);
-            if (tile && tile._twin) {
-                const [pr0, pc0] = tile._twin.partner.split(',').map(Number);
-                if (pr0 !== qr0 || pc0 !== qc0) addQuad(pr0, pc0);
+            for (const [pr0, pc0] of Maze.twinPartnerCells(qr0, qc0)) {
+                addQuad(pr0, pc0);
             }
         } else {
             tiles.push({ r: r, c: c });
-            if (tile && tile._twin) {
-                const parts = tile._twin.partner.split(',');
-                tiles.push({ r: parseInt(parts[0], 10), c: parseInt(parts[1], 10) });
+            for (const [tr, tc] of Maze.twinPartnerCells(r, c)) {
+                tiles.push({ r: tr, c: tc });
             }
         }
         dramaticPulseTiles = tiles;
@@ -1999,10 +1996,10 @@ const Render = (() => {
 
     // Resolve the palette to draw a tile's walls with, accounting for:
     //   • hint-locked tiles — full red palette + subtle breathing pulse
-    //   • twin partners of a hint-locked tile — twin-colored face but red
-    //     bevels (border), marking them as locked-by-association without
-    //     the full red flood
-    //   • normal twin tiles — per-pair pastel
+    //   • other members of a hint-locked tile's twin group — twin-colored
+    //     face but red bevels (border), marking them as locked-by-
+    //     association without the full red flood
+    //   • normal twin tiles — per-group pastel
     //   • plain tiles — default slate
     // Then layers an ephemeral dramatic-red blend on any tile listed in
     // the in-flight `dramaticPulseTiles`, decaying over DRAMATIC_PULSE_MS.
@@ -2015,13 +2012,13 @@ const Render = (() => {
         if (isHinted) {
             palette = HINT_PALETTE;
         } else if (isTwinOfHint) {
-            // Twin-of-hint partner: the partner shows its twin face color
-            // with gold bevels — signals "locked because of the hint twin"
-            // (gold matches the hint's solved-state palette) without
-            // flooding the whole partner gold.
+            // Twin-of-hint member: shows its group's face color with gold
+            // bevels — signals "locked because a member of my group was
+            // hinted" (gold matches the hint's solved-state palette)
+            // without flooding the whole tile gold.
             palette = Object.assign({}, HINT_PALETTE, { face: tile._twin.color });
         } else if (tile._twin) {
-            // Plain twin pair: pastel face only — bevels stay default slate
+            // Plain twin group: pastel face only — bevels stay default slate
             // so twins read as colored "stickers" on normal tiles instead of
             // entirely tinted blocks. Face renders at 110% of the regular
             // tile opacity (clamped to 1) so the twin color reads a little

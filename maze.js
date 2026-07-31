@@ -47,7 +47,8 @@ const Maze = (() => {
     //                         *possible* path: any alternate solution
     //                         must be at least as long as the intended.
     //   minShortcutTwists() — rotation-cost floor across all paths.  [10 at 8×8]
-    //   twinPairCount()     — # of locked-rotation tile pairs.       [3 at 8×8]
+    //   twinGroupSize()     — tiles per locked-rotation group.        [3 at 8×8]
+    //   twinGroupCount()    — # of those groups.                      [6 at 8×8]
     //   maxDfsSteps()       — bail-out cap on the lane-DFS, scales with
     //                         the cell × port state space.       [8000 at 8×8]
     // Retry/sample counts (below) don't depend on grid size — they bound the
@@ -55,29 +56,81 @@ const Maze = (() => {
     function gridScale()        { return (ROWS + COLS) / 2; }
     function minPathLength()    { return Math.round(gridScale() * 2.25); }
     function minShortcutTwists(){ return Math.round(gridScale() * 1.25); }
-    // Twin density scales off DOUBLED gridScale so 8×8 now produces ~11
-    // pairs (was 3). Kept as a separate multiplier here rather than baked
-    // into gridScale() itself so it doesn't cascade into the path-length /
-    // shortcut floors above, which need to stay where they are for the
-    // puzzle's overall character. Halve back to 1× if it feels too dense.
-    function twinPairCount()    { return Math.max(1, Math.round(gridScale() * 2) - 5); }
     function maxDfsSteps()      { return ROWS * COLS * 125; }
     const MAX_PATH_GEN_TRIES    = 12;  // re-runs of generateLanes per buildPuzzle
     const MAX_REROLL_ATTEMPTS   = 15;  // rotation rerolls per entry/exit pair
     const MAX_INIT_ATTEMPTS     = 10;  // fresh entry/exit picks before giving up
     const ENDPOINT_SAMPLES      = 5;   // pick farthest of N random endpoint configs
 
-    // Twin locking: pair up N tiles where each pair is one path tile + one
-    // filler tile. Rotating either twin rotates its partner by the same
-    // delta. Visually distinguished by per-pair pastel color (the bevel uses
+    // ── Twin GROUP sizing ─────────────────────────────────────────────
+    // A twin group is N tiles that rotate in lockstep: one path tile plus
+    // (N-1) fillers, tagged with a shared pastel color. Groups grow with
+    // the board — twins (2) → triplets (3) → quadruplets (4) → …
+    //
+    // Two rules govern the sizing, and they pull in opposite directions:
+    //
+    //  1. COVERAGE IS CONSTANT. TWIN_COVERAGE of the board is inside some
+    //     group at EVERY size (user call, 2026-07-31). The old formula
+    //     grew the pair count linearly while area grows quadratically, so
+    //     coupling quietly faded out on big boards — 37% of a 4×4 but only
+    //     17% of a 20×20. A flat fraction keeps the mechanic's presence
+    //     identical whether you're on puzzle 1 or puzzle 40.
+    //
+    //  2. COLORS NEVER REPEAT. A group is only readable if its color is
+    //     unique on the board; two same-colored groups read as one group
+    //     that doesn't behave like one. With constant coverage the tile
+    //     BUDGET grows quadratically, so holding the group COUNT under
+    //     TWIN_COLORS.length (16) means group SIZE has to absorb the
+    //     growth. That's the whole reason groups grow past 2.
+    //
+    // So: budget = coverage × area, size = ladder(gridScale) raised if the
+    // palette demands it, count = budget / size. The ladder sets the
+    // *feel* (how soon triplets arrive); the palette clamp is a backstop
+    // that only binds on boards far past normal play (~21×21+), and
+    // guarantees the no-repeat invariant holds at any size, forever.
+    //
+    // Group count lands in the 3–16 band across the whole realistic size
+    // range, and coverage stays continuous across each ladder step (at
+    // gridScale 7.5 → 9 twins = 18 tiles; at 8 → 6 triplets = 18 tiles),
+    // so a step up changes the CHARACTER of the coupling — fewer, longer
+    // chains — without a visible jump in how much board is coupled.
+    const TWIN_COVERAGE = 0.30;
+    // Tiles that should end up inside some group at the current dims.
+    function twinCoverageTiles() { return Math.round(ROWS * COLS * TWIN_COVERAGE); }
+    // The ladder: +1 group member per +3 gridScale to 17, then per +2
+    // (constant coverage means the budget outruns a +3 cadence up there).
+    // gridScale <8 → 2, <11 → 3, <14 → 4, <17 → 5, then 6, 7, 8, …
+    // Marathon singular reaches those at roughly L11 / L18 / L24 / L30.
+    function twinLadderSize() {
+        const s = gridScale();
+        if (s < 8)  return 2;
+        if (s < 11) return 3;
+        if (s < 14) return 4;
+        if (s < 17) return 5;
+        return 6 + Math.floor((s - 17) / 2);
+    }
+    // Ladder size, raised if the palette couldn't otherwise give every
+    // group its own color. Never below 2 — a "group" of 1 is just a tile.
+    function twinGroupSize() {
+        const paletteFloor = Math.ceil(twinCoverageTiles() / TWIN_COLORS.length);
+        return Math.max(2, twinLadderSize(), paletteFloor);
+    }
+    // Groups to place. assignTwins clamps further when the board doesn't
+    // actually hold enough path/filler cells to fill them.
+    function twinGroupCount() {
+        return Math.max(1, Math.round(twinCoverageTiles() / twinGroupSize()));
+    }
+
+    // ── Twin group colors ─────────────────────────────────────────────
+    // Rotating any member rotates every other member by the same delta.
+    // Groups are told apart by a shared pastel face color (the bevel uses
     // the color as a base and shades it for top/left/bot/right). Red is
-    // reserved for hint-locked tiles. Pair count scales linearly with grid
-    // size so larger grids get more constraints; min 1 keeps small grids playable.
-    // Cycled by `i % TWIN_COLORS.length` in assignTwins — once pair count
-    // exceeds the palette length, colors start repeating. With the density
-    // doubled (gridScale * 2 in twinPairCount), an 8×8 needs 11 pairs and
-    // bigger grids more, so the palette holds 16 colors — covers up to 21
-    // pairs without repeats.
+    // reserved for hint-locked tiles.
+    //
+    // Consumed in index order by `i % TWIN_COLORS.length` in assignTwins.
+    // The modulo is belt-and-braces only — twinGroupSize's palette floor
+    // holds the group count at or under 16 at every board size, so it
+    // never actually wraps. (Verified 4×4 through 60×60.)
     //
     // The 16 are chosen for PERCEPTUAL separation, not just hue variety: the
     // previous hand-picked pastels had near-duplicates (two tans, several
@@ -89,9 +142,9 @@ const Maze = (() => {
     // sit far apart in L. Red is intentionally absent (hue kept to 25–330°),
     // reserved for hint-locked tiles.
     //
-    // Order matters for low-pair puzzles: colors are consumed in index order,
+    // Order matters for few-group puzzles: colors are consumed in index order,
     // so the list is sequenced by greedy max-min spread — the first few
-    // entries are as far apart as possible (a 2-pair puzzle gets green vs
+    // entries are as far apart as possible (a 2-group puzzle gets green vs
     // magenta, ~147 ΔE), with later entries filling in.
     const TWIN_COLORS = [
         '#54C954', // green
@@ -111,6 +164,69 @@ const Maze = (() => {
         '#88D388', // light green
         '#BD9ADF'  // lavender
     ];
+
+    // ── Twin group storage: a RING ────────────────────────────────────
+    // A group of N members is stored as an N-cycle: each member's
+    // `_twin.partner` names the NEXT member, and the last names the
+    // first. Walking `partner` from any member visits the whole group
+    // and returns to where it started.
+    //
+    // Why a ring rather than a members[] array on each tile:
+    //   • N=2 is the ordinary reciprocal pair — bit-identical to the
+    //     pre-group format. Every recording and snapshot ever written
+    //     stays valid, including the server-stored leaderboard replays.
+    //   • `_twin` stays a flat {partner, color} object with no nested
+    //     array, so snapshotState's per-field clone still fully isolates
+    //     it. An array would be shared by reference through
+    //     Object.assign and reopen exactly the aliasing bug that
+    //     corrupted snapshots and froze replays (2026-07-29) — see
+    //     snapshotState / rotateBoard.
+    //   • rotateBoard/flipBoard remap each tile's own single partner key
+    //     independently, so the penalty transforms need no group logic
+    //     at all: remapping every member's `partner` remaps the ring.
+    //
+    // The cost is that reading a group means walking it, which is what
+    // these two helpers are for. Every site that used to touch "the
+    // partner" now iterates one of them.
+
+    // Anchor key for a cell: itself in singular mode, its quad's top-left
+    // sub-tile in quad mode (where all 4 sub-tiles share one _twin whose
+    // partner names the next quad's top-left).
+    function twinAnchorKey(row, col) {
+        return quadMode
+            ? ((row >> 1) * 2) + ',' + ((col >> 1) * 2)
+            : row + ',' + col;
+    }
+    // Every OTHER member of (row,col)'s group, in ring order — [] if the
+    // tile is untwinned. The step cap makes a corrupted ring terminate
+    // instead of hanging; loadSnapshot strips those on the way in, so
+    // this is the belt to that braces.
+    function twinPartnerKeys(row, col) {
+        const t = grid && grid[row] && grid[row][col];
+        if (!t || !t._twin || !t._twin.partner) return [];
+        const startKey = twinAnchorKey(row, col);
+        const out = [];
+        let key = String(t._twin.partner);
+        const cap = ROWS * COLS;
+        while (key !== startKey && out.length < cap) {
+            out.push(key);
+            const parts = key.split(',').map(Number);
+            const prow  = grid[parts[0]];
+            const ptile = prow && prow[parts[1]];
+            if (!ptile || !ptile._twin || !ptile._twin.partner) break;
+            key = String(ptile._twin.partner);
+        }
+        return out;
+    }
+    // Same, as [row, col] number pairs.
+    function twinPartnerCells(row, col) {
+        return twinPartnerKeys(row, col).map((k) => k.split(',').map(Number));
+    }
+    // Quad-mode counterpart: partner QUAD coords as [qr, qc] pairs.
+    // Every quad-turn site needs this to keep a group in lockstep.
+    function quadTwinPartners(qr, qc) {
+        return twinPartnerCells(qr * 2, qc * 2).map(([pr, pc]) => [pr / 2, pc / 2]);
+    }
 
     const BASE_CONNECTIONS = {
         [T_STRAIGHT]: [[N, S]],
@@ -1480,27 +1596,39 @@ const Maze = (() => {
         // forever. ~25 call sites dereference partner keys unguarded, so
         // rather than guard each one, validate at this single choke
         // point — every replay/undo/resume enters through loadSnapshot.
-        // A twin whose partner key is out of bounds OR non-reciprocal
-        // (the partner doesn't point back) is STRIPPED — both sides of a
-        // broken pair fail the check and drop together — degrading the
-        // pair to plain tiles: a corrupted replay plays through without
-        // twin lockstep instead of freezing on a TypeError.
+        // A tile whose ring does NOT come back around to it — a partner
+        // key out of bounds, an untwinned tile mid-chain, or a chain that
+        // runs past the cell count — is STRIPPED, degrading it to a plain
+        // tile: a corrupted replay plays through without twin lockstep
+        // instead of freezing on a TypeError.
+        //
+        // For an INTACT ring every member walks home, so nothing is
+        // stripped; for a broken one every member on the severed side
+        // fails and they drop together. (A tile pointing INTO a valid
+        // ring it isn't part of fails alone and the ring survives — the
+        // same graceful degradation the reciprocity check gave pairs.)
+        // The walk is inlined rather than reusing twinPartnerKeys because
+        // this runs BEFORE the data is known-good and needs to
+        // distinguish "came home" from "gave up".
         if (grid) {
-            const anchorKeyOf = (r, c) => quadMode
-                ? ((r >> 1) * 2) + ',' + ((c >> 1) * 2)
-                : r + ',' + c;
             const invalid = [];
+            const cap = ROWS * COLS;
             for (let r = 0; r < ROWS; r++) {
                 for (let c = 0; c < COLS; c++) {
                     const t = grid[r][c];
                     if (!t || !t._twin) continue;
-                    const parts = String(t._twin.partner || '').split(',').map(Number);
-                    const prow  = grid[parts[0]];
-                    const ptile = prow && prow[parts[1]];
-                    if (!ptile || !ptile._twin
-                        || ptile._twin.partner !== anchorKeyOf(r, c)) {
-                        invalid.push(t);
+                    const startKey = twinAnchorKey(r, c);
+                    let key = String(t._twin.partner || '');
+                    let closed = false;
+                    for (let step = 0; step < cap; step++) {
+                        if (key === startKey) { closed = true; break; }
+                        const parts = key.split(',').map(Number);
+                        const prow  = grid[parts[0]];
+                        const ptile = prow && prow[parts[1]];
+                        if (!ptile || !ptile._twin || !ptile._twin.partner) break;
+                        key = String(ptile._twin.partner);
                     }
+                    if (!closed) invalid.push(t);
                 }
             }
             for (const t of invalid) delete t._twin;
@@ -2473,15 +2601,15 @@ const Maze = (() => {
                 const key = qr + ',' + qc;
                 if (seen.has(key)) continue;
                 seen.add(key);
+                // The whole twin group turns as one, so it costs ONE
+                // shared turn count — the cheapest t that satisfies every
+                // member, or nothing if no t does.
                 const group = [{ key, k: quadScramble[qr][qc] }];
-                const twin = grid[qr * 2][qc * 2]._twin;
-                if (twin) {
-                    const [pr, pc] = twin.partner.split(',').map(Number);
-                    const pKey = (pr / 2) + ',' + (pc / 2);
-                    if (!seen.has(pKey)) {
-                        seen.add(pKey);
-                        group.push({ key: pKey, k: quadScramble[pr / 2][pc / 2] });
-                    }
+                for (const [pqr, pqc] of quadTwinPartners(qr, qc)) {
+                    const pKey = pqr + ',' + pqc;
+                    if (seen.has(pKey)) continue;
+                    seen.add(pKey);
+                    group.push({ key: pKey, k: quadScramble[pqr][pqc] });
                 }
                 let best = Infinity;
                 for (let t = 0; t < 4; t++) {
@@ -2610,8 +2738,8 @@ const Maze = (() => {
     // notch stubs lit — checked by SIMULATION: rotate the quad through
     // its 4 states on the live grid (4 turns = identity, so the grid
     // comes back untouched) and record which states expose every
-    // endpoint port in the quad. Twin pairs share one turn value, so
-    // the check covers both quads of a pair.
+    // endpoint port in the quad. A twin GROUP shares one turn value, so
+    // the check covers every quad in the group.
     function endpointCellsInQuad(qr, qc) {
         const out = [];
         for (const ep of [entry, exit, entry2, exit2, entry3, exit3, entry4, exit4]) {
@@ -2620,11 +2748,14 @@ const Maze = (() => {
         return out;
     }
     // Relative turns (subset of [1,2,3]) that keep every terminal in the
-    // (qr,qc) quad — and its twin partner (pqr,pqc), pass null when
-    // absent — lit. Quads with no terminals return the full [1,2,3].
-    // Can return [] for an endpoint quad whose other states all darken
-    // a stub; callers must then leave the quad alone.
-    function allowedQuadTurns(qr, qc, pqr, pqc) {
+    // (qr,qc) quad — and in every quad of its twin group, passed as
+    // `partners` ([[qr,qc], …]; empty or omitted when untwinned) — lit.
+    // Quads with no terminals return the full [1,2,3]. Can return [] for
+    // an endpoint quad whose other states all darken a stub; callers must
+    // then leave the quad alone. Every partner narrows the pool further,
+    // so a large group is likelier to come back empty — that's correct:
+    // the whole group turns together or not at all.
+    function allowedQuadTurns(qr, qc, partners) {
         const okFor = (tqr, tqc) => {
             const eps = endpointCellsInQuad(tqr, tqc);
             if (eps.length === 0) return null;   // unconstrained
@@ -2642,20 +2773,12 @@ const Maze = (() => {
         let allowed = [1, 2, 3];
         const a = okFor(qr, qc);
         if (a) allowed = allowed.filter((t) => a.includes(t));
-        if (pqr !== null && pqr !== undefined && !(pqr === qr && pqc === qc)) {
+        for (const [pqr, pqc] of (partners || [])) {
+            if (pqr === qr && pqc === qc) continue;
             const b = okFor(pqr, pqc);
             if (b) allowed = allowed.filter((t) => b.includes(t));
         }
         return allowed;
-    }
-    // Twin partner quad coords for the quad at (qr,qc), or null. Every
-    // quad-turn site needs this to keep pairs in lockstep.
-    function quadTwinPartner(qr, qc) {
-        const tile = grid[qr * 2][qc * 2];
-        if (!tile || !tile._twin) return null;
-        const [pr, pc] = tile._twin.partner.split(',').map(Number);
-        if (pr / 2 === qr && pc / 2 === qc) return null;
-        return [pr / 2, pc / 2];
     }
 
     function ensureMinScramble() {
@@ -2684,21 +2807,21 @@ const Maze = (() => {
                 // the picks would carry a top-left scan-order bias.
                 const quadPicks = shuffle(untouched);
                 for (let i = 0; i < quadPicks.length && need > 0; i++) {
-                    // 1-3 turns, twin partner in lockstep — mirrors the
-                    // quad branch of breakPreWonPaths. Endpoint quads may
+                    // 1-3 turns, the whole twin group in lockstep — mirrors
+                    // the quad branch of breakPreWonPaths. Endpoint quads may
                     // only take turns that keep their notch stubs lit
                     // (terminal-lit rule); a quad with no qualifying turn
                     // is skipped WITHOUT counting toward the quota.
                     const [qr, qc] = quadPicks[i];
-                    const pq = quadTwinPartner(qr, qc);
-                    const allowed = allowedQuadTurns(qr, qc, pq ? pq[0] : null, pq ? pq[1] : null);
+                    const pqs = quadTwinPartners(qr, qc);
+                    const allowed = allowedQuadTurns(qr, qc, pqs);
                     if (allowed.length === 0) continue;
                     const turns = allowed[Math.floor(Math.random() * allowed.length)];
                     quadScramble[qr][qc] = (quadScramble[qr][qc] + turns) & 3;
                     for (let t = 0; t < turns; t++) rotateQuad(qr * 2, qc * 2, false);
-                    if (pq) {
-                        quadScramble[pq[0]][pq[1]] = (quadScramble[pq[0]][pq[1]] + turns) & 3;
-                        for (let t = 0; t < turns; t++) rotateQuad(pq[0] * 2, pq[1] * 2, false);
+                    for (const [pqr, pqc] of pqs) {
+                        quadScramble[pqr][pqc] = (quadScramble[pqr][pqc] + turns) & 3;
+                        for (let t = 0; t < turns; t++) rotateQuad(pqr * 2, pqc * 2, false);
                     }
                     need--;
                 }
@@ -2717,13 +2840,15 @@ const Maze = (() => {
                     if (!cellIsOnPath(r, c, p)) continue;
                     if (endpoints.has(r + ',' + c)) continue;
                     if (grid[r][c].type === T_CROSS) continue;
-                    twistable.push(grid[r][c]);
+                    // Carry the coords alongside the tile: the lockstep
+                    // twist below needs them to walk the tile's twin ring.
+                    twistable.push({ r, c, tile: grid[r][c] });
                 }
             }
             const n = twistable.length;
             if (n === 0) continue;
-            const atSolution = twistable.filter((t) =>
-                rotationsHaveSamePorts(t.type, t.rotation, t._solution));
+            const atSolution = twistable.filter((e) =>
+                rotationsHaveSamePorts(e.tile.type, e.tile.rotation, e.tile._solution));
             const quota = Math.min(n, Math.max(2, Math.ceil(n * MIN_PATH_SCRAMBLE_FRACTION)));
             let need = quota - (n - atSolution.length);
             if (need <= 0) continue;
@@ -2731,7 +2856,7 @@ const Maze = (() => {
             // twisted tiles would carry a top-left scan-order bias.
             const picks = shuffle(atSolution);
             for (let i = 0; i < picks.length && need > 0; i++, need--) {
-                const t = picks[i];
+                const t = picks[i].tile;
                 // Pick a rotation NOT port-equivalent to the solution:
                 // straights differ by parity (±1), elbows by any of +1..3.
                 const newRot = (t.type === T_STRAIGHT)
@@ -2739,10 +2864,10 @@ const Maze = (() => {
                     : (t._solution + 1 + Math.floor(Math.random() * 3)) & 3;
                 const turns = (newRot - t.rotation) & 3;
                 t.rotation = newRot;
-                // Twin partner rotates in lockstep — always a filler
-                // (assignTwins pairs path+filler), solve-irrelevant.
-                if (t._twin) {
-                    const [pr, pc] = t._twin.partner.split(',').map(Number);
+                // The rest of the twin group rotates in lockstep — all
+                // fillers (assignTwins gives each group exactly ONE path
+                // tile), so their new orientations are solve-irrelevant.
+                for (const [pr, pc] of twinPartnerCells(picks[i].r, picks[i].c)) {
                     grid[pr][pc].rotation = (grid[pr][pc].rotation + turns) & 3;
                 }
             }
@@ -2806,21 +2931,21 @@ const Maze = (() => {
             if (cells.length === 0) return; // nothing safe to touch — ship as-is
             const cell = cells[Math.floor(Math.random() * cells.length)];
             if (quadMode && quadScramble) {
-                // 1-3 extra turns on the quad containing the cell, twin
-                // partner in lockstep (mirrors scrambleQuads). Endpoint
-                // quads honor the terminal-lit rule: only turns that keep
-                // their notch stubs lit qualify — none qualifying, try a
-                // different random cell on the next guard iteration.
+                // 1-3 extra turns on the quad containing the cell, the
+                // whole twin group in lockstep (mirrors scrambleQuads).
+                // Endpoint quads honor the terminal-lit rule: only turns
+                // that keep their notch stubs lit qualify — none
+                // qualifying, try a different random cell next iteration.
                 const qr = Math.floor(cell.row / 2), qc = Math.floor(cell.col / 2);
-                const pq = quadTwinPartner(qr, qc);
-                const allowed = allowedQuadTurns(qr, qc, pq ? pq[0] : null, pq ? pq[1] : null);
+                const pqs = quadTwinPartners(qr, qc);
+                const allowed = allowedQuadTurns(qr, qc, pqs);
                 if (allowed.length === 0) continue;
                 const turns = allowed[Math.floor(Math.random() * allowed.length)];
                 quadScramble[qr][qc] = (quadScramble[qr][qc] + turns) & 3;
                 for (let i = 0; i < turns; i++) rotateQuad(qr * 2, qc * 2, false);
-                if (pq) {
-                    quadScramble[pq[0]][pq[1]] = (quadScramble[pq[0]][pq[1]] + turns) & 3;
-                    for (let i = 0; i < turns; i++) rotateQuad(pq[0] * 2, pq[1] * 2, false);
+                for (const [pqr, pqc] of pqs) {
+                    quadScramble[pqr][pqc] = (quadScramble[pqr][pqc] + turns) & 3;
+                    for (let i = 0; i < turns; i++) rotateQuad(pqr * 2, pqc * 2, false);
                 }
             } else {
                 const t = grid[cell.row][cell.col];
@@ -2828,12 +2953,9 @@ const Maze = (() => {
                 const turns = (t.type === T_STRAIGHT) ? (Math.random() < 0.5 ? 1 : 3)
                                                       : 1 + Math.floor(Math.random() * 3);
                 t.rotation = (t.rotation + turns) & 3;
-                // Non-quad twins rotate in lockstep for the player; keep the
-                // scrambled state consistent with that. The partner is always
-                // a filler (assignTwins pairs path+filler), so its new
-                // orientation is solve-irrelevant.
-                if (t._twin) {
-                    const [pr, pc] = t._twin.partner.split(',').map(Number);
+                // Non-quad twin groups rotate in lockstep for the player;
+                // keep the scrambled state consistent with that.
+                for (const [pr, pc] of twinPartnerCells(cell.row, cell.col)) {
                     grid[pr][pc].rotation = (grid[pr][pc].rotation + turns) & 3;
                 }
             }
@@ -3089,37 +3211,33 @@ const Maze = (() => {
         breakSymmetricFillerQuads();
         const qROWS = ROWS / 2, qCOLS = COLS / 2;
         quadScramble = Array.from({ length: qROWS }, () => new Array(qCOLS).fill(0));
-        // Twin quad pairs scramble with the SAME turns so their relative
-        // offset stays 0 — that's the only way both can reach scramble=0
-        // simultaneously when the player rotates them in lockstep.
+        // Every quad in a twin GROUP scrambles with the SAME turns so
+        // their relative offsets stay 0 — that's the only way all of them
+        // can reach scramble=0 simultaneously when the player rotates the
+        // group in lockstep.
         const scrambled = new Set();
         for (let qr = 0; qr < qROWS; qr++) {
             for (let qc = 0; qc < qCOLS; qc++) {
                 const key = qr + ',' + qc;
                 if (scrambled.has(key)) continue;
-                // Terminal-lit rule: an endpoint quad (or one twinned to
-                // an endpoint quad — pairs share one turn value) may only
-                // take turns that keep its notch stub(s) lit. 0 always
+                // Terminal-lit rule: an endpoint quad (or one grouped with
+                // an endpoint quad — a group shares one turn value) may
+                // only take turns that keep its notch stub(s) lit. 0 always
                 // qualifies (the solved state exposes by construction),
                 // so the pool is never empty; quads carrying no terminal
                 // get the same uniform 0-3 roll as before.
-                const pq = quadTwinPartner(qr, qc);
-                const pool = allowedQuadTurns(qr, qc, pq ? pq[0] : null, pq ? pq[1] : null)
-                    .concat([0]);
+                const pqs = quadTwinPartners(qr, qc);
+                const pool = allowedQuadTurns(qr, qc, pqs).concat([0]);
                 const turns = pool[Math.floor(Math.random() * pool.length)];
                 quadScramble[qr][qc] = turns;
                 for (let i = 0; i < turns; i++) rotateQuad(qr * 2, qc * 2, false);
                 scrambled.add(key);
-                const tile = grid[qr * 2][qc * 2];
-                if (tile && tile._twin) {
-                    const [pr, pc] = tile._twin.partner.split(',').map(Number);
-                    const pqr = pr / 2, pqc = pc / 2;
+                for (const [pqr, pqc] of pqs) {
                     const pkey = pqr + ',' + pqc;
-                    if (!scrambled.has(pkey)) {
-                        quadScramble[pqr][pqc] = turns;
-                        for (let i = 0; i < turns; i++) rotateQuad(pr, pc, false);
-                        scrambled.add(pkey);
-                    }
+                    if (scrambled.has(pkey)) continue;
+                    quadScramble[pqr][pqc] = turns;
+                    for (let i = 0; i < turns; i++) rotateQuad(pqr * 2, pqc * 2, false);
+                    scrambled.add(pkey);
                 }
             }
         }
@@ -3145,25 +3263,21 @@ const Maze = (() => {
                 return false;
             }
             if (quadLocked(qr0, qc0)) return false;
-            // Twin partner quad must also be unlocked — if either is locked
-            // the whole pair is frozen (otherwise lockstep would force the
-            // locked quad to rotate too, defeating its lock).
-            const twinTile = grid[qr0][qc0];
-            let partnerCoords = null;
-            if (twinTile && twinTile._twin) {
-                const [pr0, pc0] = twinTile._twin.partner.split(',').map(Number);
-                if (pr0 !== qr0 || pc0 !== qc0) {
-                    if (quadLocked(pr0, pc0)) return false;
-                    partnerCoords = [pr0, pc0];
-                }
+            // EVERY other quad in the twin group must be unlocked — if any
+            // one is locked the whole group is frozen (otherwise lockstep
+            // would force the locked quad to rotate too, defeating its
+            // lock). Checked in full before anything turns, so a blocked
+            // rotation leaves the board untouched.
+            const partnerQuads = quadTwinPartners(qr0 / 2, qc0 / 2);
+            for (const [pqr, pqc] of partnerQuads) {
+                if (quadLocked(pqr * 2, pqc * 2)) return false;
             }
             rotateQuad(qr0, qc0, ccw);
             const qr = qr0 / 2, qc = qc0 / 2;
             // CW rotation adds 1 to the scramble offset; CCW adds 3.
             quadScramble[qr][qc] = (quadScramble[qr][qc] + (ccw ? 3 : 1)) & 3;
-            if (partnerCoords) {
-                rotateQuad(partnerCoords[0], partnerCoords[1], ccw);
-                const pqr = partnerCoords[0] / 2, pqc = partnerCoords[1] / 2;
+            for (const [pqr, pqc] of partnerQuads) {
+                rotateQuad(pqr * 2, pqc * 2, ccw);
                 quadScramble[pqr][pqc] = (quadScramble[pqr][pqc] + (ccw ? 3 : 1)) & 3;
             }
             updateHighlighted();
@@ -3174,17 +3288,18 @@ const Maze = (() => {
         if (locked.has(k)) return false; // hint-locked tiles are fixed in place
         const t = grid[row][col];
         if (t._playerLocked) return false; // player long-pressed to lock
-        // If this tile has a twin and the twin is locked, the pair is frozen.
-        if (t._twin && locked.has(t._twin.partner)) return false;
-        if (t._twin) {
-            const [tr, tc] = t._twin.partner.split(',').map(Number);
+        // If ANY member of this tile's twin group is locked (hint or
+        // player), the whole group is frozen. Checked in full first so a
+        // blocked rotation leaves every member untouched.
+        const partnerCells = twinPartnerCells(row, col);
+        for (const [tr, tc] of partnerCells) {
+            if (locked.has(tr + ',' + tc)) return false;
             if (grid[tr][tc]._playerLocked) return false;
         }
 
         const delta = ccw ? 3 : 1;
         t.rotation = (t.rotation + delta) & 3;
-        if (t._twin) {
-            const [tr, tc] = t._twin.partner.split(',').map(Number);
+        for (const [tr, tc] of partnerCells) {
             grid[tr][tc].rotation = (grid[tr][tc].rotation + delta) & 3;
         }
         updateHighlighted();
@@ -3207,37 +3322,31 @@ const Maze = (() => {
                 [qr + 1, qc + 1]
             ];
             const cells = cellsOf(qr0, qc0);
-            // Twin partner quad: same convention rotate() and applyHintAt
+            // Twin group quads: same convention rotate() and applyHintAt
             // use — `_twin.partner` lives on the clicked quad's top-left
-            // sub-tile and points at the partner quad's top-left coord.
-            // Twin pairs rotate in lockstep, so they must lock in lockstep
-            // too; otherwise long-pressing one would visually mark only
-            // half the pair as locked even though rotating either still
-            // moves both. (This was the bug — quad mode was lighting up
-            // only the touched quad, while singular mode lit both halves
-            // of the twin pair.)
-            let partnerCells = null;
-            const anchor = grid[qr0][qc0];
-            if (anchor && anchor._twin) {
-                const [pr0, pc0] = anchor._twin.partner.split(',').map(Number);
-                if (pr0 !== qr0 || pc0 !== qc0) {
-                    partnerCells = cellsOf(pr0, pc0);
-                }
-            }
-            // Hint-lock check on the clicked quad only. Hint locks both
-            // quads of a twin pair simultaneously (applyHintAt's `lockQuad`
-            // runs on both), so if either quad is hint-locked the other is
-            // too — checking the clicked side is sufficient.
+            // sub-tile and points at the NEXT quad's top-left coord, with
+            // the ring closing back here. A group rotates in lockstep, so
+            // it must lock in lockstep too; otherwise long-pressing one
+            // would visually mark only part of the group as locked even
+            // though rotating any member still moves all of them. (This
+            // was the bug — quad mode was lighting up only the touched
+            // quad, while singular mode lit the whole group.)
+            const partnerCells = quadTwinPartners(qr0 / 2, qc0 / 2)
+                .map(([pqr, pqc]) => cellsOf(pqr * 2, pqc * 2));
+            // Hint-lock check on the clicked quad only. Hint locks every
+            // quad of a group simultaneously (applyHintAt's `lockQuad`
+            // runs on all of them), so if any is hint-locked the clicked
+            // one is too — checking this side is sufficient.
             for (const [r, c] of cells) {
                 if (locked.has(r + ',' + c)) return;
             }
             // Toggle from the clicked quad's state — if any sub-tile in
             // the clicked quad is player-locked, the long-press unlocks
-            // the whole pair (both quads). Otherwise it locks the pair.
+            // the whole group. Otherwise it locks the group.
             const next = !cells.some(([r, c]) => grid[r][c]._playerLocked);
             for (const [r, c] of cells) grid[r][c]._playerLocked = next;
-            if (partnerCells) {
-                for (const [r, c] of partnerCells) grid[r][c]._playerLocked = next;
+            for (const quadCells of partnerCells) {
+                for (const [r, c] of quadCells) grid[r][c]._playerLocked = next;
             }
             return;
         }
@@ -3246,10 +3355,10 @@ const Maze = (() => {
         const t = grid[row][col];
         const next = !t._playerLocked;
         t._playerLocked = next;
-        // Twin partners share the lock so a single long-press doesn't leave
-        // the partner free to rotate (rotating one rotates both anyway).
-        if (t._twin) {
-            const [tr, tc] = t._twin.partner.split(',').map(Number);
+        // The whole twin group shares the lock so a single long-press
+        // doesn't leave other members free to rotate (rotating any one
+        // rotates all of them anyway).
+        for (const [tr, tc] of twinPartnerCells(row, col)) {
             grid[tr][tc]._playerLocked = next;
         }
     }
@@ -3272,22 +3381,18 @@ const Maze = (() => {
         if (quadMode) {
             const qr = Math.floor(row / 2);
             const qc = Math.floor(col / 2);
-            // Twin partner quad: rotates in lockstep, also locks. With same-turn
-            // scrambling at build time, both quads have the same scramble offset,
-            // so applying the same `turns` brings both to 0.
-            const tile = grid[qr * 2][qc * 2];
-            let pqr = -1, pqc = -1;
-            if (tile && tile._twin) {
-                const [pr, pc] = tile._twin.partner.split(',').map(Number);
-                if (pr !== qr * 2 || pc !== qc * 2) { pqr = pr / 2; pqc = pc / 2; }
-            }
+            // Twin group quads: rotate in lockstep, and all lock. With
+            // same-turn scrambling at build time every quad in the group
+            // carries the same scramble offset, so applying the same
+            // `turns` brings all of them to 0.
+            const partnerQuads = quadTwinPartners(qr, qc);
             const turns = (4 - quadScramble[qr][qc]) & 3;
             for (let i = 0; i < turns; i++) {
                 rotateQuad(qr * 2, qc * 2, false);
-                if (pqr >= 0) rotateQuad(pqr * 2, pqc * 2, false);
+                for (const [pqr, pqc] of partnerQuads) rotateQuad(pqr * 2, pqc * 2, false);
             }
             quadScramble[qr][qc] = 0;
-            if (pqr >= 0) quadScramble[pqr][pqc] = 0;
+            for (const [pqr, pqc] of partnerQuads) quadScramble[pqr][pqc] = 0;
             function lockQuad(qr, qc) {
                 for (let dr = 0; dr < 2; dr++) {
                     for (let dc = 0; dc < 2; dc++) {
@@ -3300,7 +3405,7 @@ const Maze = (() => {
                 }
             }
             lockQuad(qr, qc);
-            if (pqr >= 0) lockQuad(pqr, pqc);
+            for (const [pqr, pqc] of partnerQuads) lockQuad(pqr, pqc);
             updateHighlighted();
             return { turns };
         }
@@ -3317,38 +3422,40 @@ const Maze = (() => {
         // still applies, which conveys the hint's actual intent ("this
         // tile is at the right orientation — work elsewhere").
         //
-        // Twin coupling: also check if rotating the twin partner by the
-        // same delta would be port-equivalent for it too. Twins typically
-        // share tile type so their port-equivalence tracks A's, but the
-        // explicit check guards against mismatched-type edge cases —
-        // if rotating B would meaningfully change its port topology,
-        // we apply the rotation normally to keep the puzzle consistent.
+        // Twin coupling: also check whether rotating EVERY other group
+        // member by the same delta would be port-equivalent for it too.
+        // Members typically share tile type so their port-equivalence
+        // tracks A's, but the explicit check guards against mismatched-
+        // type edge cases — if rotating any member would meaningfully
+        // change its port topology, we apply the rotation normally to
+        // keep the puzzle consistent. One dissenting member is enough.
+        const hintPartners = twinPartnerCells(row, col);
         let delta = (target - tile.rotation + 4) & 3;
         let canSkipRotation = (delta !== 0) && rotationsHaveSamePorts(tile.type, tile.rotation, target);
-        if (canSkipRotation && tile._twin) {
-            const [tr, tc] = tile._twin.partner.split(',').map(Number);
-            const twinTile = grid[tr][tc];
-            const twinTarget = (twinTile.rotation + delta) & 3;
-            if (!rotationsHaveSamePorts(twinTile.type, twinTile.rotation, twinTarget)) {
-                canSkipRotation = false;
+        if (canSkipRotation) {
+            for (const [tr, tc] of hintPartners) {
+                const twinTile = grid[tr][tc];
+                const twinTarget = (twinTile.rotation + delta) & 3;
+                if (!rotationsHaveSamePorts(twinTile.type, twinTile.rotation, twinTarget)) {
+                    canSkipRotation = false;
+                    break;
+                }
             }
         }
         if (canSkipRotation) {
             delta = 0;
         } else {
             tile.rotation = target;
-            if (tile._twin) {
-                const [tr, tc] = tile._twin.partner.split(',').map(Number);
+            for (const [tr, tc] of hintPartners) {
                 grid[tr][tc].rotation = (grid[tr][tc].rotation + delta) & 3;
             }
         }
         tile._hinted = true;
         tile._playerLocked = false;
         locked.add(row + ',' + col);
-        if (tile._twin) {
-            const [tr, tc] = tile._twin.partner.split(',').map(Number);
+        for (const [tr, tc] of hintPartners) {
             grid[tr][tc]._playerLocked = false;
-            locked.add(tile._twin.partner);
+            locked.add(tr + ',' + tc);
         }
         updateHighlighted();
         return { turns: delta };
@@ -3532,17 +3639,13 @@ const Maze = (() => {
             // correct but whose decoy filler pipes aren't is caught here —
             // the case that kept slipping through and wasting hints.
             if (quadConnectionsInvariantUnderRotation(qr, qc)) return false;
-            // Twin partner quad must also pass the "no correct tile"
-            // check — hinting cascades to it, and locking a partner
-            // that contains correctly-placed tiles wastes the hint.
-            const tile = grid[qr*2][qc*2];
-            if (tile && tile._twin) {
-                const [pr, pc] = tile._twin.partner.split(',').map(Number);
-                const pqr = pr / 2, pqc = pc / 2;
-                if (pqr !== qr || pqc !== qc) {
-                    if (locked.has(pr + ',' + pc)) return false;
-                    if (quadAnyTileCorrect(pqr, pqc)) return false;
-                }
+            // EVERY other quad in the twin group must also pass the "no
+            // correct tile" check — hinting cascades to all of them, and
+            // locking a member that contains correctly-placed tiles
+            // wastes the hint.
+            for (const [pqr, pqc] of quadTwinPartners(qr, qc)) {
+                if (locked.has((pqr * 2) + ',' + (pqc * 2))) return false;
+                if (quadAnyTileCorrect(pqr, pqc)) return false;
             }
             return true;
         }
@@ -3551,13 +3654,12 @@ const Maze = (() => {
             if (!t || t._solution === undefined) return false;
             if (locked.has(r + ',' + c)) return false;
             if (tileShouldSkip(r, c)) return false;
-            // Twin pairs rotate in lockstep — hinting one side rotates
-            // the other by the same delta. If the partner is already at
-            // its solution rotation, hinting THIS tile would knock the
-            // partner off solution AND lock it (locked.add(partner)),
-            // leaving the puzzle unwinnable. Skip the whole pair.
-            if (t._twin) {
-                const [tr, tc] = t._twin.partner.split(',').map(Number);
+            // Twin groups rotate in lockstep — hinting one member rotates
+            // every other by the same delta. If any member is already at
+            // its solution rotation, hinting THIS tile would knock that
+            // member off solution AND lock it (locked.add), leaving the
+            // puzzle unwinnable. Skip the whole group.
+            for (const [tr, tc] of twinPartnerCells(r, c)) {
                 if (tileShouldSkip(tr, tc)) return false;
             }
             return true;
@@ -3721,13 +3823,25 @@ const Maze = (() => {
         return { r: pick.r, c: pick.c, turns: (result && result.turns) | 0 };
     }
 
-    // Pair up twinPairCount() tiles where each pair = one path tile + one
-    // filler tile. Tiles store `_twin = { partner, color }`; rotate() and
-    // hint() use those tags to keep partners in lockstep. Entry/exit cells
-    // are excluded because their notch-aligned starting rotation shouldn't
-    // be moved by a twin rotation. Cross tiles are excluded because they're
-    // 4-rotation-symmetric — rotating them with their partner would be an
-    // invisible side effect, defeating the visual coupling.
+    // Build twinGroupCount() groups of twinGroupSize() tiles each, where
+    // every group = exactly ONE path tile + the rest fillers. Tiles store
+    // `_twin = { partner, color }` forming a ring; rotate() and hint()
+    // walk it to keep the group in lockstep.
+    //
+    // The one-path-tile rule is load-bearing, not incidental: the build-
+    // time scramblers (ensureMinScramble, breakPreWonPaths) twist a path
+    // tile to a chosen rotation and drag its group along, which is only
+    // sound while every OTHER member is solve-irrelevant. Two path tiles
+    // in one group would need a common scramble delta the generator
+    // doesn't produce. It's also where the mechanic's value lives: the
+    // player can't tell path from filler, so routing through a grouped
+    // filler yanks a settled tile and reveals the mistake early.
+    //
+    // Entry/exit cells are excluded because their notch-aligned starting
+    // rotation shouldn't be moved by a group rotation. Cross tiles are
+    // excluded because they're 4-rotation-symmetric — rotating them with
+    // the group would be an invisible side effect, defeating the visual
+    // coupling.
     function assignTwins() {
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) delete grid[r][c]._twin;
@@ -3743,32 +3857,71 @@ const Maze = (() => {
                 else                           fillerCells.push({ r, c });
             }
         }
-        const target = twinPairCount();
-        const pathPicks   = shuffle(pathCells).slice(0, target);
-        const fillerPicks = shuffle(fillerCells).slice(0, target);
-        const pairs = Math.min(pathPicks.length, fillerPicks.length, target);
-        for (let i = 0; i < pairs; i++) {
-            const a = pathPicks[i], b = fillerPicks[i];
+        const size = twinGroupSize();
+        // Clamp the count to what the board can actually supply: one path
+        // tile per group, (size-1) fillers per group. Small boards run out
+        // of path tiles first; the filler clamp only bites on very dense
+        // configurations. Either way the groups that DO get placed are
+        // full-size — a short group would read as a different color's
+        // group of the wrong size.
+        const maxByPath   = pathCells.length;
+        const maxByFiller = Math.floor(fillerCells.length / (size - 1));
+        const groups = Math.max(0, Math.min(twinGroupCount(), maxByPath, maxByFiller));
+        const pathPicks   = shuffle(pathCells);
+        const fillerPicks = shuffle(fillerCells);
+        for (let i = 0; i < groups; i++) {
             const color = TWIN_COLORS[i % TWIN_COLORS.length];
-            const aKey = a.r + ',' + a.c;
-            const bKey = b.r + ',' + b.c;
-            grid[a.r][a.c]._twin = { partner: bKey, color };
-            grid[b.r][b.c]._twin = { partner: aKey, color };
+            // Members: the path tile first, then this group's slice of
+            // fillers. Stored as a RING — each member points at the next,
+            // the last closes back to the first (see twinPartnerKeys).
+            const members = [pathPicks[i]];
+            for (let j = 0; j < size - 1; j++) {
+                members.push(fillerPicks[i * (size - 1) + j]);
+            }
+            const keys = members.map((m) => m.r + ',' + m.c);
+            for (let m = 0; m < members.length; m++) {
+                const cell = members[m];
+                grid[cell.r][cell.c]._twin = {
+                    partner: keys[(m + 1) % keys.length],
+                    color
+                };
+            }
         }
     }
 
-    // Quad-mode twins: pair whole 2×2 quads. Every sub-tile in a paired
+    // Quad-mode twins: group whole 2×2 quads. Every sub-tile in a grouped
     // quad gets `_twin = { partner, color }` where `partner` is the TL
-    // sub-tile coord ("qr*2,qc*2") of the partner quad. Rotating one quad
-    // rotates the partner quad in lockstep — same delta, same instant. The
-    // 4 sub-tiles in each quad share the same _twin reference, so any
-    // sub-tile inspection finds the partner correctly even after the data
-    // permutes inside the quad on subsequent rotations.
-    function quadTwinPairCount() {
-        // qScale doubled (was (ROWS + COLS) / 4) so 12×12 quad now produces
-        // ~9 pairs (was 3). Halve back to /4 if it feels too dense.
-        const qScale = (ROWS + COLS) / 2;  // average quads-per-side, doubled
-        return Math.max(1, Math.round(qScale) - 3);
+    // sub-tile coord ("qr*2,qc*2") of the NEXT quad in the ring. Rotating
+    // one quad rotates the rest of the group in lockstep — same delta,
+    // same instant. The 4 sub-tiles in each quad share the same _twin
+    // reference, so any sub-tile inspection finds the ring correctly even
+    // after the data permutes inside the quad on subsequent rotations.
+    //
+    // Sizing runs the same coverage-and-palette rules as singular mode
+    // (see TWIN_COVERAGE), with the QUAD as the unit: 30% of quads end up
+    // grouped, which is also 30% of sub-tiles. Two quad-specific
+    // adjustments:
+    //   • the ladder reads LOGICAL scale (gridScale is physical here, and
+    //     a quad board is 2× its logical dims per axis), so groups grow
+    //     on the size the player actually perceives;
+    //   • group size is capped at QUAD_MAX_GROUP — a group of 4 quads is
+    //     already 16 sub-tiles swinging at once, which is as much
+    //     simultaneous motion as the board can read.
+    // Unlike singular mode there's no path/filler split: quads scramble
+    // positionally, so any quad can anchor a group.
+    const QUAD_MAX_GROUP = 4;
+    function quadTwinGroupSize() {
+        // Logical scale = physical gridScale / 2. Reuse the singular
+        // ladder by evaluating it against that.
+        const s = gridScale() / 2;
+        const ladder = (s < 8) ? 2 : (s < 11) ? 3 : (s < 14) ? 4 : (s < 17) ? 5
+                                 : 6 + Math.floor((s - 17) / 2);
+        const quadCount = (ROWS / 2) * (COLS / 2);
+        const paletteFloor = Math.ceil(quadCount * TWIN_COVERAGE / TWIN_COLORS.length);
+        // Cap the ladder, then let the palette floor override it if it
+        // has to — a repeated color is worse than an oversized group. The
+        // cap holds at every size a run realistically reaches.
+        return Math.max(2, Math.min(QUAD_MAX_GROUP, ladder), paletteFloor);
     }
     function assignQuadTwins() {
         for (let r = 0; r < ROWS; r++) {
@@ -3781,19 +3934,24 @@ const Maze = (() => {
                 candidates.push({ qr, qc });
             }
         }
-        const target = quadTwinPairCount();
-        const picks = shuffle(candidates).slice(0, target * 2);
-        const pairs = Math.floor(picks.length / 2);
-        for (let i = 0; i < pairs; i++) {
-            const a = picks[i * 2];
-            const b = picks[i * 2 + 1];
+        const size = quadTwinGroupSize();
+        const budget = Math.round(candidates.length * TWIN_COVERAGE);
+        const groups = Math.max(0, Math.min(
+            Math.max(1, Math.round(budget / size)),
+            Math.floor(candidates.length / size)
+        ));
+        const picks = shuffle(candidates);
+        for (let i = 0; i < groups; i++) {
             const color = TWIN_COLORS[i % TWIN_COLORS.length];
-            const aKey = (a.qr * 2) + ',' + (a.qc * 2);
-            const bKey = (b.qr * 2) + ',' + (b.qc * 2);
-            for (let dr = 0; dr < 2; dr++) {
-                for (let dc = 0; dc < 2; dc++) {
-                    grid[a.qr*2 + dr][a.qc*2 + dc]._twin = { partner: bKey, color };
-                    grid[b.qr*2 + dr][b.qc*2 + dc]._twin = { partner: aKey, color };
+            const members = picks.slice(i * size, (i + 1) * size);
+            const keys = members.map((m) => (m.qr * 2) + ',' + (m.qc * 2));
+            for (let m = 0; m < members.length; m++) {
+                const q = members[m];
+                const twin = { partner: keys[(m + 1) % keys.length], color };
+                for (let dr = 0; dr < 2; dr++) {
+                    for (let dc = 0; dc < 2; dc++) {
+                        grid[q.qr * 2 + dr][q.qc * 2 + dc]._twin = twin;
+                    }
                 }
             }
         }
@@ -3822,6 +3980,12 @@ const Maze = (() => {
         solutionEdges,
         minSolveMoves,
         recompute: () => updateHighlighted(),
+        // Every OTHER member of (r,c)'s twin group as [row, col] pairs —
+        // [] when untwinned. In quad mode the entries are partner QUADS'
+        // top-left sub-tile coords, matching how _twin stores them. The
+        // render and input layers use this to mirror lockstep rotation
+        // and lock visuals across a group of any size.
+        twinPartnerCells,
         isLocked(r, c)    { return locked.has(r + ',' + c); },
         get ROWS()        { return ROWS; },
         get COLS()        { return COLS; },
