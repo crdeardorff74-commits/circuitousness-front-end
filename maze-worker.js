@@ -51,12 +51,18 @@ async function processNext() {
         const req = pending.shift();
         Maze.setQuadMode(!!req.quadMode);
         Maze.setPathCount(req.pathCount);
+        // Twin-coverage ramp scale — set UNCONDITIONALLY per job (the
+        // worker's Maze is long-lived, so a job that skipped this would
+        // inherit the previous job's scale; PotD bg-gen jobs never send
+        // one and must build at full coverage).
+        if (Maze.setTwinCoverageScale) Maze.setTwinCoverageScale(req.twinScale);
         Maze.setDimensions(req.rows, req.cols);
         const completed = await Maze.init();
         if (completed) {
             postMessage({
                 type: 'ready', state: Maze.snapshotState(),
                 pathCount: req.pathCount, quadMode: !!req.quadMode,
+                twinScale: req.twinScale,
                 id: req.id != null ? req.id : null
             });
         }
@@ -75,6 +81,8 @@ self.onmessage = function (e) {
             rows: e.data.rows, cols: e.data.cols,
             pathCount: e.data.pathCount | 0 || 1,
             quadMode: !!e.data.quadMode,
+            // Absent (PotD bg-gen, stale main threads) → 1 = full coverage.
+            twinScale: (typeof e.data.twinScale === 'number') ? e.data.twinScale : 1,
             id: (e.data.id != null) ? e.data.id : null
         };
         if (e.data.urgent) {

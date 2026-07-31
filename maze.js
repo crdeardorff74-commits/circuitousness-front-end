@@ -70,12 +70,14 @@ const Maze = (() => {
     //
     // Two rules govern the sizing, and they pull in opposite directions:
     //
-    //  1. COVERAGE IS CONSTANT. TWIN_COVERAGE of the board is inside some
-    //     group at EVERY size (user call, 2026-07-31). The old formula
-    //     grew the pair count linearly while area grows quadratically, so
-    //     coupling quietly faded out on big boards — 37% of a 4×4 but only
-    //     17% of a 20×20. A flat fraction keeps the mechanic's presence
-    //     identical whether you're on puzzle 1 or puzzle 40.
+    //  1. COVERAGE IS CONSTANT ACROSS BOARD SIZE. TWIN_COVERAGE of the
+    //     board is inside some group at EVERY size (user call,
+    //     2026-07-31). The old formula grew the pair count linearly while
+    //     area grows quadratically, so coupling quietly faded out on big
+    //     boards — 37% of a 4×4 but only 17% of a 20×20. (Across a RUN
+    //     the coverage ramps by level via twinCoverageScale — none on
+    //     puzzles 1-2 up to the full fraction at 12; same user call. The
+    //     invariant here is that board size alone never dilutes it.)
     //
     //  2. COLORS NEVER REPEAT. A group is only readable if its color is
     //     unique on the board; two same-colored groups read as one group
@@ -96,8 +98,22 @@ const Maze = (() => {
     // so a step up changes the CHARACTER of the coupling — fewer, longer
     // chains — without a visible jump in how much board is coupled.
     const TWIN_COVERAGE = 0.30;
+    // Build-time coverage multiplier (0..1) for the per-run ramp: Marathon/
+    // Zen pass MARATHON.twinScaleForLevel(level) through the worker so
+    // early puzzles carry fewer (or zero) twins — 0 on L1-2, one set at
+    // L3, full TWIN_COVERAGE from L12 (config.js owns the curve). Callers
+    // that never set it (PotD generation, debug, tests) build at 1 = full
+    // coverage. Snapshot-loaded boards carry their twins baked in, so
+    // this only matters at assignTwins/assignQuadTwins time.
+    let twinCoverageScale = 1;
+    function setTwinCoverageScale(s) {
+        const v = Number(s);
+        twinCoverageScale = (isFinite(v) && v >= 0) ? Math.min(1, v) : 1;
+    }
     // Tiles that should end up inside some group at the current dims.
-    function twinCoverageTiles() { return Math.round(ROWS * COLS * TWIN_COVERAGE); }
+    function twinCoverageTiles() {
+        return Math.round(ROWS * COLS * TWIN_COVERAGE * twinCoverageScale);
+    }
     // The ladder: +1 group member per +3 gridScale to 17, then per +2
     // (constant coverage means the budget outruns a +3 cadence up there).
     // gridScale <8 → 2, <11 → 3, <14 → 4, <17 → 5, then 6, 7, 8, …
@@ -3050,23 +3066,28 @@ const Maze = (() => {
 
     // Shared end-of-build scramble finalizer — every newPuzzle branch
     // funnels through here: depth guarantee first (twists tiles, so
-    // highlights must be recomputed), then the pre-won breaker.
+    // highlights must be recomputed), then the pre-won/pre-joined breaker.
     function finalizeStartScramble() {
         ensureMinScramble();
         updateHighlighted();
         breakPreWonPaths();
     }
 
-    // A freshly scrambled puzzle can land with a path ALREADY complete:
-    // scrambleQuads gives every quad a 1-in-4 chance of 0 turns (and
-    // rotation-symmetric quad contents survive non-zero turns), and the
-    // non-quad rerolls randomize each tile independently — a short path
-    // lines up by pure chance. Nothing re-checked pathsWon before shipping,
-    // so players could start a puzzle with paths pre-won (field report:
-    // a quad start with a path already gold). Called at the end of every
-    // newPuzzle branch (via finalizeStartScramble), after updateHighlighted:
-    // while any real path is won, re-rotate one of its tiles (or its quad)
-    // and re-check.
+    // A freshly scrambled puzzle can land in a state the player should
+    // never START in:
+    //   • a path ALREADY complete — scrambleQuads gives every quad a
+    //     1-in-4 chance of 0 turns (and rotation-symmetric quad contents
+    //     survive non-zero turns), and the non-quad rerolls randomize
+    //     each tile independently, so a short path lines up by pure
+    //     chance (field report: a quad start with a path already gold);
+    //   • two DIFFERENT paths JOINED — the same chance alignment can
+    //     link path A's terminal to path B's, shipping the dark-red
+    //     joined state on arrival (field report 2026-08-01, screenshot
+    //     of a fresh board with two terminals linked).
+    // Called at the end of every newPuzzle branch (via
+    // finalizeStartScramble), after updateHighlighted: while any real
+    // path is won — or, once none is, while any two paths share a lit
+    // lane — re-rotate one offending tile (or its quad) and re-check.
     // Trade-off (deliberate): in non-quad mode the nudge happens AFTER the
     // canonical-difficulty checks, so the shipped puzzle can be marginally
     // off-canonical — acceptable for a case this rare vs. re-running the
@@ -3080,12 +3101,11 @@ const Maze = (() => {
                 // overall-won AND works) — the exists[] filter is required.
                 if (exists[i] && pathsWon[i]) { wonIdx = i; break; }
             }
-            if (wonIdx === -1) return;
-            // Candidate cells = the won path's lit lanes. Non-quad mode
-            // excludes entry/exit cells (their rotation exposes the terminal
-            // notch) and crosses (4-fold symmetric — re-rotating one can't
-            // break connectivity). Quad mode excludes nothing: endpoint
-            // quads scramble like any other, and turning a quad permutes
+            // Candidate cells to nudge. Non-quad mode excludes entry/exit
+            // cells (their rotation exposes the terminal notch) and
+            // crosses (4-fold symmetric — re-rotating one can't break
+            // connectivity). Quad mode excludes nothing: endpoint quads
+            // scramble like any other, and turning a quad permutes
             // sub-tile positions, which crosses don't survive either.
             const endpoints = new Set();
             for (const ep of [entry, exit, entry2, exit2, entry3, exit3, entry4, exit4]) {
@@ -3093,14 +3113,44 @@ const Maze = (() => {
             }
             const cells = [];
             const seen = new Set();
-            for (const lane of highlighted) {
-                if (lane.path !== wonIdx) continue;
-                const key = lane.row + ',' + lane.col;
-                if (seen.has(key)) continue;
+            const addCell = (row, col) => {
+                const key = row + ',' + col;
+                if (seen.has(key)) return;
                 seen.add(key);
-                if (!quadMode && endpoints.has(key)) continue;
-                if (!quadMode && grid[lane.row][lane.col].type === T_CROSS) continue;
-                cells.push({ row: lane.row, col: lane.col });
+                if (!quadMode && endpoints.has(key)) return;
+                if (!quadMode && grid[row][col].type === T_CROSS) return;
+                cells.push({ row, col });
+            };
+            if (wonIdx >= 0) {
+                // A whole path starts won — candidates are its lit lanes.
+                for (const lane of highlighted) {
+                    if (lane.path === wonIdx) addCell(lane.row, lane.col);
+                }
+            } else {
+                // No path is won — check for START-JOINED paths (user
+                // report 2026-08-01: a fresh board arrived with two
+                // different paths' terminals linked, rendered dark red).
+                // Two paths are joined when their walks light the SAME
+                // lane — the same (cell, port-pair) carrying two path
+                // indices, exactly render.js hasJoinedLanes' criterion.
+                // Chance can line this up at build just like it lines up
+                // pre-won paths, and nothing else re-checked it before
+                // shipping. Candidates are the overlapping lanes' cells;
+                // nudging one severs the connecting chain.
+                const laneMask = new Map();
+                for (const lane of highlighted) {
+                    const lo = Math.min(lane.inPort, lane.outPort);
+                    const hi = Math.max(lane.inPort, lane.outPort);
+                    const k = lane.row + ',' + lane.col + ',' + lo + ',' + hi;
+                    laneMask.set(k, (laneMask.get(k) || 0) | (1 << (lane.path | 0)));
+                }
+                for (const [k, mask] of laneMask) {
+                    if ((mask & (mask - 1)) === 0) continue;   // one path only
+                    const comma = k.indexOf(',');
+                    const comma2 = k.indexOf(',', comma + 1);
+                    addCell(+k.slice(0, comma), +k.slice(comma + 1, comma2));
+                }
+                if (seen.size === 0) return;   // no wins, no joins — board is clean
             }
             if (cells.length === 0) return; // nothing safe to touch — ship as-is
             const cell = cells[Math.floor(Math.random() * cells.length)];
@@ -4030,20 +4080,36 @@ const Maze = (() => {
     // never matter, diluting the "you're off track" signal the
     // mechanic exists to give.
     //
-    // Entry/exit cells are excluded because their notch-aligned starting
-    // rotation shouldn't be moved by a group rotation. Cross tiles are
-    // excluded because they're 4-rotation-symmetric — rotating them with
-    // the group would be an invisible side effect, defeating the visual
-    // coupling.
+    // EVERY endpoint cell — all paths' entries and exits, not just path
+    // 1's — is excluded because its notch-aligned rotation must never
+    // move outside the player's control: rotateToExpose docks it to the
+    // terminal at build time and the start-connected stipulation
+    // requires it to STAY docked through assignment and scramble. A
+    // twinned endpoint would break that two ways: the offset
+    // normalization below snaps member rotations at assignment, and the
+    // scramblers (ensureMinScramble / breakPreWonPaths) drag whole
+    // groups — either one can spin the terminal tile off its notch.
+    // (Regression 2026-07-31: the exclusion only covered path 1's
+    // entry/exit; harmless while assignment never wrote rotations, but
+    // random membership + normalization spun multi-path terminals —
+    // user screenshot showed both bottom terminals undocked under
+    // twin-colored tiles.) Cross tiles are excluded because they're
+    // 4-rotation-symmetric — rotating them with the group would be an
+    // invisible side effect, defeating the visual coupling.
     function assignTwins() {
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) delete grid[r][c]._twin;
         }
+        // Coverage ramp: scale 0 = a twin-free board (run levels 1-2).
+        if (twinCoverageScale <= 0) return;
+        const endpointKeys = new Set();
+        for (const ep of [entry, exit, entry2, exit2, entry3, exit3, entry4, exit4]) {
+            if (ep) endpointKeys.add(ep.row + ',' + ep.col);
+        }
         const pathCells = [], fillerCells = [];
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
-                if (r === entry.row && c === entry.col) continue;
-                if (r === exit.row  && c === exit.col)  continue;
+                if (endpointKeys.has(r + ',' + c)) continue;
                 const t = grid[r][c];
                 if (t.type === T_CROSS) continue;
                 if (t._solution !== undefined) pathCells.push({ r, c });
@@ -4055,13 +4121,17 @@ const Maze = (() => {
         // random membership neither binds on any realistic board (even a
         // dense 4-path 8×8 has ~50 path tiles), so the full budget is met
         // and the old filler-scarcity fallback is gone.
+        // The max(1, …) floor is what turns the ramp's first sliver of
+        // budget into "a single twin set" at the ramp's start level (a
+        // 5×5 at 3% coverage rounds to a budget of ~1 — half a pair);
+        // it's inert at full coverage, where the budget is always ≥ size.
         const budget = twinCoverageTiles();
         const size = twinGroupSize();
-        const groups = Math.max(0, Math.min(
-            Math.round(budget / size),
+        const groups = Math.min(
+            Math.max(1, Math.round(budget / size)),
             pathCells.length,
             Math.floor((pathCells.length + fillerCells.length) / size)
-        ));
+        );
         const anchors = shuffle(pathCells).slice(0, groups);
         const anchorSet = new Set(anchors.map((a) => a.r + ',' + a.c));
         const pool = shuffle(pathCells.concat(fillerCells)
@@ -4125,7 +4195,8 @@ const Maze = (() => {
         const ladder = (s < 8) ? 2 : (s < 11) ? 3 : (s < 14) ? 4 : (s < 17) ? 5
                                  : 6 + Math.floor((s - 17) / 2);
         const quadCount = (ROWS / 2) * (COLS / 2);
-        const paletteFloor = Math.ceil(quadCount * TWIN_COVERAGE / TWIN_COLORS.length);
+        const paletteFloor = Math.ceil(
+            quadCount * TWIN_COVERAGE * twinCoverageScale / TWIN_COLORS.length);
         // Cap the ladder, then let the palette floor override it if it
         // has to — a repeated color is worse than an oversized group. The
         // cap holds at every size a run realistically reaches.
@@ -4135,6 +4206,9 @@ const Maze = (() => {
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) delete grid[r][c]._twin;
         }
+        // Coverage ramp: scale 0 = a twin-free board (run levels 1-2) —
+        // same per-level scale singular mode uses; see setTwinCoverageScale.
+        if (twinCoverageScale <= 0) return;
         const qROWS = ROWS / 2, qCOLS = COLS / 2;
         const candidates = [];
         for (let qr = 0; qr < qROWS; qr++) {
@@ -4143,7 +4217,7 @@ const Maze = (() => {
             }
         }
         const size = quadTwinGroupSize();
-        const budget = Math.round(candidates.length * TWIN_COVERAGE);
+        const budget = Math.round(candidates.length * TWIN_COVERAGE * twinCoverageScale);
         const groups = Math.max(0, Math.min(
             Math.max(1, Math.round(budget / size)),
             Math.floor(candidates.length / size)
@@ -4178,6 +4252,7 @@ const Maze = (() => {
         N, E, S, W,
         T_STRAIGHT, T_ELBOW, T_CROSS,
         init, rotate, hint, applyHintAt, togglePlayerLock, setDimensions, setHurry, setAbort, setTwoPathMode, setPathCount, setQuadMode,
+        setTwinCoverageScale,  // per-run twin ramp (0..1 × TWIN_COVERAGE) — set before init; see its comment
         rotateBoard,   // whole-board 90° penalty rotation — see its comment; Gates.rotateBoard must run alongside
         flipBoard,     // whole-board mirror penalty (variant 2) — Gates.flipBoard must run alongside
         alternateRouteEdges,  // leftover-alternate edges for targeted gate placement (null in quad mode)

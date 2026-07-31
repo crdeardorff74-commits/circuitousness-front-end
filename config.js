@@ -275,6 +275,27 @@ const MARATHON = {
     TIER_DROP:   1,
     MAX_PATHS:   4,
 
+    // Twin-tile coverage ramp across a run (user call 2026-07-31): no
+    // twins on puzzles 1-2, a single twin set at TWIN_RAMP_START_LEVEL,
+    // then coverage climbs linearly to maze.js's full TWIN_COVERAGE
+    // (30%) at TWIN_RAMP_FULL_LEVEL and plateaus there. The scale is a
+    // pure function of level, mirroring pathCountForLevel — applies to
+    // every Zen/Marathon run (progressive AND legacy fixed-path types,
+    // singular and quad alike). PotD and debug builds don't pass a
+    // scale and stay at full coverage.
+    // twinScaleForLevel returns the 0..1 multiplier for TWIN_COVERAGE:
+    //   L1-2 → 0;  L3 → 0.1 (with maze.js's ≥1-group rule that lands
+    //   exactly one set);  +0.1 per level;  L12+ → 1.
+    TWIN_RAMP_START_LEVEL: 3,
+    TWIN_RAMP_FULL_LEVEL:  12,
+    twinScaleForLevel: function (lev) {
+        const a = this.TWIN_RAMP_START_LEVEL;
+        const b = this.TWIN_RAMP_FULL_LEVEL;
+        if (lev < a)  return 0;
+        if (lev >= b) return 1;
+        return (lev - a + 1) / (b - a + 1);
+    },
+
     // Compressed tier ladder for the FIRST-VISIT auto-start Zen run only
     // (marathon.js autoStartFirstPractice → levelConfig). Entry i = how
     // many puzzles that run spends at (i+1) paths before stepping up, so

@@ -115,14 +115,25 @@
         let preGenStartTime = 0;
         let pathCount       = 1;                     // 1, 2, or 3
         let quadMode        = false;                 // 2×2 sub-tile groups rotate as one unit
+        // Twin-coverage ramp scale for the CURRENT level (0..1 multiplier
+        // on maze.js's TWIN_COVERAGE). Marathon's startPuzzle callback
+        // sets it per level (MARATHON.twinScaleForLevel — 0 on L1-2, one
+        // set at L3, full at L12+); quit resets to 1 so PotD/debug builds
+        // outside a run keep full coverage.
+        let twinScale       = 1;
         // Cache key includes pathCount AND quadMode so cross-mode collisions
-        // can't return a stale wrong-mode snapshot. Optional params let
-        // starter pre-gen use cache keys that differ from the active
-        // globals (e.g. cache an s2 starter while quadMode is currently false).
-        function cacheKey(r, c, paths, quad) {
+        // can't return a stale wrong-mode snapshot — and the twin scale
+        // (as an integer percent: floats stringify noisily), because two
+        // levels can want the same dims/paths with different twin
+        // coverage and a cached wrong-coverage board must never be
+        // returned. Optional params let starter pre-gen / lookahead use
+        // cache keys that differ from the active globals (e.g. cache an
+        // s2 starter while quadMode is currently false).
+        function cacheKey(r, c, paths, quad, tw) {
             const p = (paths != null) ? paths : pathCount;
             const q = (quad  != null) ? quad  : quadMode;
-            return r + ',' + c + ',' + p + ',' + (q ? 'Q' : 'q');
+            const t = Math.round(((tw != null) ? tw : twinScale) * 100);
+            return r + ',' + c + ',' + p + ',' + (q ? 'Q' : 'q') + ',' + t;
         }
 
         // ----- Starter pre-gen -----
@@ -157,13 +168,18 @@
                 // upcomingDims/startPuzzle convert ×2 for quad → PHYSICAL dims.
                 const rows = quad ? startDims.rows * 2 : startDims.rows;
                 const cols = quad ? startDims.cols * 2 : startDims.cols;
+                // Starters ARE the level-1 builds, so they carry level 1's
+                // twin ramp scale (0 under the current curve — a run's
+                // first board is twin-free). Guarded for stale configs.
+                const tw = MARATHON.twinScaleForLevel ? MARATHON.twinScaleForLevel(1) : 1;
                 out.push({
                     type:      type,
                     rows:      rows,
                     cols:      cols,
                     pathCount: paths,
                     quadMode:  quad,
-                    cacheKey:  cacheKey(rows, cols, paths, quad)
+                    twinScale: tw,
+                    cacheKey:  cacheKey(rows, cols, paths, quad, tw)
                 });
             }
             return out;
@@ -178,16 +194,18 @@
                     const s = e.data.state;
                     const respCount = e.data.pathCount | 0 || 1;
                     const respQuad  = !!e.data.quadMode;
-                    // Accept only if dims, path-count, AND quad-mode match the
-                    // latest in-flight request. Stale responses (mode changed
-                    // mid-build) are discarded so the wrong-mode snapshot
-                    // doesn't poison the cache.
+                    const respScale = (typeof e.data.twinScale === 'number') ? e.data.twinScale : 1;
+                    // Accept only if dims, path-count, quad-mode AND twin
+                    // scale match the latest in-flight request. Stale
+                    // responses (mode changed mid-build) are discarded so
+                    // the wrong-config snapshot doesn't poison the cache.
                     if (preGenSize
                         && s.rows === preGenSize.rows
                         && s.cols === preGenSize.cols
                         && respCount === preGenSize.pathCount
-                        && respQuad === preGenSize.quadMode) {
-                        const key = cacheKey(s.rows, s.cols, respCount, respQuad);
+                        && respQuad === preGenSize.quadMode
+                        && respScale === preGenSize.twinScale) {
+                        const key = cacheKey(s.rows, s.cols, respCount, respQuad, respScale);
                         preGenCache.set(key, s);
                         const elapsed = ((Date.now() - preGenStartTime) / 1000).toFixed(2);
                         Logger.info('✅ worker built ' +
@@ -231,6 +249,9 @@
         //              next-level entries can cross a progressive tier
         //              boundary onto a different path count.
         //   quadMode:  same as pathCount but for the quad/singular toggle.
+        //   twinScale: same again for the twin-coverage ramp scale (a
+        //              lookahead entry across a level boundary carries a
+        //              different scale than the current level's global).
         //   purpose:   short string describing why this build was queued,
         //              used in the console log ('starter s2',
         //              'lookahead L+1', 'player request'). Falls back to
@@ -240,10 +261,12 @@
             if (!w) return false;
             const usePaths   = (opts && opts.pathCount != null) ? opts.pathCount : pathCount;
             const useQuad    = (opts && opts.quadMode  != null) ? !!opts.quadMode : quadMode;
+            const useScale   = (opts && opts.twinScale != null) ? opts.twinScale : twinScale;
             const isUrgent   = !!(opts && opts.urgent);
             const purpose    = (opts && opts.purpose) || 'pre-gen';
             preGenSize = {
                 rows: rows, cols: cols, pathCount: usePaths, quadMode: useQuad,
+                twinScale: useScale,
                 purpose: purpose
             };
             preGenStartTime = Date.now();
@@ -252,6 +275,7 @@
             w.postMessage({
                 type: 'generate', rows: rows, cols: cols,
                 pathCount: usePaths, quadMode: useQuad,
+                twinScale: useScale,
                 urgent: isUrgent
             });
             return true;
@@ -301,10 +325,11 @@
                 // entry's config so the advance finds its cache hit. Debug
                 // dims carry neither → cacheKey/requestBuild fall back to
                 // the globals, same as before.
-                if (!preGenCache.has(cacheKey(dims.rows, dims.cols, dims.pathCount, dims.quadMode))) {
+                if (!preGenCache.has(cacheKey(dims.rows, dims.cols, dims.pathCount, dims.quadMode, dims.twinScale))) {
                     requestBuild(dims.rows, dims.cols, {
                         pathCount: dims.pathCount,
                         quadMode:  dims.quadMode,
+                        twinScale: dims.twinScale,
                         purpose:   'lookahead L+' + (i + 1)
                     });
                     return;
@@ -340,6 +365,7 @@
                     requestBuild(plan.rows, plan.cols, {
                         pathCount: plan.pathCount,
                         quadMode:  plan.quadMode,
+                        twinScale: plan.twinScale,
                         // describeBuild appends the type itself, so just
                         // tag the role here — output reads "starter s4 (...)"
                         purpose:   'starter'
@@ -1421,6 +1447,9 @@
                     if (mySeq !== newPuzzleSeq) return;
                     buildingBanner.classList.add('visible');
                 }, 500);
+                // Main-thread Maze builds honor the ramp too (the worker
+                // path sets it per job in maze-worker.js).
+                if (Maze.setTwinCoverageScale) Maze.setTwinCoverageScale(twinScale);
                 await Maze.init();
                 clearTimeout(bannerTimer);
                 // Supersession: a newer newPuzzle started while we were
@@ -1450,7 +1479,8 @@
                     && preGenSize.rows === wantR
                     && preGenSize.cols === wantC
                     && preGenSize.pathCount === pathCount
-                    && preGenSize.quadMode === quadMode;
+                    && preGenSize.quadMode === quadMode
+                    && preGenSize.twinScale === twinScale;
                 if (!inFlight) {
                     requestBuild(wantR, wantC, { urgent: true, purpose: 'player request' });
                 } else if (worker) {
@@ -1715,6 +1745,12 @@
                     const mazePathChanged = Maze.pathCount !== opts.pathCount;
                     Maze.setPathCount(opts.pathCount);
                     Maze.setQuadMode(opts.quadMode);
+                    // Twin-coverage ramp for THIS level. Mirrored onto the
+                    // main-thread Maze for the worker-unavailable fallback;
+                    // the worker path re-sets it per job. Absent (stale
+                    // marathon.js) → full coverage, the pre-ramp behavior.
+                    twinScale = (typeof opts.twinScale === 'number') ? opts.twinScale : 1;
+                    if (Maze.setTwinCoverageScale) Maze.setTwinCoverageScale(twinScale);
                     // PreGen worker invalidation is the expensive piece — only
                     // do it when game.js's view actually changed, since PotD's
                     // mutations don't touch the worker and don't require a
@@ -1763,6 +1799,10 @@
                     cancelReplay();
                     if (banner)         banner.classList.remove('visible');
                     if (buildingBanner) buildingBanner.classList.remove('visible');
+                    // Leave the run's twin ramp behind — builds outside a
+                    // run (debug slider, manual newPuzzle) get full coverage.
+                    twinScale = 1;
+                    if (Maze.setTwinCoverageScale) Maze.setTwinCoverageScale(1);
                 }
             });
         }

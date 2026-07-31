@@ -948,7 +948,12 @@ const Marathon = (() => {
             out.push({
                 rows: physRows, cols: physCols,
                 pathCount: cfg.pathCount,
-                quadMode:  cfg.quadMode
+                quadMode:  cfg.quadMode,
+                // Twin-coverage ramp scale for THAT level — pre-gen must
+                // build under the future level's coverage, not the
+                // current one's, or every advance across the ramp would
+                // cache-miss (game.js keys pre-gen entries on it).
+                twinScale: MARATHON.twinScaleForLevel ? MARATHON.twinScaleForLevel(lev) : 1
             });
         }
         return out;
@@ -1463,7 +1468,10 @@ const Marathon = (() => {
                 rows:      physRows,
                 cols:      physCols,
                 pathCount: paths,
-                quadMode:  cfg.quadMode
+                quadMode:  cfg.quadMode,
+                // Twin-coverage ramp (config.js TWIN_RAMP_*): 0 on L1-2,
+                // one twin set at L3, full coverage from L12.
+                twinScale: MARATHON.twinScaleForLevel ? MARATHON.twinScaleForLevel(level) : 1
             });
         }
         // Timer starts when puzzle is actually on-screen (onPuzzleReady).
