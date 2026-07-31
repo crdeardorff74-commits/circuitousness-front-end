@@ -1342,10 +1342,12 @@ const Marathon = (() => {
         // engagement comparison keys off that stamp).
         const variant = pickFirstRunVariant();
         // First-time-player funnel: this is the ONE moment we know the
-        // browser is brand new, so open its FirstRunStats row now — a
-        // player who bails without touching anything should still count
-        // (as 0 initial-run puzzles), unlike the deferred recordStart
-        // below which deliberately requires an interaction.
+        // browser is brand new, so begin RECORDING now. Delivery is gated
+        // on the player actually starting to solve (firstRunEngaged, via
+        // notifyPuzzleInteraction) — same "requires an interaction" bar
+        // as the deferred recordStart below. Policy changed 2026-08-01
+        // (user call): a visitor who bails without touching a tile used
+        // to open a row and inflate the funnel's 0-puzzle bucket.
         if (typeof Tracking !== 'undefined' && Tracking.firstRunBegin) {
             Tracking.firstRunBegin(variant);
         }
@@ -1354,11 +1356,23 @@ const Marathon = (() => {
     }
 
     // Called by game.js recordMove on every committed live puzzle action
-    // (rotate / gate / lock / hint — replays never reach recordMove). Only
-    // meaningful while startGame has a deferred auto-start "started"
-    // milestone parked; a no-op the rest of the time. One-shot: clears the
-    // slot BEFORE the PATCH so a re-entrant call can't double-record.
+    // (rotate / gate / lock / hint — replays never reach recordMove).
+    // Two jobs, both one-shot and both keyed to "the player actually
+    // started trying to solve":
+    //   1. Open the first-time-player funnel's sync gate. Runs BEFORE the
+    //      deferred-milestone guard below because it applies to any run,
+    //      not just the auto-start one (a player who ignored the
+    //      auto-start and came back later still belongs in the funnel).
+    //      Idempotent and free once satisfied — Tracking no-ops without
+    //      first-run state, and again once the flag is set.
+    //   2. Release Marathon's deferred auto-start "started" milestone,
+    //      which only exists during an auto-start run. One-shot: clears
+    //      the slot BEFORE the PATCH so a re-entrant call can't
+    //      double-record.
     function notifyPuzzleInteraction() {
+        if (typeof Tracking !== 'undefined' && Tracking.firstRunEngaged) {
+            Tracking.firstRunEngaged();
+        }
         if (!deferredStartTracking) return;
         const d = deferredStartTracking;
         deferredStartTracking = null;

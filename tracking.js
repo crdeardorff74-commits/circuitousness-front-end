@@ -474,6 +474,21 @@ const Tracking = (function () {
     //     browser is brand new. No state → every other firstRun* call is
     //     a silent no-op, so pre-feature players and replayed events
     //     never produce data.
+    //   - ENGAGEMENT GATE (user call 2026-08-01): local state starts with
+    //     `eng: 0` and NOTHING syncs until the player actually starts
+    //     trying to solve — firstRunEngaged(), fired from the first
+    //     committed puzzle action (marathon.js notifyPuzzleInteraction).
+    //     A visitor who lands and leaves without touching a tile
+    //     therefore never creates a server row at all, so the funnel's
+    //     "0 puzzles" bucket now means "tried but didn't finish one"
+    //     rather than "never played". Recording still begins at
+    //     auto-start, so a How-to-Solve click BEFORE the first move is
+    //     kept locally and ships with the first sync — the gate delays
+    //     delivery, it doesn't drop signal.
+    //     Legacy state written before this shipped has no `eng` field and
+    //     is treated as engaged: those browsers already have a server row
+    //     (or already synced), and freezing their later outside-play
+    //     updates would corrupt the funnel worse than the stale row does.
     //   - Delivery is whole-state sync (POST /api/first-run/sync), and
     //     the server merges with max/OR — fully idempotent, so the retry
     //     policy can be dumb: mark dirty on every change, clear dirty
@@ -502,6 +517,10 @@ const Tracking = (function () {
         if (!base) return;
         const st = _frRead();
         if (!st || !st.dirty) return;
+        // Engagement gate — see the section comment. Legacy state (no
+        // `eng` field at all) counts as engaged so existing browsers keep
+        // syncing; only state created by this build can be held back.
+        if (st.eng !== undefined && !st.eng) return;
         const sid = _persistentSessionId();
         if (!sid) return;
         const sentRev = st.rev || 0;
@@ -514,6 +533,12 @@ const Tracking = (function () {
                     sessionId:         sid,
                     puzzles:           st.p || 0,
                     variant:           st.v || null,
+                    // Proves this browser started trying to solve. The
+                    // server refuses to CREATE a row from a payload with
+                    // nothing in it, so this is what opens the row for a
+                    // player who has interacted but not yet solved or
+                    // clicked anything.
+                    engaged:           (st.eng === undefined) ? true : !!st.eng,
                     howtoClicked:      !!st.howto,
                     tutorialCompleted: !!st.tut,
                     nudgeClicked:      !!st.nudge,
@@ -565,12 +590,29 @@ const Tracking = (function () {
     function firstRunBegin(variant) {
         if (isSuppressed()) return;
         if (_frRead()) return;
+        // `eng: 0` + no sync scheduled: recording starts now, DELIVERY
+        // waits for firstRunEngaged (see the engagement-gate note above).
         _frWrite({ p: 0, howto: 0, tut: 0, nudge: 0, daily: 0,
-                   oStart: 0, oSolve: 0, v: variant || null, rev: 1, dirty: 1 });
+                   oStart: 0, oSolve: 0, eng: 0, v: variant || null,
+                   rev: 1, dirty: 1 });
         // If localStorage is unavailable the write silently failed and
         // _frRead stays null — the whole feature is inert, matching the
         // auto-start itself (which also bails without storage).
-        _frScheduleSync();
+    }
+    // The player committed their first real puzzle action — this browser
+    // counts as a first-time PLAYER, not a visitor. Opens the sync gate
+    // and ships everything accumulated so far. Fired on ANY committed
+    // action, not just during the auto-start run: someone who ignored the
+    // auto-start, came back later and played a menu-started game did
+    // start trying to solve, and belongs in the funnel (as 0 initial-run
+    // puzzles with outside_started set). Idempotent — later calls no-op
+    // through _frUpdate's unchanged-mutator path.
+    function firstRunEngaged() {
+        _frUpdate(function (st) {
+            if (st.eng) return false;
+            st.eng = 1;
+            return true;
+        });
     }
     function firstRunPuzzleSolved() {
         _frUpdate(function (st) { st.p = (st.p || 0) + 1; return true; });
@@ -615,6 +657,7 @@ const Tracking = (function () {
         // First-time-player funnel — see the section comment above. All
         // no-ops unless firstRunBegin has created state in this browser.
         firstRunBegin:              firstRunBegin,
+        firstRunEngaged:            firstRunEngaged,
         firstRunPuzzleSolved:       firstRunPuzzleSolved,
         firstRunHowToClicked:       firstRunHowToClicked,
         firstRunTutorialCompleted:  firstRunTutorialCompleted,
