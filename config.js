@@ -338,8 +338,29 @@ const MARATHON = {
     //   'extended' — a slower ladder: FIRST_RUN_EXTENDED_TIER_LENGTH
     //                (6) puzzles per path count.
     //   'single'   — 1 path forever; the grid just keeps growing.
-    // FIRST_RUN_VARIANT_FORCE: null = random draw per new player;
-    // set to one of the four names to lock every new player to it.
+    // ASSIGNMENT IS SERVER-SIDE since 2026-08-01 (user call). The client
+    // used to draw uniformly at random per browser — unbiased, but at
+    // n=45 the arms had landed 6/8/14/17, which is ordinary sampling
+    // noise yet expensive when every arm is that thin. The server now
+    // hands out the LEAST-USED arm when it creates the row (which only
+    // happens once the player actually plays, so bouncers can't consume
+    // slots), and the client adopts what comes back.
+    //
+    // This works because the four ladders are IDENTICAL for the first
+    // FIRST_RUN_SHARED_LEVELS puzzles — the earliest divergence is the
+    // fast track's 2-path step at puzzle 4 — so the client needs no
+    // variant at all until then, and an unknown variant simply runs the
+    // standard ladder (which matches every arm over that stretch). The
+    // sync fires on the player's first move of puzzle 1, leaving three
+    // whole puzzles for the round trip. If the answer somehow hasn't
+    // arrived by the divergence point, marathon.js draws locally and
+    // LOCKS that arm, sending it so the server records what was actually
+    // played. Keep this in step with FIRST_RUN_TIERS[0].
+    FIRST_RUN_SHARED_LEVELS: 3,
+    // FIRST_RUN_VARIANT_FORCE: null = server assigns per new player;
+    // set to one of the four names to lock every new player to it (the
+    // client then forces it locally AND asserts it to the server, so the
+    // lock-in works without a back-end deploy).
     FIRST_RUN_VARIANT_FORCE: null,
     FIRST_RUN_VARIANTS: ['fast', 'standard', 'extended', 'single'],
     FIRST_RUN_EXTENDED_TIER_LENGTH: 6,

@@ -531,8 +531,14 @@ const Tracking = (function () {
                 keepalive: true,
                 body: JSON.stringify({
                     sessionId:         sid,
-                    puzzles:           st.p || 0,
-                    variant:           st.v || null,
+                    // Ladder arm. Sent ONLY once locked — either
+                    // FIRST_RUN_VARIANT_FORCE, or the local fallback
+                    // marathon.js drew because the run reached the
+                    // divergence point before the server answered. A
+                    // locked arm is what the player actually PLAYED, so
+                    // the server honors it; otherwise null invites the
+                    // server to assign the least-used arm.
+                    variant:           st.vLocked ? (st.v || null) : null,
                     // Proves this browser started trying to solve. The
                     // server refuses to CREATE a row from a payload with
                     // nothing in it, so this is what opens the row for a
@@ -548,16 +554,38 @@ const Tracking = (function () {
                 }),
             }).then(function (r) {
                 if (!r || !r.ok) return;
-                // Only clear dirty if nothing mutated while this sync was
-                // in flight — a newer rev means there's newer state the
-                // server hasn't seen yet.
-                const cur = _frRead();
-                if (cur && cur.dirty && (cur.rev || 0) === sentRev) {
-                    cur.dirty = 0;
-                    _frWrite(cur);
-                }
+                // The body echoes the row's effective variant. Parse
+                // failures still settle the dirty flag — the write
+                // landed, which is what dirty tracks.
+                return r.json().then(
+                    function (body) { _frSynced(sentRev, body); },
+                    function ()     { _frSynced(sentRev, null); }
+                );
             }).catch(function () {});
         } catch (e) {}
+    }
+    // Post-sync bookkeeping: adopt the server's arm assignment, then
+    // settle the dirty flag.
+    function _frSynced(sentRev, body) {
+        const cur = _frRead();
+        if (!cur) return;
+        let changed = false;
+        // Server-assigned ladder arm (see MARATHON.FIRST_RUN_SHARED_LEVELS).
+        // Never overwrite one we already hold: a locked local arm is
+        // what the player is actually playing, and the server echoes
+        // that back anyway.
+        if (body && body.variant && !cur.v) {
+            cur.v = body.variant;
+            changed = true;
+        }
+        // Only clear dirty if nothing mutated while this sync was in
+        // flight — a newer rev means there's newer state the server
+        // hasn't seen yet.
+        if (cur.dirty && (cur.rev || 0) === sentRev) {
+            cur.dirty = 0;
+            changed = true;
+        }
+        if (changed) _frWrite(cur);
     }
     // Short debounce so a burst (nudge click → PotD start) ships as one
     // sync instead of racing two.
@@ -587,17 +615,43 @@ const Tracking = (function () {
     // drawn first-run ladder ('fast'|'standard'|'extended'|'single' —
     // see MARATHON.FIRST_RUN_* in config.js), stamped on the server row
     // so the admin panel can compare engagement per variant.
-    function firstRunBegin(variant) {
+    // `forcedVariant` is non-null only when MARATHON.FIRST_RUN_VARIANT_FORCE
+    // pins every player to one arm; normally the arm is left blank for
+    // the SERVER to assign (least-used) on the row-creating sync, and
+    // adopted from its response. A forced arm is locked immediately so
+    // it's asserted rather than assigned.
+    function firstRunBegin(forcedVariant) {
         if (isSuppressed()) return;
         if (_frRead()) return;
         // `eng: 0` + no sync scheduled: recording starts now, DELIVERY
         // waits for firstRunEngaged (see the engagement-gate note above).
         _frWrite({ p: 0, howto: 0, tut: 0, nudge: 0, daily: 0,
-                   oStart: 0, oSolve: 0, eng: 0, v: variant || null,
+                   oStart: 0, oSolve: 0, eng: 0,
+                   v: forcedVariant || null, vLocked: forcedVariant ? 1 : 0,
                    rev: 1, dirty: 1 });
         // If localStorage is unavailable the write silently failed and
         // _frRead stays null — the whole feature is inert, matching the
         // auto-start itself (which also bails without storage).
+    }
+    // The ladder arm this browser is on, or null while the server's
+    // assignment is still in flight. marathon.js polls this at each
+    // puzzle boundary and adopts it for gameplay.
+    function firstRunVariant() {
+        const st = _frRead();
+        return (st && st.v) || null;
+    }
+    // Commit to an arm the CLIENT chose — the fallback marathon.js draws
+    // if the run reaches the divergence point with no server answer.
+    // Locking makes later syncs assert it, so the row records the ladder
+    // that was actually played rather than one the server picked blind.
+    function firstRunLockVariant(v) {
+        if (!v) return;
+        _frUpdate(function (st) {
+            if (st.vLocked && st.v) return false;
+            st.v = v;
+            st.vLocked = 1;
+            return true;
+        });
     }
     // The player committed their first real puzzle action — this browser
     // counts as a first-time PLAYER, not a visitor. Opens the sync gate
@@ -658,6 +712,8 @@ const Tracking = (function () {
         // no-ops unless firstRunBegin has created state in this browser.
         firstRunBegin:              firstRunBegin,
         firstRunEngaged:            firstRunEngaged,
+        firstRunVariant:            firstRunVariant,
+        firstRunLockVariant:        firstRunLockVariant,
         firstRunPuzzleSolved:       firstRunPuzzleSolved,
         firstRunHowToClicked:       firstRunHowToClicked,
         firstRunTutorialCompleted:  firstRunTutorialCompleted,

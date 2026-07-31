@@ -2,6 +2,16 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-08-01 — Release v1.39 (ladder arm assigned by the SERVER, balanced on ENGAGED)
+- Client no longer draws the A/B/C/D arm. `firstRunVariant` stays NULL until the server's assignment arrives in the `/first-run/sync` response (`Tracking.firstRunVariant()`), adopted by `ensureFirstRunVariant(level)` — called from `startNextPuzzle` ONLY. Do NOT call it from `levelConfig`: pre-gen asks that about FUTURE levels and would force the fallback draw early.
+- Server balances on the **>=3 engaged count, not total players** (user call — standard was sitting at 1 of 8; players who quit before the ladders diverge carry no distinguishing signal). Seeded with the real table (totals 6/8/14/17, engaged 3/1/3/6) the next 5 assignments all go to `standard`. ⚠ This is response-adaptive allocation — see the back-end NOTES for the time-confound caveat and the skew guard that bounds it.
+- Safe because all four ladders are identical for `MARATHON.FIRST_RUN_SHARED_LEVELS` (3) puzzles — an unknown arm falls through levelConfig to the standard ladder, which matches every arm over that stretch. Sync fires on the first move of puzzle 1, so there are 3 puzzles of slack.
+- **Fallback**: if level > SHARED_LEVELS with no assignment (offline / cold dyno / blocked request), draw locally and `Tracking.firstRunLockVariant(v)` — locked arms are SENT and the server honors them, so the row records the ladder actually played rather than one assigned blind.
+- `FIRST_RUN_VARIANT_FORCE` still works client-side and is locked immediately (asserted, not assigned) — lock-in needs no back-end deploy.
+- Known cosmetic: pre-gen lookahead computed at level 1 may cache level 4 under the standard ladder; if the arm turns out to be 'fast' that's one cache miss ("Building puzzle…") at level 4. Self-correcting from level 2 on.
+- ⚠ **DEPLOY ORDER: back-end FIRST** (assignment + response echo). Without it the response carries no arm and every new player falls through to the local locked fallback draw — i.e. the old random behavior. Not harmful, just no improvement.
+- Version bumped 1.38 → 1.39.
+
 ## 2026-08-01 — Release v1.38 (twin coverage ramps by level; terminal-dock + start-join fixes; funnel gated on real play)
 - **Twin coverage is now PROGRESSIVE per run level** (user call): none L1-2, ONE set at L3, linear to the full 30% at L12+ (`config.js` `TWIN_RAMP_*` + `twinScaleForLevel`). Scale flows marathon → game.js (cache keys include it) → worker (per-job, so PotD bg-gen stays full-coverage) → `Maze.setTwinCoverageScale`. First Marathon/Zen start after this update shows one "Building puzzle…" while starters rebuild under new cache keys — self-heals.
 - **Regression fix (user screenshot)**: random twin membership could include MULTI-PATH terminals (only path 1's entry/exit were excluded) and the offset normalization spun them off their notches → boards started with undocked terminals. assignTwins now excludes ALL endpoint cells; singular terminals can never be twinned. Quad endpoint quads stay twinnable by design (allowedQuadTurns keeps stubs lit).

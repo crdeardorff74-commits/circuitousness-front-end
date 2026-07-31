@@ -697,30 +697,56 @@ const Marathon = (() => {
     }
 
     // ----- First-visit ladder experiment -----
-    // The auto-start run walks one of FOUR ladder variants, drawn
-    // randomly per new player in autoStartFirstPractice and stamped on
-    // the player's first_run_stats row (Tracking.firstRunBegin) so the
-    // admin panel can compare engagement per variant. Definitions + the
-    // FIRST_RUN_VARIANT_FORCE lock-in knob live on the MARATHON config.
-    // Everything here is inert for every other run (levelConfig only
-    // consults the variant while isFirstRunAutoStart).
+    // The auto-start run walks one of FOUR ladder variants. The SERVER
+    // assigns the arm (least-used, so the split stays near-even) when it
+    // creates the player's first_run_stats row, and the client adopts it
+    // from the sync response; the admin panel then compares engagement
+    // per arm. Definitions, the FIRST_RUN_SHARED_LEVELS slack window and
+    // the FIRST_RUN_VARIANT_FORCE lock-in knob live on the MARATHON
+    // config. Everything here is inert for every other run (levelConfig
+    // only consults the variant while isFirstRunAutoStart).
+    //
+    // `firstRunVariant` stays NULL until the assignment lands, which is
+    // safe: an unknown arm falls through levelConfig to the standard
+    // ladder, and all four arms are identical for the first
+    // FIRST_RUN_SHARED_LEVELS puzzles anyway.
     let firstRunVariant = null;
     const FIRST_RUN_VARIANT_KEY = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness')
         + '_firstRunVariant_v1';
-    function pickFirstRunVariant() {
-        const pool = (Array.isArray(MARATHON.FIRST_RUN_VARIANTS) && MARATHON.FIRST_RUN_VARIANTS.length)
+    function firstRunVariantPool() {
+        return (Array.isArray(MARATHON.FIRST_RUN_VARIANTS) && MARATHON.FIRST_RUN_VARIANTS.length)
             ? MARATHON.FIRST_RUN_VARIANTS
             : ['fast', 'standard', 'extended', 'single'];
-        const forced = MARATHON.FIRST_RUN_VARIANT_FORCE;
-        const v = (forced && pool.indexOf(forced) !== -1)
-            ? forced
-            : pool[Math.floor(Math.random() * pool.length)];
+    }
+    function setFirstRunVariant(v) {
         firstRunVariant = v;
         // Persisted for attribution durability (the stats row is keyed to
         // the browser and outlives this session) — not read back by
         // gameplay, which only cares during the one auto-start run.
         try { localStorage.setItem(FIRST_RUN_VARIANT_KEY, v); } catch (e) {}
         return v;
+    }
+    // The forced arm, when FIRST_RUN_VARIANT_FORCE pins one; else null.
+    function forcedFirstRunVariant() {
+        const forced = MARATHON.FIRST_RUN_VARIANT_FORCE;
+        return (forced && firstRunVariantPool().indexOf(forced) !== -1) ? forced : null;
+    }
+    // Called at each auto-start puzzle boundary with the level about to
+    // be played. Adopts the server's assignment as soon as it lands;
+    // if the run is about to pass the point where the arms diverge and
+    // nothing has arrived (offline, cold dyno, blocked request), draws
+    // locally and LOCKS it so the row records what was really played.
+    // Never runs for non-auto-start runs.
+    function ensureFirstRunVariant(lev) {
+        if (!isFirstRunAutoStart || firstRunVariant) return;
+        if (typeof Tracking === 'undefined') return;
+        const assigned = Tracking.firstRunVariant && Tracking.firstRunVariant();
+        if (assigned) { setFirstRunVariant(assigned); return; }
+        const shared = MARATHON.FIRST_RUN_SHARED_LEVELS || 3;
+        if (lev <= shared) return;   // still inside the identical prefix
+        const pool = firstRunVariantPool();
+        const v = setFirstRunVariant(pool[Math.floor(Math.random() * pool.length)]);
+        if (Tracking.firstRunLockVariant) Tracking.firstRunLockVariant(v);
     }
     // The compressed 'fast' ladder — only that variant uses the tiers.
     function firstRunTiers() {
@@ -1337,10 +1363,13 @@ const Marathon = (() => {
         // still never re-trigger, and the player gets the normal menu on
         // their next load rather than a repeating broken auto-start.
         try { localStorage.setItem(AUTO_START_KEY, '1'); } catch (e) {}
-        // Draw this player's ladder variant BEFORE opening the stats row
-        // so the row is stamped with it from the first sync (the A/B/C/D
-        // engagement comparison keys off that stamp).
-        const variant = pickFirstRunVariant();
+        // Ladder arm: normally left UNSET here for the server to assign
+        // (least-used) on the row-creating sync — see the section
+        // comment. Only a FIRST_RUN_VARIANT_FORCE lock-in is applied
+        // client-side, and it's asserted to the server rather than
+        // assigned.
+        const variant = forcedFirstRunVariant();
+        if (variant) setFirstRunVariant(variant);
         // First-time-player funnel: this is the ONE moment we know the
         // browser is brand new, so begin RECORDING now. Delivery is gated
         // on the player actually starting to solve (firstRunEngaged, via
@@ -1431,6 +1460,12 @@ const Marathon = (() => {
         puzzleLive = false;
 
         level++;
+        // Pick up the server's ladder-arm assignment (or fall back to a
+        // locked local draw) BEFORE levelConfig reads it — this is the
+        // one place that knows which level is actually about to be
+        // played. levelConfig itself must NOT call this: pre-gen asks it
+        // about FUTURE levels, which would force the fallback draw early.
+        ensureFirstRunVariant(level);
         const cfg       = levelConfig(level);
         const paths     = cfg.pathCount;
         const logical   = dimsForLevel(level, cfg);
