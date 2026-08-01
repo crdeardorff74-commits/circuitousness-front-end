@@ -3604,7 +3604,11 @@ html.dbgHidden #resetBtn { display: none !important; }
    grid needs. Hold the content box to the slider width instead and let
    those lines wrap; the panel snaps back to 20rem when the section opens. */
 #debugSliders:has(#dbgVisuals:not([open])) {
-    max-width: 12rem;
+    /* 12rem of controls + the panel's 1rem side padding. box-sizing is
+       border-box globally, so max-width is the OUTER width and has to
+       include that padding — 12rem here left a 10rem content box, the
+       sliders overflowed it, and the panel sprouted scrollbars. */
+    max-width: 14rem;
 }
 #debugSliders label {
     display: block;
@@ -3616,6 +3620,10 @@ html.dbgHidden #resetBtn { display: none !important; }
 #debugSliders input[type="range"] {
     display: block;
     width: 12rem;
+    /* Never wider than the panel's content box, whatever that currently is
+       — the panel narrows when Visual Tuning collapses, and a fixed width
+       overflowing it turns the whole panel into a scroll container. */
+    max-width: 100%;
     margin-top: 0.25rem;
 }
 #debugSliders label.check {
@@ -3739,7 +3747,11 @@ html.dbgHidden #resetBtn { display: none !important; }
    they overlap. */
 #debugSliders .pg2Range {
     position: relative;
-    width: 12rem;
+    /* Fills the content box rather than fixing 12rem, so the two-knob rows
+       track the panel's width in both states instead of overflowing the
+       collapsed one. bindRangePair's fill geometry is all percentages, so
+       it follows automatically. */
+    width: 100%;
     height: 1.4rem;
     margin: 0 0 0.5rem;
 }
