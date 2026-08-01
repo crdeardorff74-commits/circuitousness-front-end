@@ -3567,6 +3567,30 @@ html.dbgHidden #resetBtn { display: none !important; }
     opacity: 0.6;
     margin-bottom: 0.6rem;
 }
+/* Collapsible "Visual tuning" section (2026-08-01). Starts CLOSED every
+   load — no persisted state — because the panel's job is now PotD v2
+   tuning and these rows are tall enough to push the generator controls
+   off a short viewport. The summary is styled to read as a peer of the
+   <strong> section headers, with a chevron standing in for the native
+   disclosure marker (which is suppressed: `display: block` kills it in
+   Chrome/Firefox, the ::-webkit-details-marker rule covers Safari). */
+#dbgVisuals {
+    margin-bottom: 0.6rem;
+}
+#dbgVisuals > summary {
+    display: block;
+    cursor: pointer;
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    margin-bottom: 0.6rem;
+    list-style: none;
+}
+#dbgVisuals > summary::-webkit-details-marker { display: none; }
+#dbgVisuals > summary:hover { opacity: 0.9; }
+#dbgVisuals > summary::before { content: '\25B8  '; }   /* ▸ closed */
+#dbgVisuals[open] > summary::before { content: '\25BE  '; }  /* ▾ open */
 #debugSliders label {
     display: block;
     margin-bottom: 0.5rem;

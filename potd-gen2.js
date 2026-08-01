@@ -82,9 +82,17 @@ const PotdGen2 = (() => {
         // doubled — which also makes the size range mean the same thing
         // to the player in both modes.
         const mul = p.quadMode ? 2 : 1;
+        // Both axes roll from the same range, then the pair is ORDERED so
+        // the board is always wider than tall (or square) — never taller
+        // than wide. Screens are landscape far more often than not, and a
+        // tall board wastes the width it does have. Portrait players get
+        // the same board rotated 90° at load (see loadIntoPlay), so this
+        // costs them nothing: one canonical puzzle, two presentations.
+        const a = randInt(p.sizeMin, p.sizeMax);
+        const b = randInt(p.sizeMin, p.sizeMax);
         return {
-            rows:         randInt(p.sizeMin, p.sizeMax) * mul,
-            cols:         randInt(p.sizeMin, p.sizeMax) * mul,
+            rows:         Math.min(a, b) * mul,
+            cols:         Math.max(a, b) * mul,
             // Continuous, not stepped — coverage is a budget fraction, so
             // any value in the range is meaningful.
             twinCoverage: p.twinMin + Math.random() * (p.twinMax - p.twinMin),
@@ -255,11 +263,27 @@ const PotdGen2 = (() => {
         };
     }
 
+    // Is the viewport taller than it is wide? Portrait players get the
+    // board rotated (see loadIntoPlay). Sampled per generation rather than
+    // watched — a mid-solve re-orientation is the renderer's problem, not
+    // the generator's.
+    function isPortrait() {
+        return window.innerHeight > window.innerWidth;
+    }
+
     // Put a generated puzzle on screen and make it playable. Mirrors the
     // board-load tail of potd.js's startPuzzle, minus everything
     // session-shaped (no server token, no timer, no leaderboard, no
     // tracking) — this is a board to look at and solve, nothing more.
+    //
+    // Returns true if the board was rotated for a portrait viewport.
     function loadIntoPlay(res) {
+        // Externally-loaded boards bypass Game.newPuzzle, which is what
+        // normally clears the win banner — without this the previous
+        // puzzle's "Path connected — tap for a new puzzle" stays painted
+        // over the fresh board (reported 2026-08-01).
+        if (typeof Game !== 'undefined' && Game.clearWinBanner) Game.clearWinBanner();
+
         Maze.setQuadMode(res.roll.quadMode);
         Maze.setPathCount(res.roll.pathCount);
         Maze.loadSnapshot(JSON.parse(JSON.stringify(res.maze)));
@@ -271,13 +295,33 @@ const PotdGen2 = (() => {
         }
         Render.refit();
         Render.draw();
+
+        // PORTRAIT PRESENTATION. Boards are generated landscape (rollParams
+        // orders the axes), so a portrait screen would letterbox one badly.
+        // Rotate it 90° instead — the stored snapshot stays canonical, and
+        // a rotation is the SAME puzzle, so every player solves the same
+        // board whatever their screen. Always clockwise, so all portrait
+        // players see one agreed orientation rather than a coin flip.
+        // Square boards are skipped: rotating one changes nothing about the
+        // fit and would only make two players' screens disagree.
+        // Game.applyBoardRotation is the single orchestrator for the
+        // Maze+Gates pairing (see maze.js's rotateBoard comment) and does
+        // its own recompute + refit.
+        let rotated = false;
+        if (Maze.ROWS !== Maze.COLS && isPortrait() &&
+            typeof Game !== 'undefined' && Game.applyBoardRotation) {
+            rotated = !!Game.applyBoardRotation(false);
+        }
+
         // Same bypass-newPuzzle housekeeping PotD needs: re-seed the SFX
         // diff baselines so the first click doesn't fire stale applause,
-        // and anchor a fresh recording on the loaded board.
+        // and anchor a fresh recording on the board as PRESENTED (after any
+        // rotation, so replays match what the player actually saw).
         if (typeof Game !== 'undefined') {
             if (Game.resetSfxBaselines) Game.resetSfxBaselines();
             if (Game.startRecording)    Game.startRecording();
         }
+        return rotated;
     }
 
     // ── Debug panel ───────────────────────────────────────────────────
@@ -389,6 +433,12 @@ const PotdGen2 = (() => {
             if (generating) return;
             generating = true;
             btn.disabled = true;
+            // Drop the previous solve's win banner NOW, not when the build
+            // lands — a big board can take ten seconds, and leaving "Path
+            // connected — tap for a new puzzle" up that whole time reads as
+            // the click having done nothing. loadIntoPlay clears it too, for
+            // callers that don't come through this button.
+            if (typeof Game !== 'undefined' && Game.clearWinBanner) Game.clearWinBanner();
             const competing = preGenBusy();
             const started = performance.now();
             // Live elapsed counter — a 14×14 singular build runs over a
@@ -400,14 +450,15 @@ const PotdGen2 = (() => {
             }, 100);
             try {
                 const res = await generate(readParams());
-                loadIntoPlay(res);
+                const rotated = loadIntoPlay(res);
                 const r = res.roll;
                 const logical = r.quadMode ? 2 : 1;
-                const label = (r.rows / logical) + '×' + (r.cols / logical) +
+                // Canonical dims, W×H — always landscape or square now.
+                const label = (r.cols / logical) + '×' + (r.rows / logical) +
                               (r.quadMode ? 'q' : '') + ' ' + r.pathCount + 'p';
                 if (resultEl) {
                     resultEl.textContent =
-                        label +
+                        label + (rotated ? ' ↻portrait' : '') +
                         ' · twins ' + Math.round(r.twinCoverage * 100) + '%' +
                         ' · gates ' + res.gatesPlaced + '/' + r.gateTarget +
                         (res.minMoves != null ? ' · ' + res.minMoves + ' moves' : '') +

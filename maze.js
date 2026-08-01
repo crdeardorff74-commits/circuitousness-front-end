@@ -3166,13 +3166,82 @@ const Maze = (() => {
                     const k = lane.row + ',' + lane.col + ',' + lo + ',' + hi;
                     laneMask.set(k, (laneMask.get(k) || 0) | (1 << (lane.path | 0)));
                 }
+                let joinedMask = 0;
                 for (const [k, mask] of laneMask) {
                     if ((mask & (mask - 1)) === 0) continue;   // one path only
+                    joinedMask |= mask;
                     const comma = k.indexOf(',');
                     const comma2 = k.indexOf(',', comma + 1);
                     addCell(+k.slice(0, comma), +k.slice(comma + 1, comma2));
                 }
                 if (seen.size === 0) return;   // no wins, no joins — board is clean
+                // FALLBACK (2026-08-01, second field report — screenshot of
+                // a fresh board whose orange and green terminals were linked
+                // by a dark-red lane): every directly-offending cell can be
+                // untouchable, because both exclusions above describe
+                // exactly where joins like to land. A join AT a terminal
+                // hits the endpoint exclusion (its rotation docks the notch),
+                // and a join at a crossing hits the cross exclusion. When
+                // that happened the "nothing safe to touch" return below
+                // shipped the board still joined — the one hole in the
+                // v1.38 join fix, and dense 4-path boards fall in it
+                // regularly (they carry 8 terminals and the most crosses).
+                // Widen to the WHOLE lit chain of the joined paths: the two
+                // terminals are connected THROUGH those lanes, so cutting
+                // the chain anywhere upstream of the junction unjoins them
+                // just as well as cutting the junction itself. Cells already
+                // rejected stay rejected — addCell's `seen` set dedupes them
+                // — so this only ever ADDS legal candidates.
+                if (cells.length === 0) {
+                    for (const lane of highlighted) {
+                        if (joinedMask & (1 << (lane.path | 0))) addCell(lane.row, lane.col);
+                    }
+                }
+                // LAST RESORT: two ADJACENT TERMINALS linked directly to each
+                // other — which is precisely what the field screenshot showed,
+                // and what the repro reproduces (a 6×6 4-path board joined at
+                // cells 4,0 and 3,0, both endpoints). Neither widening helps
+                // there: each path's entire lit chain IS its terminal cell, so
+                // the loop above re-adds the same two excluded cells.
+                //
+                // An endpoint may still be re-rotated so long as it keeps
+                // exposing its notch port, and an ELBOW has exactly two such
+                // rotations (r = port and r = port-1, since an elbow at r
+                // exposes r and r+1). The other one swings its free port to
+                // the opposite side — off the neighbouring terminal. A
+                // STRAIGHT has only one port pair once its notch is fixed, so
+                // it offers no alternative; but a straight terminal can only
+                // reach a neighbour ALONG its notch axis, and two terminals
+                // adjacent along that axis can't both be border cells, so
+                // this kind of join always has an elbow at one end to flip.
+                if (cells.length === 0) {
+                    const epPaths = [[entry, 0], [exit, 0], [entry2, 1], [exit2, 1],
+                                     [entry3, 2], [exit3, 2], [entry4, 3], [exit4, 3]];
+                    const flips = [];
+                    for (const [ep, pathIdx] of epPaths) {
+                        if (!ep || !(joinedMask & (1 << pathIdx))) continue;
+                        const t = grid[ep.row][ep.col];
+                        if (t.type !== T_ELBOW) continue;
+                        const a = ep.port & 3, b = (ep.port - 1 + 4) & 3;
+                        const alt = (t.rotation === a) ? b : a;
+                        if (alt !== t.rotation) flips.push({ row: ep.row, col: ep.col, rot: alt });
+                    }
+                    if (flips.length > 0) {
+                        const f = flips[Math.floor(Math.random() * flips.length)];
+                        const t = grid[f.row][f.col];
+                        const turns = (f.rot - t.rotation) & 3;
+                        t.rotation = f.rot;
+                        // Endpoints are never twin members in singular mode
+                        // (assignTwins excludes every endpoint cell), but keep
+                        // the lockstep consistent with every other nudge site
+                        // in case that rule ever loosens.
+                        for (const [pr, pc] of twinPartnerCells(f.row, f.col)) {
+                            grid[pr][pc].rotation = (grid[pr][pc].rotation + turns) & 3;
+                        }
+                        updateHighlighted();
+                        continue;
+                    }
+                }
             }
             if (cells.length === 0) return; // nothing safe to touch — ship as-is
             const cell = cells[Math.floor(Math.random() * cells.length)];

@@ -1657,6 +1657,21 @@
             // applause_long / glitch-loop SFX on the player's first tile
             // click.
             resetSfxBaselines: resetSfxBaselines,
+            // Whole-board 90° rotation, data and all. maze.js's rotateBoard
+            // comment names applyBoardRotation as the SINGLE orchestrator
+            // (it pairs Maze.rotateBoard with Gates.rotateBoard's old-dims
+            // call, then recomputes and refits), so callers outside this
+            // module must come through here rather than re-implement the
+            // pairing. Used by potd-gen2.js to present a landscape board
+            // rotated on portrait screens.
+            applyBoardRotation: applyBoardRotation,
+            // Externally-loaded puzzles bypass newPuzzle, which is what
+            // normally clears the win banner — without this the "Path
+            // connected" banner from the previous solve stays painted over
+            // the new board.
+            clearWinBanner: function () {
+                if (banner) banner.classList.remove('visible');
+            },
         };
 
         // Debug-panel pre-gen status indicator. Polls every 200ms — cheap

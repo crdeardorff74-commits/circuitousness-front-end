@@ -1102,55 +1102,66 @@
          CSS in styles.css, and the wiring <script> below when done. -->
     <div id="debugSliders">
         <strong>Debug</strong>
-        <div class="dbgRow">
-            <label>Tile color (<span id="tileColorVal">#204169</span>)
-                <input type="color" id="tileColorPicker" value="#204169">
+        <!-- Visual-tuning controls, COLLAPSED BY DEFAULT (2026-08-01). The
+             panel's job is now PotD v2 tuning, and these rows are tall
+             enough to push the generator controls off a short viewport.
+             A plain <details> — the toggle is native, keyboard-reachable,
+             and defaults closed with no JS and no persisted state, so
+             every load starts hidden. The inputs still exist in the DOM
+             while closed, so the wiring script below binds them normally
+             and Settings sync works whether it's open or not. -->
+        <details id="dbgVisuals">
+            <summary>Visual tuning</summary>
+            <div class="dbgRow">
+                <label>Tile color (<span id="tileColorVal">#204169</span>)
+                    <input type="color" id="tileColorPicker" value="#204169">
+                </label>
+                <label>Path color (<span id="pathColorVal">#ff0000</span>)
+                    <input type="color" id="pathColorPicker" value="#ff0000">
+                </label>
+            </div>
+            <label>Path opacity (<span id="opacityVal">0.14</span>)
+                <input type="range" id="opacitySlider" min="0" max="100" value="14">
             </label>
-            <label>Path color (<span id="pathColorVal">#ff0000</span>)
-                <input type="color" id="pathColorPicker" value="#ff0000">
+            <label>Path width (<span id="widthVal">0.17</span>)
+                <input type="range" id="widthSlider" min="5" max="45" value="17">
             </label>
-        </div>
-        <label>Path opacity (<span id="opacityVal">0.14</span>)
-            <input type="range" id="opacitySlider" min="0" max="100" value="14">
-        </label>
-        <label>Path width (<span id="widthVal">0.17</span>)
-            <input type="range" id="widthSlider" min="5" max="45" value="17">
-        </label>
-        <label>Bevel thickness (<span id="bevelVal">0.07</span>)
-            <input type="range" id="bevelSlider" min="1" max="20" value="7">
-        </label>
-        <label>Tile face opacity (<span id="faceAlphaVal">0.74</span>)
-            <input type="range" id="faceAlphaSlider" min="0" max="100" value="74">
-        </label>
-        <label>Face texture (<span id="faceTexVal">0.66</span>)
-            <input type="range" id="faceTexSlider" min="0" max="100" value="66">
-        </label>
-        <!-- Lit-path palettes — one row per path color (plus gold = the won
-             state), three gradient stops per row. Hex readouts live under
-             each swatch so tuned values can still be copied out. -->
-        <div class="dbgLitGrid">
-            <span class="hdr">Lit</span><span class="hdr">Base</span><span class="hdr">Outer</span><span class="hdr">Inner</span>
-            <span class="name">Green</span>
-            <label><input type="color" id="litGreenBasePicker" value="#2aec18"><span class="hex" id="litGreenBaseVal">#2aec18</span></label>
-            <label><input type="color" id="litGreenLoPicker" value="#0e2c0c"><span class="hex" id="litGreenLoVal">#0e2c0c</span></label>
-            <label><input type="color" id="litGreenHiPicker" value="#b8ffb3"><span class="hex" id="litGreenHiVal">#b8ffb3</span></label>
-            <span class="name">Blue</span>
-            <label><input type="color" id="litBlueBasePicker" value="#00e1ff"><span class="hex" id="litBlueBaseVal">#00e1ff</span></label>
-            <label><input type="color" id="litBlueLoPicker" value="#032b30"><span class="hex" id="litBlueLoVal">#032b30</span></label>
-            <label><input type="color" id="litBlueHiPicker" value="#c2f8ff"><span class="hex" id="litBlueHiVal">#c2f8ff</span></label>
-            <span class="name">Pink</span>
-            <label><input type="color" id="litPinkBasePicker" value="#fe71f7"><span class="hex" id="litPinkBaseVal">#fe71f7</span></label>
-            <label><input type="color" id="litPinkLoPicker" value="#2d102d"><span class="hex" id="litPinkLoVal">#2d102d</span></label>
-            <label><input type="color" id="litPinkHiPicker" value="#ffdbff"><span class="hex" id="litPinkHiVal">#ffdbff</span></label>
-            <span class="name">Orange</span>
-            <label><input type="color" id="litOrangeBasePicker" value="#ff8247"><span class="hex" id="litOrangeBaseVal">#ff8247</span></label>
-            <label><input type="color" id="litOrangeLoPicker" value="#341a0f"><span class="hex" id="litOrangeLoVal">#341a0f</span></label>
-            <label><input type="color" id="litOrangeHiPicker" value="#ffdccc"><span class="hex" id="litOrangeHiVal">#ffdccc</span></label>
-            <span class="name">Gold</span>
-            <label><input type="color" id="litGoldBasePicker" value="#fff500"><span class="hex" id="litGoldBaseVal">#fff500</span></label>
-            <label><input type="color" id="litGoldLoPicker" value="#2d2c01"><span class="hex" id="litGoldLoVal">#2d2c01</span></label>
-            <label><input type="color" id="litGoldHiPicker" value="#fefcc8"><span class="hex" id="litGoldHiVal">#fefcc8</span></label>
-        </div>
+            <label>Bevel thickness (<span id="bevelVal">0.07</span>)
+                <input type="range" id="bevelSlider" min="1" max="20" value="7">
+            </label>
+            <label>Tile face opacity (<span id="faceAlphaVal">0.74</span>)
+                <input type="range" id="faceAlphaSlider" min="0" max="100" value="74">
+            </label>
+            <label>Face texture (<span id="faceTexVal">0.66</span>)
+                <input type="range" id="faceTexSlider" min="0" max="100" value="66">
+            </label>
+            <!-- Lit-path palettes — one row per path color (plus gold = the
+                 won state), three gradient stops per row. Hex readouts live
+                 under each swatch so tuned values can still be copied out. -->
+            <div class="dbgLitGrid">
+                <span class="hdr">Lit</span><span class="hdr">Base</span><span class="hdr">Outer</span><span class="hdr">Inner</span>
+                <span class="name">Green</span>
+                <label><input type="color" id="litGreenBasePicker" value="#2aec18"><span class="hex" id="litGreenBaseVal">#2aec18</span></label>
+                <label><input type="color" id="litGreenLoPicker" value="#0e2c0c"><span class="hex" id="litGreenLoVal">#0e2c0c</span></label>
+                <label><input type="color" id="litGreenHiPicker" value="#b8ffb3"><span class="hex" id="litGreenHiVal">#b8ffb3</span></label>
+                <span class="name">Blue</span>
+                <label><input type="color" id="litBlueBasePicker" value="#00e1ff"><span class="hex" id="litBlueBaseVal">#00e1ff</span></label>
+                <label><input type="color" id="litBlueLoPicker" value="#032b30"><span class="hex" id="litBlueLoVal">#032b30</span></label>
+                <label><input type="color" id="litBlueHiPicker" value="#c2f8ff"><span class="hex" id="litBlueHiVal">#c2f8ff</span></label>
+                <span class="name">Pink</span>
+                <label><input type="color" id="litPinkBasePicker" value="#fe71f7"><span class="hex" id="litPinkBaseVal">#fe71f7</span></label>
+                <label><input type="color" id="litPinkLoPicker" value="#2d102d"><span class="hex" id="litPinkLoVal">#2d102d</span></label>
+                <label><input type="color" id="litPinkHiPicker" value="#ffdbff"><span class="hex" id="litPinkHiVal">#ffdbff</span></label>
+                <span class="name">Orange</span>
+                <label><input type="color" id="litOrangeBasePicker" value="#ff8247"><span class="hex" id="litOrangeBaseVal">#ff8247</span></label>
+                <label><input type="color" id="litOrangeLoPicker" value="#341a0f"><span class="hex" id="litOrangeLoVal">#341a0f</span></label>
+                <label><input type="color" id="litOrangeHiPicker" value="#ffdccc"><span class="hex" id="litOrangeHiVal">#ffdccc</span></label>
+                <span class="name">Gold</span>
+                <label><input type="color" id="litGoldBasePicker" value="#fff500"><span class="hex" id="litGoldBaseVal">#fff500</span></label>
+                <label><input type="color" id="litGoldLoPicker" value="#2d2c01"><span class="hex" id="litGoldLoVal">#2d2c01</span></label>
+                <label><input type="color" id="litGoldHiPicker" value="#fefcc8"><span class="hex" id="litGoldHiVal">#fefcc8</span></label>
+            </div>
+        </details>
         <!-- ── PotD GENERATOR v2 (experimental) ─────────────────────────
              Replaces the old free-form Grid width / Grid height / Paths /
              Quad Tiles selections. The debug panel's job is now tuning
