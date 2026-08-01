@@ -158,6 +158,64 @@ const Maze = (() => {
     function twinGroupSize() {
         return Math.max(twinPaletteFloor(), twinLadderSize());
     }
+    // MIXED-SIZE override (2026-08-01, for the experimental PotD generator
+    // — potd-gen2.js). null = the uniform ladder sizing above, which is
+    // what every normal build uses. When set to {min, max}, each group's
+    // size is rolled independently in that range, so groups of DIFFERENT
+    // sizes coexist on one board — nothing in the ring/lockstep machinery
+    // ever required them to match, that was purely a sizing policy.
+    //
+    // The 16-colour palette still caps the group COUNT (colours must never
+    // repeat — see TWIN_COLORS), so with an override the coverage budget
+    // becomes best-effort: the most tiles that can be coupled is
+    // 16 × max. Ask for 80% of a 300-cell board with a 2-4 size range and
+    // you'll get 64 tiles (21%), not 240. Callers that care should measure
+    // the achieved coverage rather than assume the requested one.
+    let twinGroupSizeRange = null;
+    function setTwinGroupSizeRange(min, max) {
+        const lo = Math.round(Number(min));
+        const hi = Math.round(Number(max));
+        if (!isFinite(lo) || !isFinite(hi) || lo < 2 || hi < lo) {
+            twinGroupSizeRange = null;
+            return;
+        }
+        twinGroupSizeRange = { min: lo, max: hi };
+    }
+    // The per-group size list for one board: how many groups, and how big
+    // each one is. Uniform when there's no override (identical to the old
+    // single-size arithmetic, and it makes no RNG calls on that path, so
+    // build sequences are unchanged); rolled per group when there is.
+    //
+    //   budget      — tiles that should end up coupled (coverage × area)
+    //   maxGroups   — palette limit, and one path anchor per group
+    //   eligible    — cells that may be members at all
+    //   defaultSize — the uniform size to use with no override (the
+    //                 singular ladder or the quad one, per caller)
+    function twinGroupSizes(budget, maxGroups, eligible, defaultSize) {
+        if (!twinGroupSizeRange) {
+            const size = defaultSize;
+            const groups = Math.min(
+                Math.max(1, Math.round(budget / size)),
+                maxGroups,
+                Math.floor(eligible / size)
+            );
+            return new Array(Math.max(0, groups)).fill(size);
+        }
+        const { min, max } = twinGroupSizeRange;
+        const sizes = [];
+        let spent = 0;
+        while (sizes.length < maxGroups) {
+            let s = min + Math.floor(Math.random() * (max - min + 1));
+            // Trim the last group to whatever budget/supply is left rather
+            // than overshooting — but never below `min`, which is the
+            // caller's floor and is what ends the loop.
+            s = Math.min(s, budget - spent, eligible - spent);
+            if (s < min) break;
+            sizes.push(s);
+            spent += s;
+        }
+        return sizes;
+    }
 
     // ── Twin group colors ─────────────────────────────────────────────
     // Rotating any member rotates every other member by the same delta.
@@ -4219,26 +4277,36 @@ const Maze = (() => {
         // budget into "a single twin set" at the ramp's start level (a
         // 5×5 at 3% coverage rounds to a budget of ~1 — half a pair);
         // it's inert at full coverage, where the budget is always ≥ size.
+        // Sizes may now VARY between groups (see twinGroupSizes) — the
+        // uniform ladder is just the no-override case. Nothing downstream
+        // cared: rings are walked, never indexed by a fixed stride.
         const budget = twinCoverageTiles();
-        const size = twinGroupSize();
-        const groups = Math.min(
-            Math.max(1, Math.round(budget / size)),
+        const sizes = twinGroupSizes(
+            budget,
             pathCells.length,
-            Math.floor((pathCells.length + fillerCells.length) / size)
+            pathCells.length + fillerCells.length,
+            twinGroupSize()
         );
+        const groups = sizes.length;
         const anchors = shuffle(pathCells).slice(0, groups);
         const anchorSet = new Set(anchors.map((a) => a.r + ',' + a.c));
         const pool = shuffle(pathCells.concat(fillerCells)
             .filter((cell) => !anchorSet.has(cell.r + ',' + cell.c)));
+        // Cursor into the shared pool — with per-group sizes there's no
+        // fixed stride to index by, so members are taken in sequence.
+        let poolAt = 0;
         for (let i = 0; i < groups; i++) {
             const color = TWIN_COLORS[i % TWIN_COLORS.length];
             // Members: the anchor, then this group's slice of the random
             // pool. Stored as a RING — each member points at the next,
             // the last closes back to the first (see twinPartnerKeys).
             const members = [anchors[i]];
-            for (let j = 0; j < size - 1; j++) {
-                members.push(pool[i * (size - 1) + j]);
+            for (let j = 0; j < sizes[i] - 1 && poolAt < pool.length; j++) {
+                members.push(pool[poolAt++]);
             }
+            // A group of 1 is just a tile — drop it rather than write a
+            // self-referential ring. Only reachable if the pool ran dry.
+            if (members.length < 2) break;
             // Normalize: snap every path member to the anchor's current
             // offset-from-solution (the solvability invariant above).
             // Fillers have no solution and need no snap.
@@ -4311,16 +4379,20 @@ const Maze = (() => {
                 candidates.push({ qr, qc });
             }
         }
-        const size = quadTwinGroupSize();
+        // Sizes may vary between groups when the override is set — same
+        // deal as singular mode, with the QUAD as the unit. Note the
+        // override also bypasses QUAD_MAX_GROUP: a group of 8 quads is 32
+        // sub-tiles swinging at once, which is the caller's call to make.
         const budget = Math.round(candidates.length * twinCoverageFrac());
-        const groups = Math.max(0, Math.min(
-            Math.max(1, Math.round(budget / size)),
-            Math.floor(candidates.length / size)
-        ));
+        const sizes = twinGroupSizes(budget, TWIN_COLORS.length,
+                                     candidates.length, quadTwinGroupSize());
         const picks = shuffle(candidates);
-        for (let i = 0; i < groups; i++) {
+        let pickAt = 0;
+        for (let i = 0; i < sizes.length; i++) {
             const color = TWIN_COLORS[i % TWIN_COLORS.length];
-            const members = picks.slice(i * size, (i + 1) * size);
+            const members = picks.slice(pickAt, pickAt + sizes[i]);
+            pickAt += sizes[i];
+            if (members.length < 2) break;
             const keys = members.map((m) => (m.qr * 2) + ',' + (m.qc * 2));
             for (let m = 0; m < members.length; m++) {
                 const q = members[m];
@@ -4349,6 +4421,7 @@ const Maze = (() => {
         init, rotate, hint, applyHintAt, togglePlayerLock, setDimensions, setHurry, setAbort, setTwoPathMode, setPathCount, setQuadMode,
         setTwinCoverageScale,  // per-run twin ramp (0..1 × TWIN_COVERAGE) — set before init; see its comment
         setTwinCoverageTarget, // ABSOLUTE coverage override (0..1, null = off) — the experimental PotD generator's knob
+        setTwinGroupSizeRange, // MIXED group sizes (min, max; null/invalid = off) — same generator, see its comment
         rotateBoard,   // whole-board 90° penalty rotation — see its comment; Gates.rotateBoard must run alongside
         flipBoard,     // whole-board mirror penalty (variant 2) — Gates.flipBoard must run alongside
         alternateRouteEdges,  // leftover-alternate edges for targeted gate placement (null in quad mode)

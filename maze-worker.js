@@ -61,6 +61,11 @@ async function processNext() {
         // above, and for the same reason: null here RESETS a previous
         // job's override, so ordinary builds are never contaminated.
         if (Maze.setTwinCoverageTarget) Maze.setTwinCoverageTarget(req.twinCoverage);
+        // Mixed twin-group sizes (same generator, same reset rule — nulls
+        // here restore the uniform ladder for the next ordinary job).
+        if (Maze.setTwinGroupSizeRange) {
+            Maze.setTwinGroupSizeRange(req.twinGroupMin, req.twinGroupMax);
+        }
         Maze.setDimensions(req.rows, req.cols);
         const completed = await Maze.init();
         if (completed) {
@@ -90,6 +95,8 @@ self.onmessage = function (e) {
             twinScale: (typeof e.data.twinScale === 'number') ? e.data.twinScale : 1,
             // Absent (every caller but potd-gen2.js) → null = no override.
             twinCoverage: (typeof e.data.twinCoverage === 'number') ? e.data.twinCoverage : null,
+            twinGroupMin: (typeof e.data.twinGroupMin === 'number') ? e.data.twinGroupMin : null,
+            twinGroupMax: (typeof e.data.twinGroupMax === 'number') ? e.data.twinGroupMax : null,
             id: (e.data.id != null) ? e.data.id : null
         };
         if (e.data.urgent) {

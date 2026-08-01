@@ -1211,6 +1211,21 @@
             <input type="range" id="pg2TwinMin" min="10" max="80" value="30" aria-label="Minimum twin coverage">
             <input type="range" id="pg2TwinMax" min="10" max="80" value="30" aria-label="Maximum twin coverage">
         </div>
+        <!-- Twin GROUP SIZE range. Sizes are rolled per group, so groups of
+             different sizes coexist on one board — the uniform sizing the
+             live game uses was a policy, never a requirement of the ring
+             machinery. Floor is 2 (a "group" of 1 is just a tile); ceiling
+             is 16, matching the palette, since colours must never repeat.
+             NOTE: that same 16-colour cap limits the GROUP COUNT, so the
+             most tiles this can couple is 16 × max — a low max makes high
+             twin-coverage settings unreachable. The readout shows achieved
+             coverage next to the requested one for exactly that reason. -->
+        <label>Twin group size (<span id="pg2GroupVal">2–5</span>)</label>
+        <div class="pg2Range">
+            <div class="pg2Track"><div class="pg2Fill" id="pg2GroupFill"></div></div>
+            <input type="range" id="pg2GroupMin" min="2" max="16" value="2" aria-label="Minimum twin group size">
+            <input type="range" id="pg2GroupMax" min="2" max="16" value="5" aria-label="Maximum twin group size">
+        </div>
         <label>Gates (<span id="pg2GateVal">3</span>)</label>
         <div class="pg2Range">
             <div class="pg2Track"><div class="pg2Fill" id="pg2GateFill"></div></div>

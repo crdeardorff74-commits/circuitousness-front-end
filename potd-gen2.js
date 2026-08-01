@@ -63,6 +63,12 @@ const PotdGen2 = (() => {
     const SIZE_STEP  = 2;
     const TWIN_FLOOR = 10,  TWIN_CEIL = 80;   // percent
     const GATE_FLOOR = 0,   GATE_CEIL = 20;
+    // Twin group size. 2 is the floor because a "group" of 1 is just a
+    // tile; 16 is the ceiling because that's the palette size, and the
+    // palette also caps the group COUNT (colours never repeat), so the
+    // most tiles that can be coupled is 16 × max regardless of what twin
+    // coverage asks for.
+    const GROUP_FLOOR = 2,  GROUP_CEIL = 16;
     // Area window for rows × cols in SUB-TILES — the same unit the size
     // slider uses, and the unit cost scales with (the maze is built at
     // sub-tile resolution in both modes, so a quad board is no cheaper per
@@ -85,6 +91,10 @@ const PotdGen2 = (() => {
     const DEF_TILES_MIN = 20, DEF_TILES_MAX = 300;
     const DEF_TWIN_MIN = 30, DEF_TWIN_MAX = 30;
     const DEF_GATE_MIN = 3,  DEF_GATE_MAX = 3;
+    // 2-5 spans pairs through quints — roughly what the live game's
+    // board-size ladder produces across the sizes PotD actually uses, so
+    // the opening state is comparable to it while still being mixed.
+    const DEF_GROUP_MIN = 2, DEF_GROUP_MAX = 5;
 
     const HISTORY_MAX = 10;   // generations kept in the panel's log
 
@@ -182,6 +192,11 @@ const PotdGen2 = (() => {
             // Continuous, not stepped — coverage is a budget fraction, so
             // any value in the range is meaningful.
             twinCoverage: p.twinMin + Math.random() * (p.twinMax - p.twinMin),
+            // Group sizes are rolled PER GROUP inside maze.js, not here —
+            // the range is passed through so sizes can vary within one
+            // board rather than one size being picked for the whole board.
+            twinGroupMin: p.groupMin,
+            twinGroupMax: p.groupMax,
             gateTarget:   randInt(p.gateMin, p.gateMax),
             pathCount:    p.pathCount,
             quadMode:     p.quadMode,
@@ -251,8 +266,59 @@ const PotdGen2 = (() => {
                 rows: roll.rows, cols: roll.cols,
                 pathCount: roll.pathCount, quadMode: roll.quadMode,
                 twinCoverage: roll.twinCoverage,   // absolute override
+                twinGroupMin: roll.twinGroupMin,
+                twinGroupMax: roll.twinGroupMax,
             });
         });
+    }
+
+    // Walk the LOADED board's twin rings and report what was actually
+    // built: how many groups, their size spread, and the coverage reached.
+    //
+    // Worth measuring rather than assuming, because two settings can fight:
+    // the 16-colour palette caps the group COUNT, so no board can couple
+    // more than 16 × (max group size) tiles no matter what twin coverage
+    // asks for. Requesting 80% with a 2-4 size range on a 300-cell board
+    // yields 64 tiles (21%), and without this readout that gap is silent.
+    //
+    // Quad rings are keyed by each member quad's top-left sub-tile, so the
+    // walk steps by 2 there and each member counts as 4 sub-tiles.
+    function twinStats() {
+        const quad = !!Maze.quadMode;
+        const step = quad ? 2 : 1;
+        const seen = new Set();
+        const sizes = [];
+        let coupled = 0;
+        for (let r = 0; r < Maze.ROWS; r += step) {
+            for (let c = 0; c < Maze.COLS; c += step) {
+                const t = Maze.grid[r] && Maze.grid[r][c];
+                if (!t || !t._twin) continue;
+                const start = r + ',' + c;
+                if (seen.has(start)) continue;
+                seen.add(start);
+                let ring = 1;
+                let cur = t._twin.partner;
+                // Bounded walk — loadSnapshot's sanitizer already strips
+                // broken rings, but never trust a ring to terminate.
+                for (let guard = 0; guard < 4096 && cur !== start; guard++) {
+                    if (seen.has(cur)) break;
+                    seen.add(cur);
+                    ring++;
+                    const p = cur.split(',');
+                    const nt = Maze.grid[+p[0]] && Maze.grid[+p[0]][+p[1]];
+                    if (!nt || !nt._twin) break;
+                    cur = nt._twin.partner;
+                }
+                sizes.push(ring);
+                coupled += ring * (quad ? 4 : 1);
+            }
+        }
+        return {
+            groups: sizes.length,
+            min: sizes.length ? Math.min.apply(null, sizes) : 0,
+            max: sizes.length ? Math.max.apply(null, sizes) : 0,
+            coverage: coupled / (Maze.ROWS * Maze.COLS),
+        };
     }
 
     // Place gates on a just-built maze and read back the metrics the
@@ -273,12 +339,15 @@ const PotdGen2 = (() => {
         const savedPathCount = Maze.pathCount;
         const savedGates     = (typeof Gates !== 'undefined' && Gates.snapshot) ? Gates.snapshot() : null;
 
-        let out = { maze: mazeSnap, gates: null, gatesPlaced: 0, minMoves: null };
+        let out = { maze: mazeSnap, gates: null, gatesPlaced: 0, minMoves: null, twins: null };
         try {
             Maze.setQuadMode(roll.quadMode);
             Maze.setPathCount(roll.pathCount);
             Maze.loadSnapshot(mazeSnap);
             out.maze = Maze.snapshotState();
+            // Board is loaded here and nowhere else on this thread — the
+            // only chance to measure what the worker actually built.
+            out.twins = twinStats();
             if (typeof Gates !== 'undefined') {
                 const stride   = roll.quadMode ? 2 : 1;
                 const altEdges = Maze.alternateRouteEdges ? Maze.alternateRouteEdges() : null;
@@ -320,12 +389,16 @@ const PotdGen2 = (() => {
         Maze.setQuadMode(roll.quadMode);
         Maze.setPathCount(roll.pathCount);
         if (Maze.setTwinCoverageTarget) Maze.setTwinCoverageTarget(roll.twinCoverage);
+        if (Maze.setTwinGroupSizeRange) {
+            Maze.setTwinGroupSizeRange(roll.twinGroupMin, roll.twinGroupMax);
+        }
         Maze.setDimensions(roll.rows, roll.cols);
         try {
             await Maze.init();
             return Maze.snapshotState();
         } finally {
             if (Maze.setTwinCoverageTarget) Maze.setTwinCoverageTarget(null);
+            if (Maze.setTwinGroupSizeRange) Maze.setTwinGroupSizeRange(null, null);
         }
     }
 
@@ -345,6 +418,7 @@ const PotdGen2 = (() => {
             roll,
             gatesPlaced: placed.gatesPlaced,
             minMoves: placed.minMoves,
+            twins: placed.twins,
             mazeMs: t1 - t0, gatesMs: t2 - t1, totalMs: t2 - t0,
         };
     }
@@ -482,6 +556,8 @@ const PotdGen2 = (() => {
             (a, b) => (a === b) ? (a + ' sub-tiles') : (a + '–' + b + ' sub-tiles'));
         const readTwin = bindRangePair('pg2TwinMin', 'pg2TwinMax', 'pg2TwinFill', 'pg2TwinVal',
             (a, b) => (a === b) ? (a + '%') : (a + '–' + b + '%'));
+        const readGroup = bindRangePair('pg2GroupMin', 'pg2GroupMax', 'pg2GroupFill', 'pg2GroupVal',
+            (a, b) => (a === b) ? String(a) : (a + '–' + b));
         const readGate = bindRangePair('pg2GateMin', 'pg2GateMax', 'pg2GateFill', 'pg2GateVal',
             (a, b) => (a === b) ? String(a) : (a + '–' + b));
 
@@ -498,9 +574,11 @@ const PotdGen2 = (() => {
 
         function readParams() {
             const size = readSize(), twin = readTwin(), gate = readGate(), tiles = readTiles();
+            const group = readGroup();
             return {
                 sizeMin: size.lo, sizeMax: size.hi,
                 twinMin: twin.lo / 100, twinMax: twin.hi / 100,
+                groupMin: group.lo, groupMax: group.hi,
                 gateMin: gate.lo, gateMax: gate.hi,
                 minTiles: tiles.lo, maxTiles: tiles.hi,
                 pathCount: pathSlider ? parseInt(pathSlider.value, 10) : 1,
@@ -555,7 +633,19 @@ const PotdGen2 = (() => {
                     resultEl.textContent =
                         label + (rotated ? ' ↻portrait' : '') +
                         ' · ' + (r.rows * r.cols) + ' sub-tiles' +
+                        // Requested coverage → achieved, then the groups
+                        // that produced it. The two diverge whenever the
+                        // 16-colour group cap binds; seeing both is the
+                        // only way to tell a coverage setting that took
+                        // from one that was quietly unreachable.
                         ' · twins ' + Math.round(r.twinCoverage * 100) + '%' +
+                        (res.twins
+                            ? '→' + Math.round(res.twins.coverage * 100) + '%' +
+                              ' (' + res.twins.groups + ' grps ' +
+                              (res.twins.min === res.twins.max
+                                  ? res.twins.min
+                                  : res.twins.min + '–' + res.twins.max) + ')'
+                            : '') +
                         ' · gates ' + res.gatesPlaced + '/' + r.gateTarget +
                         (res.minMoves != null ? ' · ' + res.minMoves + ' moves' : '') +
                         '\n' + secs(res.totalMs) + ' total (maze ' + secs(res.mazeMs) +
@@ -592,9 +682,9 @@ const PotdGen2 = (() => {
         // apart silently — index.html carries the same numbers and
         // syncDefaults() below asserts them onto the inputs at boot.
         SIZE_FLOOR, SIZE_CEIL, SIZE_STEP, TWIN_FLOOR, TWIN_CEIL, GATE_FLOOR, GATE_CEIL,
-        TILES_FLOOR, TILES_CEIL, TILES_STEP,
+        TILES_FLOOR, TILES_CEIL, TILES_STEP, GROUP_FLOOR, GROUP_CEIL,
         DEF_SIZE_MIN, DEF_SIZE_MAX, DEF_TWIN_MIN, DEF_TWIN_MAX, DEF_GATE_MIN, DEF_GATE_MAX,
-        DEF_TILES_MIN, DEF_TILES_MAX,
+        DEF_TILES_MIN, DEF_TILES_MAX, DEF_GROUP_MIN, DEF_GROUP_MAX,
         get history() { return history.slice(); },
     };
     return api;
