@@ -68,19 +68,21 @@ const PotdGen2 = (() => {
     // sub-tile resolution in both modes, so a quad board is no cheaper per
     // sub-tile than a singular one). Stepped by 10 because a 12rem track
     // can't meaningfully resolve 200 discrete positions.
-    const TILES_FLOOR = 100, TILES_CEIL = 300, TILES_STEP = 10;
+    const TILES_FLOOR = 20, TILES_CEIL = 300, TILES_STEP = 10;
     // Opening positions — roughly the live PotD's current behavior, so the
     // first generation from a fresh panel is a baseline to compare against:
     // mid-size board, 30% coverage, 3 gates.
     const DEF_SIZE_MIN = 6, DEF_SIZE_MAX = 10;
-    // Opens at the full span. NOTE that this is not the same as "off": the
-    // floor of 100 sub-tiles is a 10×10 board, which is LARGER than most of
-    // what the default 6-10 size range rolls (36-100), so the minimum knob
-    // grows the great majority of boards even at its lowest setting. The
-    // size range sets the SHAPE that gets rolled; this window then has the
-    // final say on area. If that isn't wanted, the floor has to move below
-    // TILES_FLOOR rather than be switched off — there's no inert position.
-    const DEF_TILES_MIN = 100, DEF_TILES_MAX = 300;
+    // Opens at the full span, which is now effectively inert at both ends:
+    // the floor of 20 sub-tiles only reaches the very smallest board the
+    // size slider can roll (4×4 = 16, nudged to 4×5), and the ceiling of
+    // 300 only the very largest. That's the point of the 20 — at the
+    // original 100 floor (a 10×10 board) the minimum knob grew the great
+    // majority of rolls even at its lowest setting, which quietly made the
+    // size range's lower half meaningless. The size range sets the SHAPE
+    // that gets rolled; this window then has the final say on area, so it
+    // wants a genuine off position.
+    const DEF_TILES_MIN = 20, DEF_TILES_MAX = 300;
     const DEF_TWIN_MIN = 30, DEF_TWIN_MAX = 30;
     const DEF_GATE_MIN = 3,  DEF_GATE_MAX = 3;
 
