@@ -110,9 +110,31 @@ const Maze = (() => {
         const v = Number(s);
         twinCoverageScale = (isFinite(v) && v >= 0) ? Math.min(1, v) : 1;
     }
+    // ABSOLUTE coverage override (0..1) — replaces TWIN_COVERAGE × scale
+    // outright rather than multiplying it. Added 2026-08-01 for the
+    // experimental PotD generator (potd-gen2.js), which rolls a
+    // per-puzzle coverage anywhere in 10-80%; the scale can't express
+    // that because it's clamped to 1 and so tops out at TWIN_COVERAGE
+    // (30%). null = no override, which is every normal build (the
+    // Marathon/Zen ramp, live PotD, tests). Read at assignTwins /
+    // assignQuadTwins time like the scale, so set it BEFORE Maze.init();
+    // maze-worker.js sets it per job because the worker's Maze is
+    // long-lived and would otherwise inherit the previous job's value.
+    let twinCoverageTarget = null;
+    function setTwinCoverageTarget(t) {
+        const v = Number(t);
+        twinCoverageTarget = (t === null || t === undefined || !isFinite(v) || v < 0)
+            ? null : Math.min(1, v);
+    }
+    // The coverage fraction EVERY twin sizing decision reads (budget,
+    // palette floor, and the twin-free early-outs). Override when set,
+    // the ramped default otherwise.
+    function twinCoverageFrac() {
+        return (twinCoverageTarget !== null) ? twinCoverageTarget : TWIN_COVERAGE * twinCoverageScale;
+    }
     // Tiles that should end up inside some group at the current dims.
     function twinCoverageTiles() {
-        return Math.round(ROWS * COLS * TWIN_COVERAGE * twinCoverageScale);
+        return Math.round(ROWS * COLS * twinCoverageFrac());
     }
     // The ladder: +1 group member per +3 gridScale to 17, then per +2
     // (constant coverage means the budget outruns a +3 cadence up there).
@@ -4101,7 +4123,10 @@ const Maze = (() => {
             for (let c = 0; c < COLS; c++) delete grid[r][c]._twin;
         }
         // Coverage ramp: scale 0 = a twin-free board (run levels 1-2).
-        if (twinCoverageScale <= 0) return;
+        // Reads the effective fraction so an absolute override of 0 is
+        // twin-free too, and a non-zero override still builds when the
+        // ramp scale happens to be 0.
+        if (twinCoverageFrac() <= 0) return;
         const endpointKeys = new Set();
         for (const ep of [entry, exit, entry2, exit2, entry3, exit3, entry4, exit4]) {
             if (ep) endpointKeys.add(ep.row + ',' + ep.col);
@@ -4196,7 +4221,7 @@ const Maze = (() => {
                                  : 6 + Math.floor((s - 17) / 2);
         const quadCount = (ROWS / 2) * (COLS / 2);
         const paletteFloor = Math.ceil(
-            quadCount * TWIN_COVERAGE * twinCoverageScale / TWIN_COLORS.length);
+            quadCount * twinCoverageFrac() / TWIN_COLORS.length);
         // Cap the ladder, then let the palette floor override it if it
         // has to — a repeated color is worse than an oversized group. The
         // cap holds at every size a run realistically reaches.
@@ -4208,7 +4233,8 @@ const Maze = (() => {
         }
         // Coverage ramp: scale 0 = a twin-free board (run levels 1-2) —
         // same per-level scale singular mode uses; see setTwinCoverageScale.
-        if (twinCoverageScale <= 0) return;
+        // Effective fraction, so setTwinCoverageTarget applies here too.
+        if (twinCoverageFrac() <= 0) return;
         const qROWS = ROWS / 2, qCOLS = COLS / 2;
         const candidates = [];
         for (let qr = 0; qr < qROWS; qr++) {
@@ -4217,7 +4243,7 @@ const Maze = (() => {
             }
         }
         const size = quadTwinGroupSize();
-        const budget = Math.round(candidates.length * TWIN_COVERAGE * twinCoverageScale);
+        const budget = Math.round(candidates.length * twinCoverageFrac());
         const groups = Math.max(0, Math.min(
             Math.max(1, Math.round(budget / size)),
             Math.floor(candidates.length / size)
@@ -4253,6 +4279,7 @@ const Maze = (() => {
         T_STRAIGHT, T_ELBOW, T_CROSS,
         init, rotate, hint, applyHintAt, togglePlayerLock, setDimensions, setHurry, setAbort, setTwoPathMode, setPathCount, setQuadMode,
         setTwinCoverageScale,  // per-run twin ramp (0..1 × TWIN_COVERAGE) — set before init; see its comment
+        setTwinCoverageTarget, // ABSOLUTE coverage override (0..1, null = off) — the experimental PotD generator's knob
         rotateBoard,   // whole-board 90° penalty rotation — see its comment; Gates.rotateBoard must run alongside
         flipBoard,     // whole-board mirror penalty (variant 2) — Gates.flipBoard must run alongside
         alternateRouteEdges,  // leftover-alternate edges for targeted gate placement (null in quad mode)

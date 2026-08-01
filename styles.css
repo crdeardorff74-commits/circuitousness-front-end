@@ -3681,6 +3681,125 @@ html.dbgHidden #resetBtn { display: none !important; }
     cursor: default;
 }
 
+/* ── PotD Generator v2 (debug panel section) ──────────────────────────
+   Any <strong> after the first is a sub-section header — currently just
+   "PotD Generator v2" — so it gets a rule above it to separate the
+   generator controls from the visual-tuning ones. */
+#debugSliders strong ~ strong {
+    margin-top: 0.9rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+/* Two-knob range row. Two range inputs share ONE visible track: the
+   track and its fill are plain divs (each input's own track is made
+   transparent), the inputs stack on top with pointer-events off so
+   only their THUMBS take pointer input. Without that carve-out the
+   upper input would swallow every grab and the lower knob could never
+   be dragged. potd-gen2.js's bindRangePair owns the clamping, the fill
+   geometry, and the z-index swap that keeps both knobs reachable when
+   they overlap. */
+#debugSliders .pg2Range {
+    position: relative;
+    width: 12rem;
+    height: 1.4rem;
+    margin: 0 0 0.5rem;
+}
+#debugSliders .pg2Track {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 0.25rem;
+    transform: translateY(-50%);
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 0.15rem;
+}
+#debugSliders .pg2Fill {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    background: rgba(120, 180, 240, 0.85);
+    border-radius: 0.15rem;
+}
+#debugSliders .pg2Range input[type="range"] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background: none;
+    -webkit-appearance: none;
+    appearance: none;
+    pointer-events: none;
+}
+#debugSliders .pg2Range input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    pointer-events: auto;
+    width: 0.85rem;
+    height: 0.85rem;
+    border: 1px solid rgba(20, 40, 70, 0.9);
+    border-radius: 50%;
+    background: #dceaff;
+    cursor: pointer;
+}
+#debugSliders .pg2Range input[type="range"]::-moz-range-thumb {
+    pointer-events: auto;
+    width: 0.85rem;
+    height: 0.85rem;
+    border: 1px solid rgba(20, 40, 70, 0.9);
+    border-radius: 50%;
+    background: #dceaff;
+    cursor: pointer;
+}
+#debugSliders .pg2Range input[type="range"]::-moz-range-track {
+    background: transparent;
+    border: none;
+}
+#debugSliders #pg2GenBtn {
+    display: block;
+    width: 100%;
+    margin-top: 0.6rem;
+    padding: 0.5rem;
+    background: rgba(40, 60, 100, 0.8);
+    color: rgba(220, 240, 255, 0.95);
+    border: 1px solid rgba(120, 180, 240, 0.5);
+    border-radius: 0.3rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+#debugSliders #pg2GenBtn:hover {
+    background: rgba(60, 90, 140, 0.9);
+}
+#debugSliders #pg2GenBtn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+/* Result + history readouts. pre-line so the module can emit multi-line
+   text without building markup; the log scrolls rather than growing the
+   panel past the viewport. */
+#pg2Result {
+    margin-top: 0.5rem;
+    font-size: 0.72rem;
+    font-family: monospace;
+    line-height: 1.45;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+#pg2Log {
+    margin-top: 0.4rem;
+    max-height: 9rem;
+    overflow-y: auto;
+    font-size: 0.65rem;
+    font-family: monospace;
+    line-height: 1.5;
+    opacity: 0.65;
+    white-space: pre-line;
+}
+
 /* ───────────────────── Mode selector ─────────────────────
    Segmented row of all three modes, always visible on the menu
    (replaced the TANTЯO chip + popup — with only three modes,

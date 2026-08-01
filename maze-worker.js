@@ -56,13 +56,18 @@ async function processNext() {
         // inherit the previous job's scale; PotD bg-gen jobs never send
         // one and must build at full coverage).
         if (Maze.setTwinCoverageScale) Maze.setTwinCoverageScale(req.twinScale);
+        // Absolute coverage override (experimental PotD generator only —
+        // potd-gen2.js). Same unconditional-per-job rule as the scale
+        // above, and for the same reason: null here RESETS a previous
+        // job's override, so ordinary builds are never contaminated.
+        if (Maze.setTwinCoverageTarget) Maze.setTwinCoverageTarget(req.twinCoverage);
         Maze.setDimensions(req.rows, req.cols);
         const completed = await Maze.init();
         if (completed) {
             postMessage({
                 type: 'ready', state: Maze.snapshotState(),
                 pathCount: req.pathCount, quadMode: !!req.quadMode,
-                twinScale: req.twinScale,
+                twinScale: req.twinScale, twinCoverage: req.twinCoverage,
                 id: req.id != null ? req.id : null
             });
         }
@@ -83,6 +88,8 @@ self.onmessage = function (e) {
             quadMode: !!e.data.quadMode,
             // Absent (PotD bg-gen, stale main threads) → 1 = full coverage.
             twinScale: (typeof e.data.twinScale === 'number') ? e.data.twinScale : 1,
+            // Absent (every caller but potd-gen2.js) → null = no override.
+            twinCoverage: (typeof e.data.twinCoverage === 'number') ? e.data.twinCoverage : null,
             id: (e.data.id != null) ? e.data.id : null
         };
         if (e.data.urgent) {

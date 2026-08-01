@@ -78,24 +78,11 @@
             return                  { rows: rows + step, cols: cols };
         }
 
-        // Mirror Maze's current dims back into the debug-panel sliders so
-        // the slider position stays in sync with auto-progressed sizes.
-        // Programmatic .value assignment doesn't fire input events, so this
-        // doesn't recurse into rebuildGrid.
-        function syncDebugSliders() {
-            const wS = document.getElementById('gridWSlider');
-            const wV = document.getElementById('gridWVal');
-            const hS = document.getElementById('gridHSlider');
-            const hV = document.getElementById('gridHVal');
-            // Sliders show LOGICAL dims (quad count when in quad mode).
-            const div = quadMode ? 2 : 1;
-            const logicalC = Maze.COLS / div;
-            const logicalR = Maze.ROWS / div;
-            if (wS) wS.value = String(logicalC);
-            if (wV) wV.textContent = String(logicalC);
-            if (hS) hS.value = String(logicalR);
-            if (hV) hV.textContent = String(logicalR);
-        }
+        // (syncDebugSliders removed 2026-08-01 — the debug panel's Grid
+        // width / Grid height sliders it mirrored are gone, replaced by
+        // the PotD Generator v2 block, whose two-knob ranges express a
+        // RANGE to roll from rather than the board's current dims. There
+        // is nothing left for a dims change to sync back to.)
 
         // Pre-generation worker. When available, the worker is the sole
         // maze builder — it has its own private Maze instance and builds
@@ -1510,10 +1497,9 @@
                 preGenCache.delete(wantKey);
             }
 
-            // Resize canvas + sync debug sliders if dimensions changed.
+            // Resize canvas if dimensions changed.
             if (wantResize) {
                 Render.refit();
-                syncDebugSliders();
             }
 
             isBuilding = false;
@@ -2218,6 +2204,27 @@
         function inDebugMode() {
             return document.documentElement.classList.contains('mode-debug');
         }
+        // Advance to the next debug puzzle. Since 2026-08-01 that means
+        // another roll from the PotD Generator v2 panel — NOT this
+        // module's size progression. Two reasons:
+        //   • the panel exists to sample the v2 parameter space, and a
+        //     solve is the natural moment to draw the next sample;
+        //   • correctness. potd-gen2.js loads its board by setting
+        //     Maze.setQuadMode / setPathCount directly (the same bypass
+        //     potd.js uses), which deliberately leaves THIS module's
+        //     `quadMode` / `pathCount` untouched. newPuzzle would then
+        //     ask the worker for a puzzle in the stale mode and
+        //     loadSnapshot it into a Maze running the other one — e.g. a
+        //     singular snapshot dropped into a quad-mode Maze.
+        // Falls back to newPuzzle when the module is absent (it's the
+        // last script in the debug set; nothing else depends on it).
+        function nextDebugPuzzle() {
+            if (typeof PotdGen2 !== 'undefined' && PotdGen2.generateAndPlay) {
+                PotdGen2.generateAndPlay();
+            } else {
+                newPuzzle();
+            }
+        }
         // 'N' for a new puzzle
         window.addEventListener('keydown', (ev) => {
             if (!inDebugMode()) return;
@@ -2225,11 +2232,11 @@
             // uses the same guard; reuse it here for consistency.
             const t = ev.target;
             if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-            if (ev.key === 'n' || ev.key === 'N') newPuzzle();
+            if (ev.key === 'n' || ev.key === 'N') nextDebugPuzzle();
         });
         // Click the win banner to start a new puzzle
         banner.addEventListener('click', () => {
-            if (inDebugMode()) newPuzzle();
+            if (inDebugMode()) nextDebugPuzzle();
         });
 
         // Hint: snap a random unsolved path tile to its solution and lock it red.

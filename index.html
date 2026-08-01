@@ -1151,18 +1151,52 @@
             <label><input type="color" id="litGoldLoPicker" value="#2d2c01"><span class="hex" id="litGoldLoVal">#2d2c01</span></label>
             <label><input type="color" id="litGoldHiPicker" value="#fefcc8"><span class="hex" id="litGoldHiVal">#fefcc8</span></label>
         </div>
-        <label>Grid width (<span id="gridWVal">4</span>)
-            <input type="range" id="gridWSlider" min="4" max="15" value="4">
-        </label>
-        <label>Grid height (<span id="gridHVal">4</span>)
-            <input type="range" id="gridHSlider" min="4" max="15" value="4">
-        </label>
-        <label>Paths (<span id="pathCountVal">1</span>)
-            <input type="range" id="pathCountSlider" min="1" max="4" value="1">
+        <!-- ── PotD GENERATOR v2 (experimental) ─────────────────────────
+             Replaces the old free-form Grid width / Grid height / Paths /
+             Quad Tiles selections. The debug panel's job is now tuning
+             potd-gen2.js's ranges before v2 is swapped in for the live
+             PotD generator in potd.js.
+
+             Each row is a TWO-KNOB range: the generator rolls a fresh
+             value inside it per puzzle. Nothing builds until "Generate
+             PotD" is pressed — moving a knob only changes the range.
+             Paths + Quad Tiles are picked, not rolled, because the live
+             PotD fixes them per slot (s1-s4 / q1-q4).
+
+             Bounds here MUST match potd-gen2.js's SIZE_/TWIN_/GATE_
+             FLOOR/CEIL constants, and the values its DEF_* constants. -->
+        <strong>PotD Generator v2</strong>
+        <label>Board size (<span id="pg2SizeVal">6–9 tiles</span>)</label>
+        <div class="pg2Range">
+            <div class="pg2Track"><div class="pg2Fill" id="pg2SizeFill"></div></div>
+            <input type="range" id="pg2SizeMin" min="4" max="15" value="6" aria-label="Minimum board size">
+            <input type="range" id="pg2SizeMax" min="4" max="15" value="9" aria-label="Maximum board size">
+        </div>
+        <label>Twin coverage (<span id="pg2TwinVal">30%</span>)</label>
+        <div class="pg2Range">
+            <div class="pg2Track"><div class="pg2Fill" id="pg2TwinFill"></div></div>
+            <input type="range" id="pg2TwinMin" min="10" max="80" value="30" aria-label="Minimum twin coverage">
+            <input type="range" id="pg2TwinMax" min="10" max="80" value="30" aria-label="Maximum twin coverage">
+        </div>
+        <label>Gates (<span id="pg2GateVal">3</span>)</label>
+        <div class="pg2Range">
+            <div class="pg2Track"><div class="pg2Fill" id="pg2GateFill"></div></div>
+            <input type="range" id="pg2GateMin" min="0" max="20" value="3" aria-label="Minimum gate count">
+            <input type="range" id="pg2GateMax" min="0" max="20" value="3" aria-label="Maximum gate count">
+        </div>
+        <label>Paths (<span id="pg2PathVal">1</span>)
+            <input type="range" id="pg2PathSlider" min="1" max="4" value="1">
         </label>
         <label class="check">
-            <input type="checkbox" id="quadModeCheck"> Quad Tiles
+            <input type="checkbox" id="pg2QuadCheck"> Quad Tiles
         </label>
+        <button type="button" id="pg2GenBtn">Generate PotD</button>
+        <!-- Last generation: rolled parameters, then the timing split.
+             Live elapsed counter while a build runs. -->
+        <div id="pg2Result"></div>
+        <!-- Rolling log of the last 10 generations + their median, so a
+             range's real cost shows through the ±50% run-to-run spread. -->
+        <div id="pg2Log"></div>
         <button type="button" id="replayBtn" hidden>Replay solve</button>
         <div id="preGenStatus">Next: idle</div>
         <!-- DEV: wipe today's PotD state on the server (puzzles, scores,
@@ -1199,7 +1233,7 @@
     (function() {
         var dev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
         var bust = dev ? ('?t=' + Date.now()) : '';
-        var srcs = ['config.js','cg-sdk.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd-streaks.js','potd-calendar.js','potd.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
+        var srcs = ['config.js','cg-sdk.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd-streaks.js','potd-calendar.js','potd.js','potd-gen2.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
         for (var i = 0; i < srcs.length; i++) {
             document.write('<script src="' + srcs[i] + bust + '"><\/script>');
         }
@@ -1234,11 +1268,12 @@
         //   ArrowRight / ArrowLeft — step sequentially forward / backward
         //                through the background image pool (level1 ↔ level2
         //                ↔ …, wrapping), for reviewing the pool.
-        //   F5         — regenerate the puzzle with the CURRENT slider /
-        //                checkbox parameters (rebuildGrid), instead of the
-        //                browser's page reload. Plain F5 only — Ctrl+F5 /
-        //                Shift+F5 fall through so a real (hard) reload is
-        //                still reachable from the keyboard.
+        //   F5         — roll and build another PotD v2 puzzle from the
+        //                CURRENT ranges (same action as the Generate PotD
+        //                button), instead of the browser's page reload.
+        //                Plain F5 only — Ctrl+F5 / Shift+F5 fall through
+        //                so a real (hard) reload is still reachable from
+        //                the keyboard.
         // Guards: ESC skips genuine text entry only (range/color/checkbox
         // inputs don't capture Escape, so the toggle still works right after
         // tweaking a slider; debug mode has no text inputs today, but stay
@@ -1263,7 +1298,9 @@
                 }
             } else if (ev.key === 'F5' && !ev.ctrlKey && !ev.shiftKey && !ev.metaKey) {
                 ev.preventDefault();
-                rebuildGrid();
+                if (typeof PotdGen2 !== 'undefined' && PotdGen2.generateAndPlay) {
+                    PotdGen2.generateAndPlay();
+                }
             }
         });
 
@@ -1328,50 +1365,12 @@
         bindPicker('litGoldLoPicker',     'litGoldLoVal',     Render.setLitGoldLo);
         bindPicker('litGoldHiPicker',     'litGoldHiVal',     Render.setLitGoldHi);
 
-        // Grid dimensions — both sliders route through Game.newPuzzle so
-        // they share the building-banner pipeline AND the pre-gen worker
-        // pre-build mechanism. The slider DOM is the source of truth for
-        // user-requested dimensions; game.js syncs slider values back to
-        // current Maze dims after auto-progression so they stay in sync.
-        var pendingSize = null;
-        function readSize() {
-            // Slider value = LOGICAL (quad count when in quad mode). Convert
-            // to PHYSICAL sub-tile dims for Game.newPuzzle.
-            var mul = (window.Game && Game.quadMode) ? 2 : 1;
-            return {
-                r: parseInt(document.getElementById('gridHSlider').value, 10) * mul,
-                c: parseInt(document.getElementById('gridWSlider').value, 10) * mul
-            };
-        }
-        async function rebuildGrid() {
-            if (!window.Game) { setTimeout(rebuildGrid, 50); return; } // wait for game.js to bind Game
-            if (Game.newPuzzle.busy) { pendingSize = readSize(); return; }
-            Game.newPuzzle.busy = true;
-            var size = readSize();
-            await Game.newPuzzle(size.r, size.c);
-            Game.newPuzzle.busy = false;
-            if (pendingSize) {
-                var p = pendingSize; pendingSize = null;
-                if (p.r !== Maze.ROWS || p.c !== Maze.COLS) rebuildGrid();
-            }
-        }
-        bindSlider('gridWSlider', 'gridWVal', function(v) { return v.toString(); }, rebuildGrid);
-        bindSlider('gridHSlider', 'gridHVal', function(v) { return v.toString(); }, rebuildGrid);
-
-        // Path-count slider: 1, 2, or 3 paths. Routes through Game so the
-        // worker is told too and the pre-gen cache is invalidated.
-        bindSlider('pathCountSlider', 'pathCountVal', function(v) { return v.toString(); },
-                   function(v) { if (window.Game && Game.setPathCount) Game.setPathCount(v); });
-
-        // Quad Tiles checkbox — generates the maze at 2× dims, displays
-        // each 2×2 sub-tile group as one rotating "tile". Routes through
-        // Game so the worker is told and the pre-gen cache is invalidated.
-        var quadCheck = document.getElementById('quadModeCheck');
-        if (quadCheck) {
-            quadCheck.addEventListener('change', function() {
-                if (window.Game && Game.setQuadMode) Game.setQuadMode(quadCheck.checked);
-            });
-        }
+        // Puzzle-shape controls (board size / paths / quad / gates / twin
+        // coverage) now live in the PotD Generator v2 block above and are
+        // wired by potd-gen2.js's initDebugUI — including the two-knob
+        // ranges, which need clamping and a fill bar that bindSlider
+        // can't express. Nothing here builds a puzzle any more; the
+        // Generate PotD button (and F5) is the only trigger.
 
         // DEV: "Reset PotD (today)" button — calls Potd.devReset() which
         // wipes today's server-side puzzles/scores/sessions AND the
