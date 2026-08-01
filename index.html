@@ -1175,13 +1175,21 @@
              PotD fixes them per slot (s1-s4 / q1-q4).
 
              Bounds here MUST match potd-gen2.js's SIZE_/TWIN_/GATE_
-             FLOOR/CEIL constants, and the values its DEF_* constants. -->
+             FLOOR/CEIL constants (and the size step its SIZE_STEP), with
+             the values matching its DEF_* constants. -->
         <strong>PotD Generator v2</strong>
-        <label>Board size (<span id="pg2SizeVal">6–9 tiles</span>)</label>
+        <!-- Board size is in PHYSICAL SUB-TILES and steps by 2, so one
+             control means the same thing in both modes: a 10 is a
+             10-sub-tile axis, which reads as 10 tiles singular or 5 quad
+             tiles. The step is what makes that work — quad needs even
+             sub-tile dims so each 2×2 group divides cleanly. It bounds the
+             RANGE only: inside it, singular still rolls odd sizes (a 6-10
+             range gives quad 6/8/10 and singular 6/7/8/9/10). -->
+        <label>Board size (<span id="pg2SizeVal">6–10 sub-tiles</span>)</label>
         <div class="pg2Range">
             <div class="pg2Track"><div class="pg2Fill" id="pg2SizeFill"></div></div>
-            <input type="range" id="pg2SizeMin" min="4" max="15" value="6" aria-label="Minimum board size">
-            <input type="range" id="pg2SizeMax" min="4" max="15" value="9" aria-label="Maximum board size">
+            <input type="range" id="pg2SizeMin" min="4" max="20" step="2" value="6" aria-label="Minimum board size">
+            <input type="range" id="pg2SizeMax" min="4" max="20" step="2" value="10" aria-label="Maximum board size">
         </div>
         <label>Twin coverage (<span id="pg2TwinVal">30%</span>)</label>
         <div class="pg2Range">
@@ -1210,26 +1218,35 @@
         <div id="pg2Log"></div>
         <button type="button" id="replayBtn" hidden>Replay solve</button>
         <div id="preGenStatus">Next: idle</div>
-        <!-- DEV: wipe today's PotD state on the server (puzzles, scores,
-             sessions) AND in localStorage. Lets the dev test the fresh-
-             play flow without waiting for the UTC day to roll over. -->
-        <button type="button" id="potdResetBtn">Reset PotD (today)</button>
-        <div id="potdResetStatus" style="font-size: 0.8em; color: #aaa;"></div>
-        <!-- DEV: wipe ALL leaderboard data — both marathon (Score +
-             GameSession) and PotD (PotdScore + PotdSession), across
-             every date and type — on the server AND the local cache.
-             Does NOT delete PotdPuzzle rows; today's puzzles stay
-             playable (use Reset PotD above for those). -->
-        <button type="button" id="wipeLeaderboardsBtn">Wipe Leaderboards</button>
-        <div id="wipeLeaderboardsStatus" style="font-size: 0.8em; color: #aaa;"></div>
-        <!-- DEV: wipe ALL PageVisit rows — drops the whole visitation
-             funnel + tracking history (referrers, devices, share/credits
-             breakdowns, etc.). Doesn't touch score data. Mirrors Wipe
-             Leaderboards' shape: POST to admin endpoint, status line
-             reports the deleted row count. Remove this block (markup +
-             handler + endpoint) before public release. -->
-        <button type="button" id="wipeVisitsBtn">Wipe Visit Stats</button>
-        <div id="wipeVisitsStatus" style="font-size: 0.8em; color: #aaa;"></div>
+        <!-- DESTRUCTIVE DEV ACTIONS — HIDDEN, NOT REMOVED (2026-08-01, user
+             call). The markup, the handlers in the wiring script below, and
+             the back-end endpoints all stay exactly as they were; only the
+             display is off. `hidden` (rather than a CSS rule) keeps that
+             reversible in one step: drop the attribute here, or toggle it in
+             devtools, and the buttons are back with their handlers already
+             bound — getElementById finds hidden elements fine. -->
+        <div id="dbgDevActions" hidden>
+            <!-- DEV: wipe today's PotD state on the server (puzzles, scores,
+                 sessions) AND in localStorage. Lets the dev test the fresh-
+                 play flow without waiting for the UTC day to roll over. -->
+            <button type="button" id="potdResetBtn">Reset PotD (today)</button>
+            <div id="potdResetStatus" style="font-size: 0.8em; color: #aaa;"></div>
+            <!-- DEV: wipe ALL leaderboard data — both marathon (Score +
+                 GameSession) and PotD (PotdScore + PotdSession), across
+                 every date and type — on the server AND the local cache.
+                 Does NOT delete PotdPuzzle rows; today's puzzles stay
+                 playable (use Reset PotD above for those). -->
+            <button type="button" id="wipeLeaderboardsBtn">Wipe Leaderboards</button>
+            <div id="wipeLeaderboardsStatus" style="font-size: 0.8em; color: #aaa;"></div>
+            <!-- DEV: wipe ALL PageVisit rows — drops the whole visitation
+                 funnel + tracking history (referrers, devices, share/credits
+                 breakdowns, etc.). Doesn't touch score data. Mirrors Wipe
+                 Leaderboards' shape: POST to admin endpoint, status line
+                 reports the deleted row count. Remove this block (markup +
+                 handler + endpoint) before public release. -->
+            <button type="button" id="wipeVisitsBtn">Wipe Visit Stats</button>
+            <div id="wipeVisitsStatus" style="font-size: 0.8em; color: #aaa;"></div>
+        </div>
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->

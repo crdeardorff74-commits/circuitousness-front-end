@@ -48,17 +48,25 @@
 
 const PotdGen2 = (() => {
     // ── Slider bounds (the tunable space, not the defaults) ──
-    // Size is LOGICAL tiles. 15 is the ceiling because generation cost
-    // climbs steeply — a 14×14 singular build already medians ~68s (see
-    // tests/bench-median.js), and the point of the timing readout is to
-    // find where that becomes unacceptable for a daily puzzle.
-    const SIZE_FLOOR = 4,   SIZE_CEIL = 15;
+    // Size is PHYSICAL SUB-TILES, stepping by 2, and means the same thing
+    // in both modes: a 10 is a 10-sub-tile axis whether that reads as 10
+    // singular tiles or 5 quad tiles. (It was logical tiles doubled for
+    // quad, which made a "15" quad board 30 sub-tiles — the slider read as
+    // one unit and behaved as another.) The step of 2 is what lets one
+    // control serve both: quad needs even sub-tile dims so each 2×2 group
+    // fits. It bounds only what the RANGE can express — inside the range,
+    // singular still rolls odd sizes too (see rollParams).
+    // The 20 ceiling is well past where generation gets expensive — that
+    // headroom is deliberate, since finding the point where cost becomes
+    // unacceptable for a daily puzzle is what the timing readout is for.
+    const SIZE_FLOOR = 4,   SIZE_CEIL = 20;   // sub-tiles, step 2
+    const SIZE_STEP  = 2;
     const TWIN_FLOOR = 10,  TWIN_CEIL = 80;   // percent
     const GATE_FLOOR = 0,   GATE_CEIL = 20;
-    // Opening positions — the live PotD's current behavior, so the first
-    // generation from a fresh panel is the baseline to compare against:
-    // singular 3-4 path sizes, 30% coverage, 3 gates.
-    const DEF_SIZE_MIN = 6, DEF_SIZE_MAX = 9;
+    // Opening positions — roughly the live PotD's current behavior, so the
+    // first generation from a fresh panel is a baseline to compare against:
+    // mid-size board, 30% coverage, 3 gates.
+    const DEF_SIZE_MIN = 6, DEF_SIZE_MAX = 10;
     const DEF_TWIN_MIN = 30, DEF_TWIN_MAX = 30;
     const DEF_GATE_MIN = 3,  DEF_GATE_MAX = 3;
 
@@ -75,24 +83,31 @@ const PotdGen2 = (() => {
     //   p = { sizeMin, sizeMax, twinMin, twinMax, gateMin, gateMax,
     //         pathCount, quadMode }   (twin* as 0..1 fractions)
     // Returns PHYSICAL sub-tile dims, which is what Maze.setDimensions
-    // and the worker both consume.
+    // and the worker both consume — and, since the size range is now
+    // expressed in sub-tiles too, no conversion happens on the way.
     function rollParams(p) {
-        // Quad boards need even physical dims (each visible tile is a 2×2
-        // sub-tile group), so the roll happens in logical tiles and is
-        // doubled — which also makes the size range mean the same thing
-        // to the player in both modes.
-        const mul = p.quadMode ? 2 : 1;
+        // The slider's step of 2 is a constraint on what the RANGE can
+        // express, not on what gets rolled inside it. Only quad actually
+        // needs even dims (each 2×2 group has to divide cleanly), so quad
+        // steps by 2 while singular rolls every integer in the range — a
+        // 6-10 range gives quad {6,8,10} and singular {6,7,8,9,10}. Losing
+        // the odd sizes in singular would have thrown away half the size
+        // variety for a constraint that mode doesn't have.
+        const evenSpan = Math.floor((p.sizeMax - p.sizeMin) / SIZE_STEP) + 1;
+        const roll = p.quadMode
+            ? () => p.sizeMin + SIZE_STEP * Math.floor(Math.random() * evenSpan)
+            : () => randInt(p.sizeMin, p.sizeMax);
         // Both axes roll from the same range, then the pair is ORDERED so
-        // the board is always wider than tall (or square) — never taller
+        // the board is always wider than tall, or square — never taller
         // than wide. Screens are landscape far more often than not, and a
         // tall board wastes the width it does have. Portrait players get
         // the same board rotated 90° at load (see loadIntoPlay), so this
         // costs them nothing: one canonical puzzle, two presentations.
-        const a = randInt(p.sizeMin, p.sizeMax);
-        const b = randInt(p.sizeMin, p.sizeMax);
+        const a = roll();
+        const b = roll();
         return {
-            rows:         Math.min(a, b) * mul,
-            cols:         Math.max(a, b) * mul,
+            rows:         Math.min(a, b),
+            cols:         Math.max(a, b),
             // Continuous, not stepped — coverage is a budget fraction, so
             // any value in the range is meaningful.
             twinCoverage: p.twinMin + Math.random() * (p.twinMax - p.twinMin),
@@ -395,7 +410,7 @@ const PotdGen2 = (() => {
         if (!btn) return;
 
         const readSize = bindRangePair('pg2SizeMin', 'pg2SizeMax', 'pg2SizeFill', 'pg2SizeVal',
-            (a, b) => (a === b) ? (a + ' tiles') : (a + '–' + b + ' tiles'));
+            (a, b) => (a === b) ? (a + ' sub-tiles') : (a + '–' + b + ' sub-tiles'));
         const readTwin = bindRangePair('pg2TwinMin', 'pg2TwinMax', 'pg2TwinFill', 'pg2TwinVal',
             (a, b) => (a === b) ? (a + '%') : (a + '–' + b + '%'));
         const readGate = bindRangePair('pg2GateMin', 'pg2GateMax', 'pg2GateFill', 'pg2GateVal',
@@ -452,10 +467,12 @@ const PotdGen2 = (() => {
                 const res = await generate(readParams());
                 const rotated = loadIntoPlay(res);
                 const r = res.roll;
-                const logical = r.quadMode ? 2 : 1;
-                // Canonical dims, W×H — always landscape or square now.
-                const label = (r.cols / logical) + '×' + (r.rows / logical) +
-                              (r.quadMode ? 'q' : '') + ' ' + r.pathCount + 'p';
+                // Canonical dims in SUB-TILES, W×H — always landscape or
+                // square now, and the same unit the size slider uses. Quad
+                // adds the player-facing tile count, since a 10×8 quad
+                // board is only 5×4 tiles to solve.
+                const label = r.cols + '×' + r.rows + ' ' + r.pathCount + 'p' +
+                              (r.quadMode ? ' q(' + (r.cols / 2) + '×' + (r.rows / 2) + ')' : '');
                 if (resultEl) {
                     resultEl.textContent =
                         label + (rotated ? ' ↻portrait' : '') +
@@ -495,7 +512,7 @@ const PotdGen2 = (() => {
         // Bounds + defaults, so the markup and the module can't drift
         // apart silently — index.html carries the same numbers and
         // syncDefaults() below asserts them onto the inputs at boot.
-        SIZE_FLOOR, SIZE_CEIL, TWIN_FLOOR, TWIN_CEIL, GATE_FLOOR, GATE_CEIL,
+        SIZE_FLOOR, SIZE_CEIL, SIZE_STEP, TWIN_FLOOR, TWIN_CEIL, GATE_FLOOR, GATE_CEIL,
         DEF_SIZE_MIN, DEF_SIZE_MAX, DEF_TWIN_MIN, DEF_TWIN_MAX, DEF_GATE_MIN, DEF_GATE_MAX,
         get history() { return history.slice(); },
     };

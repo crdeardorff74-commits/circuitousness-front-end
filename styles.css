@@ -3542,6 +3542,13 @@ body.credits-rolling #potdSolveTransition.visible {
        entries) wraps onto multiple lines instead of pushing the panel
        across the canvas. */
     max-width: 20rem;
+    /* Never run off the bottom of the screen. The readout log below is
+       allowed to grow freely (it used to scroll inside its own box, which
+       wasted the empty space under a short panel), so the panel itself is
+       the thing that has to stay on-screen — and it only ever scrolls once
+       the log genuinely outgrows the viewport. */
+    max-height: calc(100vh - 2.4rem);
+    overflow-y: auto;
     background: rgba(20, 24, 40, 0.78);
     color: #fff;
     border: 1px solid rgba(255, 255, 255, 0.18);
@@ -3591,6 +3598,14 @@ html.dbgHidden #resetBtn { display: none !important; }
 #dbgVisuals > summary:hover { opacity: 0.9; }
 #dbgVisuals > summary::before { content: '\25B8  '; }   /* ▸ closed */
 #dbgVisuals[open] > summary::before { content: '\25BE  '; }  /* ▾ open */
+/* With Visual Tuning collapsed, the widest thing left is a 12rem range
+   track — but a long readout line ("15×15 1p · twins 10% · gates 0/0 …")
+   would still stretch the panel out toward the 20rem cap the lit-palette
+   grid needs. Hold the content box to the slider width instead and let
+   those lines wrap; the panel snaps back to 20rem when the section opens. */
+#debugSliders:has(#dbgVisuals:not([open])) {
+    max-width: 12rem;
+}
 #debugSliders label {
     display: block;
     margin-bottom: 0.5rem;
@@ -3815,8 +3830,6 @@ html.dbgHidden #resetBtn { display: none !important; }
 }
 #pg2Log {
     margin-top: 0.4rem;
-    max-height: 9rem;
-    overflow-y: auto;
     font-size: 0.65rem;
     font-family: monospace;
     line-height: 1.5;
