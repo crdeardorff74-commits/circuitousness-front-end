@@ -1672,6 +1672,13 @@
             clearWinBanner: function () {
                 if (banner) banner.classList.remove('visible');
             },
+            // Is the Marathon starter/lookahead pre-gen worker mid-build?
+            // potd-gen2.js asks so it can flag a generation timing that
+            // overlapped one — two builds competing for CPU makes the
+            // number meaningless. Exposed as state rather than having the
+            // caller scrape #preGenStatus's text, which is what it used to
+            // do (and which broke the moment that readout was hidden).
+            isPreGenBusy: function () { return !!preGenSize; },
         };
 
         // Debug-panel pre-gen status indicator. Polls every 200ms — cheap

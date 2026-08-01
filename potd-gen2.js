@@ -63,7 +63,7 @@ const PotdGen2 = (() => {
     const SIZE_STEP  = 2;
     const TWIN_FLOOR = 10,  TWIN_CEIL = 80;   // percent
     const GATE_FLOOR = 0,   GATE_CEIL = 20;
-    // Hard ceiling on rows × cols in SUB-TILES — the same unit the size
+    // Area window for rows × cols in SUB-TILES — the same unit the size
     // slider uses, and the unit cost scales with (the maze is built at
     // sub-tile resolution in both modes, so a quad board is no cheaper per
     // sub-tile than a singular one). Stepped by 10 because a 12rem track
@@ -73,10 +73,14 @@ const PotdGen2 = (() => {
     // first generation from a fresh panel is a baseline to compare against:
     // mid-size board, 30% coverage, 3 gates.
     const DEF_SIZE_MIN = 6, DEF_SIZE_MAX = 10;
-    // Opens at the ceiling: the cap should only bite once sizes are pushed
-    // up, and dialling it DOWN to find where cost becomes unacceptable is
-    // the workflow it exists for.
-    const DEF_MAX_TILES = 300;
+    // Opens at the full span. NOTE that this is not the same as "off": the
+    // floor of 100 sub-tiles is a 10×10 board, which is LARGER than most of
+    // what the default 6-10 size range rolls (36-100), so the minimum knob
+    // grows the great majority of boards even at its lowest setting. The
+    // size range sets the SHAPE that gets rolled; this window then has the
+    // final say on area. If that isn't wanted, the floor has to move below
+    // TILES_FLOOR rather than be switched off — there's no inert position.
+    const DEF_TILES_MIN = 100, DEF_TILES_MAX = 300;
     const DEF_TWIN_MIN = 30, DEF_TWIN_MAX = 30;
     const DEF_GATE_MIN = 3,  DEF_GATE_MAX = 3;
 
@@ -89,23 +93,41 @@ const PotdGen2 = (() => {
         return lo + Math.floor(Math.random() * (hi - lo + 1));
     }
 
-    // Walk an oversized board down until rows × cols fits `cap`.
+    // Walk a board's dimensions until rows × cols lands inside the area
+    // window [minT, maxT].
     //
-    // Always shrinks whichever axis is currently LARGER, which is the
-    // cheapest way to lose area and — since the caller hands us a board
-    // that's already landscape — normally means the width. Ties go to the
-    // HEIGHT: with rows === cols, taking from the width would tip the
-    // board portrait, while taking from the height keeps cols > rows. That
-    // tie rule is the whole reason this isn't just "shrink the width".
+    // Too small: grow whichever axis is currently SMALLER, ties to the
+    // WIDTH. Too big: shrink whichever axis is currently LARGER, ties to
+    // the HEIGHT. Both rules pick the cheapest single step toward the
+    // target, and both tie-breaks exist for the same reason — at
+    // rows === cols, growing the height or shrinking the width would tip
+    // the board portrait, so each takes the other axis instead. Landscape
+    // is preserved at every step, not just at the end.
     //
     // `step` is 2 in quad mode so dims stay even (2×2 groups must divide
-    // cleanly) and 1 in singular. The SIZE_FLOOR guard can't trigger at
-    // the slider's real bounds — the smallest board is 4×4 = 16 sub-tiles,
-    // far under the 100 minimum cap — but it guarantees termination if
-    // those bounds ever move.
-    function capToTiles(rows, cols, cap, step) {
+    // cleanly) and 1 in singular.
+    //
+    // The MAXIMUM WINS when both can't hold: growth stops as soon as the
+    // board reaches minT, which can overshoot maxT by one step when the
+    // window is narrow (min 100 / max 100 from a 9×11 = 99, say). Running
+    // the shrink pass second means the ceiling — the one that bounds
+    // generation cost and screen fit — is always respected, and the floor
+    // is best-effort. The SIZE_FLOOR/SIZE_CEIL guards can't trigger at the
+    // sliders' real bounds (4×4 = 16 is far under any minimum, and 20×20 =
+    // 400 is above any maximum) but they guarantee termination if those
+    // bounds ever move.
+    function fitToTileRange(rows, cols, minT, maxT, step) {
         let r = rows, c = cols;
-        while (r * c > cap) {
+        while (r * c < minT) {
+            if (r < c) {
+                if (r + step > SIZE_CEIL) break;
+                r += step;
+            } else {
+                if (c + step > SIZE_CEIL) break;
+                c += step;
+            }
+        }
+        while (r * c > maxT) {
             if (c > r) {
                 if (c - step < SIZE_FLOOR) break;
                 c -= step;
@@ -144,17 +166,17 @@ const PotdGen2 = (() => {
         const a = roll();
         const b = roll();
         const wanted = { rows: Math.min(a, b), cols: Math.max(a, b) };
-        // Area ceiling, applied to the ordered pair so "shrink the larger
-        // axis" and "stay landscape" agree. Recorded when it bites so the
-        // panel can show what the roll originally wanted — a cap that's
+        // Area window, applied to the ordered pair so the grow/shrink rules
+        // and "stay landscape" agree. Recorded when it moves the dims so the
+        // panel can show what the roll originally wanted — a window that's
         // silently rewriting most rolls is worth seeing.
-        const dims = capToTiles(wanted.rows, wanted.cols, p.maxTiles,
-                                p.quadMode ? SIZE_STEP : 1);
-        const capped = (dims.rows !== wanted.rows || dims.cols !== wanted.cols);
+        const dims = fitToTileRange(wanted.rows, wanted.cols, p.minTiles, p.maxTiles,
+                                    p.quadMode ? SIZE_STEP : 1);
+        const moved = (dims.rows !== wanted.rows || dims.cols !== wanted.cols);
         return {
             rows:         dims.rows,
             cols:         dims.cols,
-            cappedFrom:   capped ? wanted : null,
+            resizedFrom:  moved ? wanted : null,
             // Continuous, not stepped — coverage is a budget fraction, so
             // any value in the range is meaningful.
             twinCoverage: p.twinMin + Math.random() * (p.twinMax - p.twinMin),
@@ -441,13 +463,11 @@ const PotdGen2 = (() => {
     }
     function secs(ms) { return (ms / 1000).toFixed(2) + 's'; }
 
-    // True while game.js's Marathon starter/lookahead pre-gen is
-    // building in ITS worker — a competing build inflates our timing.
-    // Read off the panel's own status line rather than reaching into
-    // game.js's closure state, which isn't exposed.
+    // True while game.js's Marathon starter/lookahead pre-gen is building
+    // in ITS worker — a competing build inflates our timing, so a run that
+    // overlaps one gets flagged in the readout.
     function preGenBusy() {
-        const el = document.getElementById('preGenStatus');
-        return !!(el && el.textContent && el.textContent.indexOf('building') !== -1);
+        return !!(typeof Game !== 'undefined' && Game.isPreGenBusy && Game.isPreGenBusy());
     }
 
     function initDebugUI() {
@@ -470,22 +490,17 @@ const PotdGen2 = (() => {
                 pathVal.textContent = pathSlider.value;
             });
         }
-        const maxTilesSlider = document.getElementById('pg2MaxTilesSlider');
-        const maxTilesVal    = document.getElementById('pg2MaxTilesVal');
-        if (maxTilesSlider && maxTilesVal) {
-            maxTilesSlider.addEventListener('input', function () {
-                maxTilesVal.textContent = maxTilesSlider.value;
-            });
-        }
+        const readTiles = bindRangePair('pg2TilesMin', 'pg2TilesMax', 'pg2TilesFill', 'pg2TilesVal',
+            (a, b) => (a === b) ? String(a) : (a + '–' + b));
         const quadCheck = document.getElementById('pg2QuadCheck');
 
         function readParams() {
-            const size = readSize(), twin = readTwin(), gate = readGate();
+            const size = readSize(), twin = readTwin(), gate = readGate(), tiles = readTiles();
             return {
                 sizeMin: size.lo, sizeMax: size.hi,
                 twinMin: twin.lo / 100, twinMax: twin.hi / 100,
                 gateMin: gate.lo, gateMax: gate.hi,
-                maxTiles: maxTilesSlider ? parseInt(maxTilesSlider.value, 10) : TILES_CEIL,
+                minTiles: tiles.lo, maxTiles: tiles.hi,
                 pathCount: pathSlider ? parseInt(pathSlider.value, 10) : 1,
                 quadMode: !!(quadCheck && quadCheck.checked),
             };
@@ -528,8 +543,11 @@ const PotdGen2 = (() => {
                 // board is only 5×4 tiles to solve.
                 const label = r.cols + '×' + r.rows + ' ' + r.pathCount + 'p' +
                               (r.quadMode ? ' q(' + (r.cols / 2) + '×' + (r.rows / 2) + ')' : '') +
-                              (r.cappedFrom
-                                  ? ' ⤓' + r.cappedFrom.cols + '×' + r.cappedFrom.rows
+                              // ⤓ shrunk to fit the ceiling, ⤒ grown to reach
+                              // the floor — with the dims the roll wanted.
+                              (r.resizedFrom
+                                  ? (r.resizedFrom.rows * r.resizedFrom.cols > r.rows * r.cols ? ' ⤓' : ' ⤒') +
+                                    r.resizedFrom.cols + '×' + r.resizedFrom.rows
                                   : '');
                 if (resultEl) {
                     resultEl.textContent =
@@ -574,7 +592,7 @@ const PotdGen2 = (() => {
         SIZE_FLOOR, SIZE_CEIL, SIZE_STEP, TWIN_FLOOR, TWIN_CEIL, GATE_FLOOR, GATE_CEIL,
         TILES_FLOOR, TILES_CEIL, TILES_STEP,
         DEF_SIZE_MIN, DEF_SIZE_MAX, DEF_TWIN_MIN, DEF_TWIN_MAX, DEF_GATE_MIN, DEF_GATE_MAX,
-        DEF_MAX_TILES,
+        DEF_TILES_MIN, DEF_TILES_MAX,
         get history() { return history.slice(); },
     };
     return api;
