@@ -63,10 +63,20 @@ const PotdGen2 = (() => {
     const SIZE_STEP  = 2;
     const TWIN_FLOOR = 10,  TWIN_CEIL = 80;   // percent
     const GATE_FLOOR = 0,   GATE_CEIL = 20;
+    // Hard ceiling on rows × cols in SUB-TILES — the same unit the size
+    // slider uses, and the unit cost scales with (the maze is built at
+    // sub-tile resolution in both modes, so a quad board is no cheaper per
+    // sub-tile than a singular one). Stepped by 10 because a 12rem track
+    // can't meaningfully resolve 200 discrete positions.
+    const TILES_FLOOR = 100, TILES_CEIL = 300, TILES_STEP = 10;
     // Opening positions — roughly the live PotD's current behavior, so the
     // first generation from a fresh panel is a baseline to compare against:
     // mid-size board, 30% coverage, 3 gates.
     const DEF_SIZE_MIN = 6, DEF_SIZE_MAX = 10;
+    // Opens at the ceiling: the cap should only bite once sizes are pushed
+    // up, and dialling it DOWN to find where cost becomes unacceptable is
+    // the workflow it exists for.
+    const DEF_MAX_TILES = 300;
     const DEF_TWIN_MIN = 30, DEF_TWIN_MAX = 30;
     const DEF_GATE_MIN = 3,  DEF_GATE_MAX = 3;
 
@@ -77,6 +87,34 @@ const PotdGen2 = (() => {
 
     function randInt(lo, hi) {
         return lo + Math.floor(Math.random() * (hi - lo + 1));
+    }
+
+    // Walk an oversized board down until rows × cols fits `cap`.
+    //
+    // Always shrinks whichever axis is currently LARGER, which is the
+    // cheapest way to lose area and — since the caller hands us a board
+    // that's already landscape — normally means the width. Ties go to the
+    // HEIGHT: with rows === cols, taking from the width would tip the
+    // board portrait, while taking from the height keeps cols > rows. That
+    // tie rule is the whole reason this isn't just "shrink the width".
+    //
+    // `step` is 2 in quad mode so dims stay even (2×2 groups must divide
+    // cleanly) and 1 in singular. The SIZE_FLOOR guard can't trigger at
+    // the slider's real bounds — the smallest board is 4×4 = 16 sub-tiles,
+    // far under the 100 minimum cap — but it guarantees termination if
+    // those bounds ever move.
+    function capToTiles(rows, cols, cap, step) {
+        let r = rows, c = cols;
+        while (r * c > cap) {
+            if (c > r) {
+                if (c - step < SIZE_FLOOR) break;
+                c -= step;
+            } else {
+                if (r - step < SIZE_FLOOR) break;
+                r -= step;
+            }
+        }
+        return { rows: r, cols: c };
     }
 
     // Roll one puzzle's parameters from the panel's ranges.
@@ -105,9 +143,18 @@ const PotdGen2 = (() => {
         // costs them nothing: one canonical puzzle, two presentations.
         const a = roll();
         const b = roll();
+        const wanted = { rows: Math.min(a, b), cols: Math.max(a, b) };
+        // Area ceiling, applied to the ordered pair so "shrink the larger
+        // axis" and "stay landscape" agree. Recorded when it bites so the
+        // panel can show what the roll originally wanted — a cap that's
+        // silently rewriting most rolls is worth seeing.
+        const dims = capToTiles(wanted.rows, wanted.cols, p.maxTiles,
+                                p.quadMode ? SIZE_STEP : 1);
+        const capped = (dims.rows !== wanted.rows || dims.cols !== wanted.cols);
         return {
-            rows:         Math.min(a, b),
-            cols:         Math.max(a, b),
+            rows:         dims.rows,
+            cols:         dims.cols,
+            cappedFrom:   capped ? wanted : null,
             // Continuous, not stepped — coverage is a budget fraction, so
             // any value in the range is meaningful.
             twinCoverage: p.twinMin + Math.random() * (p.twinMax - p.twinMin),
@@ -423,6 +470,13 @@ const PotdGen2 = (() => {
                 pathVal.textContent = pathSlider.value;
             });
         }
+        const maxTilesSlider = document.getElementById('pg2MaxTilesSlider');
+        const maxTilesVal    = document.getElementById('pg2MaxTilesVal');
+        if (maxTilesSlider && maxTilesVal) {
+            maxTilesSlider.addEventListener('input', function () {
+                maxTilesVal.textContent = maxTilesSlider.value;
+            });
+        }
         const quadCheck = document.getElementById('pg2QuadCheck');
 
         function readParams() {
@@ -431,6 +485,7 @@ const PotdGen2 = (() => {
                 sizeMin: size.lo, sizeMax: size.hi,
                 twinMin: twin.lo / 100, twinMax: twin.hi / 100,
                 gateMin: gate.lo, gateMax: gate.hi,
+                maxTiles: maxTilesSlider ? parseInt(maxTilesSlider.value, 10) : TILES_CEIL,
                 pathCount: pathSlider ? parseInt(pathSlider.value, 10) : 1,
                 quadMode: !!(quadCheck && quadCheck.checked),
             };
@@ -472,10 +527,14 @@ const PotdGen2 = (() => {
                 // adds the player-facing tile count, since a 10×8 quad
                 // board is only 5×4 tiles to solve.
                 const label = r.cols + '×' + r.rows + ' ' + r.pathCount + 'p' +
-                              (r.quadMode ? ' q(' + (r.cols / 2) + '×' + (r.rows / 2) + ')' : '');
+                              (r.quadMode ? ' q(' + (r.cols / 2) + '×' + (r.rows / 2) + ')' : '') +
+                              (r.cappedFrom
+                                  ? ' ⤓' + r.cappedFrom.cols + '×' + r.cappedFrom.rows
+                                  : '');
                 if (resultEl) {
                     resultEl.textContent =
                         label + (rotated ? ' ↻portrait' : '') +
+                        ' · ' + (r.rows * r.cols) + ' sub-tiles' +
                         ' · twins ' + Math.round(r.twinCoverage * 100) + '%' +
                         ' · gates ' + res.gatesPlaced + '/' + r.gateTarget +
                         (res.minMoves != null ? ' · ' + res.minMoves + ' moves' : '') +
@@ -513,7 +572,9 @@ const PotdGen2 = (() => {
         // apart silently — index.html carries the same numbers and
         // syncDefaults() below asserts them onto the inputs at boot.
         SIZE_FLOOR, SIZE_CEIL, SIZE_STEP, TWIN_FLOOR, TWIN_CEIL, GATE_FLOOR, GATE_CEIL,
+        TILES_FLOOR, TILES_CEIL, TILES_STEP,
         DEF_SIZE_MIN, DEF_SIZE_MAX, DEF_TWIN_MIN, DEF_TWIN_MAX, DEF_GATE_MIN, DEF_GATE_MAX,
+        DEF_MAX_TILES,
         get history() { return history.slice(); },
     };
     return api;

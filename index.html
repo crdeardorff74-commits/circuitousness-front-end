@@ -1191,6 +1191,17 @@
             <input type="range" id="pg2SizeMin" min="4" max="20" step="2" value="6" aria-label="Minimum board size">
             <input type="range" id="pg2SizeMax" min="4" max="20" step="2" value="10" aria-label="Maximum board size">
         </div>
+        <!-- Hard ceiling on rows × cols, applied AFTER the size roll: an
+             oversized roll has its LARGER axis walked down (by 2 in quad,
+             so dims stay even) until it fits. Ties reduce the height, which
+             is what keeps the board landscape rather than flipping it.
+             Counted in sub-tiles, the same unit the size slider uses — and
+             the unit generation cost actually scales with, since the maze
+             is built at sub-tile resolution regardless of mode.
+             Single-knob on purpose: this is a ceiling, not a range. -->
+        <label>Max sub-tiles (<span id="pg2MaxTilesVal">300</span>)
+            <input type="range" id="pg2MaxTilesSlider" min="100" max="300" step="10" value="300">
+        </label>
         <label>Twin coverage (<span id="pg2TwinVal">30%</span>)</label>
         <div class="pg2Range">
             <div class="pg2Track"><div class="pg2Fill" id="pg2TwinFill"></div></div>
