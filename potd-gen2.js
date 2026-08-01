@@ -1,13 +1,20 @@
 /**
- * potd-gen2.js — EXPERIMENTAL Puzzle-of-the-Day generator (v2).
+ * potd-gen2.js — the Puzzle-of-the-Day generator (v2). LIVE since
+ * 2026-08-01; the v1 sizing it replaced lived in potd.js's generateDims.
  *
- * Runs ONLY from the debug panel (?debug=true). It does not touch the
- * live PotD pipeline in potd.js: nothing here seeds the server, nothing
- * here reads or writes PotD localStorage state, and no shipping code
- * path calls into this module. It exists so the ranges can be tuned by
- * hand before v2 is swapped in for potd.js's generateDims().
+ * Two consumers, one definition:
+ *   • potd.js calls defaultParams() + rollParams() for every daily slot,
+ *     so the DEF_* block below is the PotD's difficulty configuration.
+ *   • the debug panel (?debug=true) drives the same rollParams through
+ *     sliders that OPEN on those same numbers, so it stays a faithful
+ *     preview of production rather than a separate universe. It keeps its
+ *     own worker and its own load-into-play path, and still seeds nothing.
  *
- * WHY v2: the live generator's only random axis is board size, rolled
+ * (The file name is historical — it was the experimental v2 while the
+ * ranges were being tuned. Renaming it means touching index.html's script
+ * list and is deliberately left alone.)
+ *
+ * WHY v2: the v1 generator's only random axis was board size, rolled
  * from a narrow per-slot window (singular 5-9, quad 8-14 sub-tiles) with
  * twin coverage pinned at maze.js's 30% and gates pinned at 3. Every
  * day's s2 therefore feels like the last day's s2. v2 rolls three
@@ -28,10 +35,10 @@
  *                     board a request for 20 lands far fewer, and that
  *                     gap is exactly what the tuner needs to see.
  *
- * Path count and quad mode stay panel-selected rather than rolled:
- * in the live PotD they're fixed by the slot (s1-s4 / q1-q4), so the
- * tuner picks the slot shape and explores the three rolled axes within
- * it.
+ * Path count and quad mode are NOT rolled — they're fixed by the slot
+ * (s1-s4 / q1-q4), the axis the eight daily puzzles vary along by design.
+ * The panel selects them instead, so a tuner can explore the rolled axes
+ * within one slot shape.
  *
  * Generation runs in its own Web Worker (an independent Maze instance,
  * so an in-progress build can't disturb the board on screen), with a
@@ -75,26 +82,30 @@ const PotdGen2 = (() => {
     // sub-tile than a singular one). Stepped by 10 because a 12rem track
     // can't meaningfully resolve 200 discrete positions.
     const TILES_FLOOR = 20, TILES_CEIL = 300, TILES_STEP = 10;
-    // Opening positions — roughly the live PotD's current behavior, so the
-    // first generation from a fresh panel is a baseline to compare against:
-    // mid-size board, 30% coverage, 3 gates.
-    const DEF_SIZE_MIN = 6, DEF_SIZE_MAX = 10;
-    // Opens at the full span, which is now effectively inert at both ends:
-    // the floor of 20 sub-tiles only reaches the very smallest board the
-    // size slider can roll (4×4 = 16, nudged to 4×5), and the ceiling of
-    // 300 only the very largest. That's the point of the 20 — at the
-    // original 100 floor (a 10×10 board) the minimum knob grew the great
-    // majority of rolls even at its lowest setting, which quietly made the
-    // size range's lower half meaningless. The size range sets the SHAPE
-    // that gets rolled; this window then has the final say on area, so it
-    // wants a genuine off position.
-    const DEF_TILES_MIN = 20, DEF_TILES_MAX = 300;
-    const DEF_TWIN_MIN = 30, DEF_TWIN_MAX = 30;
-    const DEF_GATE_MIN = 3,  DEF_GATE_MAX = 3;
-    // 2-5 spans pairs through quints — roughly what the live game's
-    // board-size ladder produces across the sizes PotD actually uses, so
-    // the opening state is comparable to it while still being mixed.
-    const DEF_GROUP_MIN = 2, DEF_GROUP_MAX = 5;
+    // ── THE LIVE VALUES (chosen 2026-08-01 after tuning in the panel) ──
+    // These are no longer just the panel's opening positions: potd.js
+    // generates every daily puzzle from them via defaultParams(), so this
+    // block IS the PotD's difficulty configuration. Change a number here
+    // and tomorrow's puzzles change with it.
+    // The 6 floor is load-bearing, not taste (raised from 4 on 2026-08-01
+    // before v2 ever seeded a day). A floor of 4 let the area window
+    // produce 4:1 boards — 16×4, 15×4, quad 16×4 = 8×2 tiles — and those
+    // CANNOT be built at 3-4 paths. maze.js's multi-path branch is
+    // `while (bestCount < target)` with no attempt ceiling, so it never
+    // settles for fewer paths; it spins. An s4/q4 slot rolling one of
+    // those shapes would simply never generate its daily puzzle. 6 keeps
+    // the widest shape near 13×6, which builds.
+    const DEF_SIZE_MIN = 6, DEF_SIZE_MAX = 16;
+    // The area window is the DOMINANT control at these settings: a 6-16
+    // size range rolls boards from 36 to 256 sub-tiles, and this clamps
+    // almost all of them into 50-80. That's deliberate — the size range
+    // supplies the SHAPE (how square or oblong), the window pins the
+    // actual amount of board, and generation cost tracks area far more
+    // closely than it tracks either axis.
+    const DEF_TILES_MIN = 50, DEF_TILES_MAX = 80;
+    const DEF_TWIN_MIN = 11, DEF_TWIN_MAX = 42;
+    const DEF_GATE_MIN = 2,  DEF_GATE_MAX = 6;
+    const DEF_GROUP_MIN = 2, DEF_GROUP_MAX = 6;
 
     const HISTORY_MAX = 10;   // generations kept in the panel's log
 
@@ -149,6 +160,26 @@ const PotdGen2 = (() => {
             }
         }
         return { rows: r, cols: c };
+    }
+
+    // The tuned live configuration, shaped for rollParams. potd.js calls
+    // this for every daily slot, so the DEF_* block above is the single
+    // definition of PotD difficulty — the debug panel's sliders open on
+    // the same numbers, which is what makes the panel a faithful preview
+    // of production rather than a separate universe.
+    //
+    // quadMode / pathCount still come from the SLOT (s1-s4, q1-q4), not
+    // from here: those are the axis the eight daily puzzles vary along by
+    // design, and everything else is rolled per puzzle.
+    function defaultParams(quadMode, pathCount) {
+        return {
+            sizeMin:  DEF_SIZE_MIN,  sizeMax:  DEF_SIZE_MAX,
+            minTiles: DEF_TILES_MIN, maxTiles: DEF_TILES_MAX,
+            twinMin:  DEF_TWIN_MIN / 100, twinMax: DEF_TWIN_MAX / 100,
+            groupMin: DEF_GROUP_MIN, groupMax: DEF_GROUP_MAX,
+            gateMin:  DEF_GATE_MIN,  gateMax:  DEF_GATE_MAX,
+            pathCount: pathCount, quadMode: !!quadMode,
+        };
     }
 
     // Roll one puzzle's parameters from the panel's ranges.
@@ -677,6 +708,8 @@ const PotdGen2 = (() => {
         generate,
         loadIntoPlay,
         rollParams,
+        defaultParams,
+        isPortrait,
         initDebugUI,
         // Bounds + defaults, so the markup and the module can't drift
         // apart silently — index.html carries the same numbers and

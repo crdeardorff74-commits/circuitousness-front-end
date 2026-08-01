@@ -1185,11 +1185,11 @@
              sub-tile dims so each 2×2 group divides cleanly. It bounds the
              RANGE only: inside it, singular still rolls odd sizes (a 6-10
              range gives quad 6/8/10 and singular 6/7/8/9/10). -->
-        <label>Board size (<span id="pg2SizeVal">6–10 sub-tiles</span>)</label>
+        <label>Board size (<span id="pg2SizeVal">6–16 sub-tiles</span>)</label>
         <div class="pg2Range">
             <div class="pg2Track"><div class="pg2Fill" id="pg2SizeFill"></div></div>
             <input type="range" id="pg2SizeMin" min="4" max="20" step="2" value="6" aria-label="Minimum board size">
-            <input type="range" id="pg2SizeMax" min="4" max="20" step="2" value="10" aria-label="Maximum board size">
+            <input type="range" id="pg2SizeMax" min="4" max="20" step="2" value="16" aria-label="Maximum board size">
         </div>
         <!-- Area window on rows × cols, applied AFTER the size roll. Too
              big: walk the LARGER axis down, ties taken from the height.
@@ -1199,17 +1199,17 @@
              Counted in sub-tiles, the same unit the size slider uses — and
              the unit generation cost actually scales with, since the maze
              is built at sub-tile resolution regardless of mode. -->
-        <label>Total sub-tiles (<span id="pg2TilesVal">20–300</span>)</label>
+        <label>Total sub-tiles (<span id="pg2TilesVal">50–80</span>)</label>
         <div class="pg2Range">
             <div class="pg2Track"><div class="pg2Fill" id="pg2TilesFill"></div></div>
-            <input type="range" id="pg2TilesMin" min="20" max="300" step="10" value="20" aria-label="Minimum total sub-tiles">
-            <input type="range" id="pg2TilesMax" min="20" max="300" step="10" value="300" aria-label="Maximum total sub-tiles">
+            <input type="range" id="pg2TilesMin" min="20" max="300" step="10" value="50" aria-label="Minimum total sub-tiles">
+            <input type="range" id="pg2TilesMax" min="20" max="300" step="10" value="80" aria-label="Maximum total sub-tiles">
         </div>
-        <label>Twin coverage (<span id="pg2TwinVal">30%</span>)</label>
+        <label>Twin coverage (<span id="pg2TwinVal">11–42%</span>)</label>
         <div class="pg2Range">
             <div class="pg2Track"><div class="pg2Fill" id="pg2TwinFill"></div></div>
-            <input type="range" id="pg2TwinMin" min="10" max="80" value="30" aria-label="Minimum twin coverage">
-            <input type="range" id="pg2TwinMax" min="10" max="80" value="30" aria-label="Maximum twin coverage">
+            <input type="range" id="pg2TwinMin" min="10" max="80" value="11" aria-label="Minimum twin coverage">
+            <input type="range" id="pg2TwinMax" min="10" max="80" value="42" aria-label="Maximum twin coverage">
         </div>
         <!-- Twin GROUP SIZE range. Sizes are rolled per group, so groups of
              different sizes coexist on one board — the uniform sizing the
@@ -1220,17 +1220,17 @@
              most tiles this can couple is 16 × max — a low max makes high
              twin-coverage settings unreachable. The readout shows achieved
              coverage next to the requested one for exactly that reason. -->
-        <label>Twin group size (<span id="pg2GroupVal">2–5</span>)</label>
+        <label>Twin group size (<span id="pg2GroupVal">2–6</span>)</label>
         <div class="pg2Range">
             <div class="pg2Track"><div class="pg2Fill" id="pg2GroupFill"></div></div>
             <input type="range" id="pg2GroupMin" min="2" max="16" value="2" aria-label="Minimum twin group size">
-            <input type="range" id="pg2GroupMax" min="2" max="16" value="5" aria-label="Maximum twin group size">
+            <input type="range" id="pg2GroupMax" min="2" max="16" value="6" aria-label="Maximum twin group size">
         </div>
-        <label>Gates (<span id="pg2GateVal">3</span>)</label>
+        <label>Gates (<span id="pg2GateVal">2–6</span>)</label>
         <div class="pg2Range">
             <div class="pg2Track"><div class="pg2Fill" id="pg2GateFill"></div></div>
-            <input type="range" id="pg2GateMin" min="0" max="20" value="3" aria-label="Minimum gate count">
-            <input type="range" id="pg2GateMax" min="0" max="20" value="3" aria-label="Maximum gate count">
+            <input type="range" id="pg2GateMin" min="0" max="20" value="2" aria-label="Minimum gate count">
+            <input type="range" id="pg2GateMax" min="0" max="20" value="6" aria-label="Maximum gate count">
         </div>
         <label>Paths (<span id="pg2PathVal">1</span>)
             <input type="range" id="pg2PathSlider" min="1" max="4" value="1">
@@ -1299,7 +1299,7 @@
     (function() {
         var dev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
         var bust = dev ? ('?t=' + Date.now()) : '';
-        var srcs = ['config.js','cg-sdk.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd-streaks.js','potd-calendar.js','potd.js','potd-gen2.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
+        var srcs = ['config.js','cg-sdk.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd-streaks.js','potd-calendar.js','potd-gen2.js','potd.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
         for (var i = 0; i < srcs.length; i++) {
             document.write('<script src="' + srcs[i] + bust + '"><\/script>');
         }

@@ -159,7 +159,31 @@ const Potd = (() => {
         return { quadMode: slot[0] === 'q', pathCount: parseInt(slot[1], 10) };
     }
 
-    function generateDims(quadMode, pathCount) {
+    // Roll one slot's full parameter set: dims, twin coverage, twin group
+    // size range, and gate count. Everything but quadMode/pathCount (which
+    // the slot fixes) is rolled per puzzle from the tuned ranges in
+    // potd-gen2.js — THE generator since 2026-08-01.
+    //
+    // Falls back to the v1 sizing below if potd-gen2.js somehow didn't
+    // load: a puzzle built to the old rules is far better than no daily
+    // puzzle, and this module must not hard-depend on a sibling script.
+    function rollSlotParams(quadMode, pathCount) {
+        if (typeof PotdGen2 !== 'undefined' && PotdGen2.rollParams && PotdGen2.defaultParams) {
+            return PotdGen2.rollParams(PotdGen2.defaultParams(quadMode, pathCount));
+        }
+        const d = generateDimsV1(quadMode, pathCount);
+        return {
+            rows: d.h, cols: d.w,
+            twinCoverage: null, twinGroupMin: null, twinGroupMax: null,
+            gateTarget: GATE_TARGET_V1,
+            pathCount: pathCount, quadMode: quadMode,
+        };
+    }
+
+    // v1 fallback only — see rollSlotParams. Was the whole sizing story
+    // until 2026-08-01; the SIZE_* constants above serve only this.
+    const GATE_TARGET_V1 = 3;
+    function generateDimsV1(quadMode, pathCount) {
         // Per-mode physical dim range + average window. Quad sits above
         // singular so it stays the meatier mode (its sub-tile dims map to
         // half as many player-facing quad-tiles). 1-2 path slots use the
@@ -968,6 +992,11 @@ const Potd = (() => {
                 id,
                 rows: opts.rows, cols: opts.cols,
                 pathCount: opts.pathCount, quadMode: opts.quadMode,
+                // v2 per-puzzle twin overrides. null on the v1 fallback
+                // path, which the worker reads as "no override".
+                twinCoverage: opts.twinCoverage,
+                twinGroupMin: opts.twinGroupMin,
+                twinGroupMax: opts.twinGroupMax,
             });
         });
     }
@@ -979,10 +1008,13 @@ const Potd = (() => {
     // gen during play doesn't clobber the player's current puzzle.
     async function generateOneViaWorker(slot) {
         const cfg = slotConfig(slot);
-        const dims = generateDims(cfg.quadMode, cfg.pathCount);
+        const roll = rollSlotParams(cfg.quadMode, cfg.pathCount);
         const mazeSnap = await requestWorkerMaze({
-            rows: dims.h, cols: dims.w,
+            rows: roll.rows, cols: roll.cols,
             pathCount: cfg.pathCount, quadMode: cfg.quadMode,
+            twinCoverage: roll.twinCoverage,
+            twinGroupMin: roll.twinGroupMin,
+            twinGroupMax: roll.twinGroupMax,
         });
 
         const savedMazeState  = (Maze.grid && Maze.ROWS > 0) ? Maze.snapshotState() : null;
@@ -1006,7 +1038,8 @@ const Potd = (() => {
             pristineMazeSnap = Maze.snapshotState();
             if (typeof Gates !== 'undefined') {
                 const stride = cfg.quadMode ? 2 : 1;
-                Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), 3, stride);
+                Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(),
+                                  roll.gateTarget, stride);
                 gatesSnap = Gates.snapshot();
             }
         } finally {
@@ -1038,15 +1071,30 @@ const Potd = (() => {
     // pre-iteration behavior.
     async function generateOneOnMain(slot) {
         const cfg = slotConfig(slot);
-        const dims = generateDims(cfg.quadMode, cfg.pathCount);
+        const roll = rollSlotParams(cfg.quadMode, cfg.pathCount);
         Maze.setQuadMode(cfg.quadMode);
         Maze.setPathCount(cfg.pathCount);
-        Maze.setDimensions(dims.w, dims.h);
-        await Maze.init();
+        // Same per-puzzle twin overrides the worker path sends. This Maze
+        // is the LIVE one, so both must be cleared again afterwards or the
+        // next Marathon/Zen build inherits PotD's settings.
+        if (Maze.setTwinCoverageTarget) Maze.setTwinCoverageTarget(roll.twinCoverage);
+        if (Maze.setTwinGroupSizeRange) {
+            Maze.setTwinGroupSizeRange(roll.twinGroupMin, roll.twinGroupMax);
+        }
+        // (rows, cols) — rows is the SHORTER axis, since rollParams orders
+        // the pair landscape. The worker path passes the same way round.
+        Maze.setDimensions(roll.rows, roll.cols);
+        try {
+            await Maze.init();
+        } finally {
+            if (Maze.setTwinCoverageTarget) Maze.setTwinCoverageTarget(null);
+            if (Maze.setTwinGroupSizeRange) Maze.setTwinGroupSizeRange(null, null);
+        }
         let gatesSnap = null;
         if (typeof Gates !== 'undefined') {
             const stride = cfg.quadMode ? 2 : 1;
-            Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), 3, stride);
+            Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(),
+                              roll.gateTarget, stride);
             gatesSnap = Gates.snapshot();
         }
         return { maze: Maze.snapshotState(), gates: gatesSnap };
@@ -1352,6 +1400,24 @@ const Potd = (() => {
 
         Render.refit();
         Render.draw();
+
+        // PORTRAIT PRESENTATION. Boards are generated landscape, so a
+        // portrait screen would letterbox one badly — rotate it 90° instead.
+        // The SERVER's snapshot stays canonical, and a rotation is the same
+        // puzzle, so everyone still solves the same board and the
+        // leaderboard stays comparable. Always clockwise, so all portrait
+        // players agree on the orientation.
+        //
+        // Fresh starts ONLY. resumeAttempt loads a board that was saved
+        // from the live (already-rotated) state, so rotating there would
+        // double-apply. Recordings anchor AFTER this, on the board as the
+        // player actually saw it, which keeps replays self-consistent
+        // whichever orientation they were made in.
+        if (Maze.ROWS !== Maze.COLS &&
+            typeof PotdGen2 !== 'undefined' && PotdGen2.isPortrait && PotdGen2.isPortrait() &&
+            typeof Game !== 'undefined' && Game.applyBoardRotation) {
+            Game.applyBoardRotation(false);
+        }
 
         // PotD bypasses game.js's newPuzzle, so we also have to manually
         // reset the SFX diff baselines (lastPathsWon / lastWon / lastJoined
