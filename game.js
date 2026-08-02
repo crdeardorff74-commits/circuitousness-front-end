@@ -1601,7 +1601,21 @@
                 // quad mode / when the board has none — placement is then
                 // random-safe exactly as before). See Maze.alternateRouteEdges.
                 const altEdges = (Maze.alternateRouteEdges) ? Maze.alternateRouteEdges() : null;
-                Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), target, stride, altEdges);
+                // TEACHING BOARD — the run's first gated puzzle. On an
+                // ordinary board a gate is allowed to open clear of the
+                // route (random placement, random starting delta), and on
+                // this one board that's a wasted lesson: the player solves
+                // it without ever finding out gates turn, and the gate tip
+                // that just fired describes something they didn't need.
+                // Ask for a gate that genuinely severs the route instead,
+                // so one rotation is unavoidable. Zen's first gated puzzle
+                // is ZEN_GATE_START_LEVEL (its opening is gate-free);
+                // Marathon gates from puzzle 1, so its first is level 1.
+                const firstGatedLevel = (typeof Marathon !== 'undefined' && Marathon.isZenRun
+                                         && Marathon.isZenRun()) ? gateFrom : 1;
+                const teachingBoard = target > 0 && runLevel === firstGatedLevel;
+                Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), target, stride,
+                                  altEdges, teachingBoard);
                 if (Maze.recompute) Maze.recompute();
             }
             resetSfxBaselines();

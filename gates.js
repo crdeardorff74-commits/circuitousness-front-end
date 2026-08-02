@@ -13,14 +13,19 @@
  *   Gates.currentDir(gate) — (gate.solutionDir + delta) & 3
  *
  * Placement:
- *   Gates.assignGates(rows, cols, solutionEdges, target)
+ *   Gates.assignGates(rows, cols, solutionEdges, target, stride,
+ *                     preferredEdges, requireBlocking)
  *     solutionEdges = Set of canonical "r1,c1|r2,c2" keys traversed by the
  *     solved path. For each interior vertex, the set of directions whose
  *     edge isn't in solutionEdges = the gate's safe set. Each placed gate
  *     gets a random safeDir as its solutionDir. No two gates land on
  *     adjacent vertices, orthogonal or diagonal (see the spacing skip in
  *     the placement loop). delta is randomized so the player doesn't
- *     start at the solved gate state.
+ *     start at the solved gate state — though a random delta may still
+ *     leave every gate clear of the route, which is fine on an ordinary
+ *     board and useless on a teaching one, hence requireBlocking: it
+ *     guarantees at least one gate opens ACROSS the solved route, so
+ *     rotating it is mandatory. See the flag's comment on assignGates.
  *
  * Walk integration:
  *   Gates.edgeBlocked(r1, c1, r2, c2) — true if a gate currently blocks the
@@ -110,7 +115,18 @@ const Gates = (() => {
         blockedEdgesCache = null;
     }
 
-    function assignGates(rows, cols, solutionEdges, target, vertexStride, preferredEdges) {
+    // requireBlocking — the TEACHING board (the first gated puzzle of a
+    // run, see game.js). Ordinarily both the placement and the starting
+    // `delta` are random, so a gate can easily open on a vertex nowhere
+    // near the route, or already swung clear of it; the player then
+    // solves the puzzle without ever discovering that gates rotate. When
+    // this is set, placement prefers a vertex that CAN sever the solved
+    // route and `delta` is chosen so it actually does, making one gate
+    // rotation mandatory. Best-effort: if no candidate vertex touches the
+    // route (tiny board, route hugging the rim) it silently falls back to
+    // the random behavior rather than failing the board.
+    function assignGates(rows, cols, solutionEdges, target, vertexStride, preferredEdges,
+                         requireBlocking) {
         list = [];
         blockedEdgesCache = null;
         delta = 0;
@@ -131,20 +147,27 @@ const Gates = (() => {
         // gates the player must open anyway double as alternate-blockers
         // (2026-07-29; the main pressure valve for 3/4-path boards, which
         // skip the canonical equal-alternate suppression entirely).
+        //
+        // blockDirs is the complement of safeDirs: directions whose edge
+        // IS on the solved route. A gate can only ever obstruct the player
+        // if it has one — that's what requireBlocking selects for.
         const candidates = [];
         for (let vr = stride; vr < rows; vr += stride) {
             for (let vc = stride; vc < cols; vc += stride) {
                 const safeDirs = [];
+                const blockDirs = [];
                 const preferredDirs = [];
                 for (let d = 0; d < 4; d++) {
-                    if (!solutionEdges.has(edgeKeyForGateDir(vr, vc, d))) {
+                    if (solutionEdges.has(edgeKeyForGateDir(vr, vc, d))) {
+                        blockDirs.push(d);
+                    } else {
                         safeDirs.push(d);
                         if (preferredEdges && preferredEdges.has(edgeKeyForGateDir(vr, vc, d))) {
                             preferredDirs.push(d);
                         }
                     }
                 }
-                if (safeDirs.length > 0) candidates.push({ vr, vc, safeDirs, preferredDirs });
+                if (safeDirs.length > 0) candidates.push({ vr, vc, safeDirs, blockDirs, preferredDirs });
             }
         }
         // Fisher-Yates shuffle.
@@ -162,6 +185,17 @@ const Gates = (() => {
             Array.prototype.push.apply(candidates, pref);
             Array.prototype.push.apply(candidates, rest);
         }
+        // Teaching board: a second stable partition on TOP of that one, so
+        // vertices that can sever the route are considered first while the
+        // alternate-severing preference survives as the tiebreak within
+        // each group. Stable, so everything below stays as shuffled.
+        if (requireBlocking) {
+            const canBlock = candidates.filter((c) => c.blockDirs.length > 0);
+            const cannot   = candidates.filter((c) => c.blockDirs.length === 0);
+            candidates.length = 0;
+            Array.prototype.push.apply(candidates, canBlock);
+            Array.prototype.push.apply(candidates, cannot);
+        }
         // Greedy pick from the shuffled order, skipping any candidate
         // adjacent to an already-placed gate — orthogonally OR diagonally
         // (Chebyshev distance 1, i.e. the 8 surrounding vertices). A
@@ -174,6 +208,9 @@ const Gates = (() => {
         // fewer than `target` — same graceful degradation as the
         // candidate cap above.
         const count = Math.min(target, candidates.length);
+        // First placed gate that could sever the route, as
+        // { gate, blockDirs } — the anchor requireBlocking aims `delta` at.
+        let blockAnchor = null;
         for (let i = 0; i < candidates.length && list.length < count; i++) {
             const c = candidates[i];
             let tooClose = false;
@@ -188,11 +225,29 @@ const Gates = (() => {
             // pick within either pool stays random.
             const pool = (c.preferredDirs && c.preferredDirs.length > 0) ? c.preferredDirs : c.safeDirs;
             const solutionDir = pool[Math.floor(Math.random() * pool.length)];
-            list.push({ vr: c.vr, vc: c.vc, solutionDir });
+            const gate = { vr: c.vr, vc: c.vc, solutionDir };
+            list.push(gate);
+            if (!blockAnchor && c.blockDirs.length > 0) {
+                blockAnchor = { gate: gate, blockDirs: c.blockDirs };
+            }
+        }
+        if (requireBlocking && blockAnchor) {
+            // Point the anchor gate straight at the route. delta is GLOBAL
+            // (all gates share it), so this is expressed as the offset from
+            // that gate's own solutionDir. It can never come out 0: the
+            // chosen dir is on the solved route and solutionDir by
+            // construction is not, so the two always differ — which is
+            // also what guarantees the board doesn't open already-solved.
+            const dir = blockAnchor.blockDirs[
+                Math.floor(Math.random() * blockAnchor.blockDirs.length)];
+            delta = (dir - blockAnchor.gate.solutionDir + 4) & 3;
+            return;
         }
         // Randomize the global delta so the player doesn't start at the
         // gates-solved state. Per-gate solutionDirs are already random, so
         // initial orientations vary across the board regardless of delta.
+        // (Note this CAN roll 0 — an ordinary board is allowed to open with
+        // its gates already clear.)
         delta = Math.floor(Math.random() * 4);
     }
 
