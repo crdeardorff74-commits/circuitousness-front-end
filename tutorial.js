@@ -380,7 +380,12 @@ const Tutorial = (function () {
 
     // ---- step flow --------------------------------------------------------
     function bulletHtml(step) {
-        let html = t(step.key, '');
+        // tDevice: steps 1 and 7 tell the player to tap/click, and the
+        // right verb depends on the device (see i18n.js tDevice). Falls
+        // back to plain t() on a stale cached i18n.js.
+        let html = (typeof I18n !== 'undefined' && I18n.tDevice)
+            ? I18n.tDevice(step.key)
+            : t(step.key, '');
         if (step.key === 'tutorial.step1') {
             // Touch devices get the swipe-direction note; pointer (mouse)
             // devices get the left/right-click note. Plain second sentence.

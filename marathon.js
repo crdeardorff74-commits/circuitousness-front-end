@@ -1,5 +1,17 @@
 /**
- * Circuitousness — Marathon mode
+ * Circuitousness — Surge mode (internally "marathon")
+ *
+ * ⚠ NAME SPLIT: players see "⚡ Surge"; the identifier everywhere in code
+ * is still `marathon`. Renamed 2026-08-02 (the old "🏃 Marathon" described
+ * length, when the mode is really about the draining clock — and it read
+ * as a near-synonym of Zen, the mode that actually runs forever).
+ * DELIBERATELY display-only: the string 'marathon' is load-bearing in
+ * `<slug>_run_save_marathon_v1` save keys, the `mode` value on tracking
+ * rows and score submissions, leaderboard routing, and this whole
+ * `marathon.*` i18n namespace. Renaming the id would orphan every saved
+ * run and split the stats history at the rename. Only
+ * `mode.marathon.name` changed; it is kept ENGLISH in all 15 languages,
+ * like Zen.
  *
  * Top-level UI/state machine layered on top of the puzzle engine. Owns the
  * menu, in-game HUD (type / level / timer / score), game-over flow, and

@@ -120,13 +120,20 @@ const Tooltip = (function () {
         const tr = function (key, fallback) {
             return (typeof I18n !== 'undefined' && I18n.t) ? I18n.t(key) : fallback;
         };
+        // tDevice for the gate tip: it tells the player to tap/click, and
+        // the right verb depends on the device (see i18n.js tDevice).
+        const trDev = function (key, fallback) {
+            if (typeof I18n === 'undefined') return fallback;
+            if (I18n.tDevice) return I18n.tDevice(key);
+            return I18n.t ? I18n.t(key) : fallback;   // stale cached i18n.js
+        };
         if (hasTwins) {
             showOnce('twinTiles', tr('tooltip.twinTiles',
                 'Colored tiles rotate in unison with other tiles of the same color.'));
         }
         if (hasGates) {
-            showOnce('gates', tr('tooltip.gates',
-                'Red gates are circuit breakers that disrupt the flow of a path.  Click on them to rotate them out of the way.'));
+            showOnce('gates', trDev('tooltip.gates',
+                'Red gates are circuit breakers that disrupt the flow of a path.  Tap them to rotate them out of the way.'));
         }
     }
 

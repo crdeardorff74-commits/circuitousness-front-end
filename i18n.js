@@ -47,6 +47,7 @@ const I18n = (() => {
             'redirect.fallback': "Not opening? Tap here to play in this window.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Path connected — tap for a new puzzle',
+            'game.youWon.desktop':     'Path connected — click for a new puzzle',
             'hint.button':     'Hint',
             'undo.button':     'Undo',
             'reset.button':    'Reset',
@@ -55,7 +56,12 @@ const I18n = (() => {
             'menu.mode':           'MODE',
             'mode.potd.name':      '📅 Puzzle of the Day',
             'mode.potd.desc':      'Solve each puzzle as fast as you can to make the day\'s leaderboard.',
-            'mode.marathon.name':  '🏃 Marathon',
+            // Kept ENGLISH in every language, like Zen — a proper noun for
+            // the mode, not a word to translate. The KEY stays
+            // `mode.marathon.*`: 'marathon' is the internal id in save
+            // keys, tracking rows and leaderboard routing (see marathon.js
+            // header). Renamed from "🏃 Marathon" 2026-08-02.
+            'mode.marathon.name':  '⚡ Surge',
             'mode.marathon.desc':  'Solve as many puzzles as you can before time runs out.',
             'mode.practice.name':  '🧘 Zen',
             'mode.practice.desc':  'Solve as many puzzles as you like, with no time limit.',
@@ -159,7 +165,8 @@ const I18n = (() => {
             'tooltip.twinStraightLock': 'Be careful when locking straight tiles that have an elbow twin! You could be locking the twin in the wrong orientation.',
             'tooltip.firstPlay':       'Twist the tiles to connect the path and complete the circuit!',
             'tooltip.twinTiles':       'Colored tiles rotate in unison with other tiles of the same color.',
-            'tooltip.gates':           'Red gates are circuit breakers that disrupt the flow of a path.  Click on them to rotate them out of the way.',
+            'tooltip.gates':           'Red gates are circuit breakers that disrupt the flow of a path.  Tap them to rotate them out of the way.',
+            'tooltip.gates.desktop':   'Red gates are circuit breakers that disrupt the flow of a path.  Click on them to rotate them out of the way.',
             'tutorial.menuButton':     '❓ How to Solve',
             'tutorial.title':          'How to Solve',
             'tutorial.intro':          'Twist the tiles to join the path and complete the circuit:',
@@ -168,6 +175,7 @@ const I18n = (() => {
             'tutorial.done':           'Done',
             'tutorial.close':          'Close',
             'tutorial.step1':          'Tap a tile to rotate it.',
+            'tutorial.step1.desktop':  'Click a tile to rotate it.',
             'tutorial.step1Desktop':   'Right-click rotates clockwise and left-click rotates counter-clockwise.',
             'tutorial.step1Touch':     'Swipe left or up to rotate counter-clockwise, or right or down to rotate clockwise.',
             'tutorial.step2':          'If you are sure that a tile\'s orientation is correct, you can press and hold on it to lock it in place.',
@@ -176,6 +184,7 @@ const I18n = (() => {
             'tutorial.step5':          'Be careful locking a straight tile that has an elbow twin — the straight can look right while its twin is left in the wrong orientation!',
             'tutorial.step6':          'Press and hold a locked tile to unlock it.',
             'tutorial.step7':          'Tap obstructing gates to swing them out of the way — every gate rotates in unison.',
+            'tutorial.step7.desktop':  'Click obstructing gates to swing them out of the way — every gate rotates in unison.',
             'tutorial.step8':          'When the circuit is complete, it turns gold, and you will feel an overwhelming sense of accomplishment.  Take a deep breath, and try not to faint.',
             'marathon.totalTime':      'Total solve time: {t}',
             'marathon.newBest':        'New personal best — rank {r}!',
@@ -226,6 +235,7 @@ const I18n = (() => {
             'marathon.solveMoves':     'Twists: {m} · minimum: {b} = {p}% solve rate',
             'marathon.solveMovesPerfect': 'Perfect — solved in the minimum {m} twists!',
             'marathon.clickToContinue':'Tap to continue',
+            'marathon.clickToContinue.desktop': 'Click to continue',
             'marathon.watch':          'Watch',
             'marathon.stopReplay':     'Stop replay',
             'marathon.replayingHeader':'Replay: {name} · puzzle {n}/{total}',
@@ -272,6 +282,7 @@ const I18n = (() => {
             'redirect.fallback': "¿No se abre? Toca aquí para jugar en esta ventana.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Camino conectado — toca para un nuevo puzzle',
+            'game.youWon.desktop':     'Camino conectado — haz clic para un nuevo puzzle',
             'hint.button':     'Pista',
             'undo.button':     'Deshacer',
             'reset.button':    'Reiniciar',
@@ -279,7 +290,7 @@ const I18n = (() => {
             'menu.mode':           'MODO',
             'mode.potd.name':      '📅 Puzzle del Día',
             'mode.potd.desc':      'Resuelve cada puzzle lo más rápido posible para llegar a la clasificación del día.',
-            'mode.marathon.name':  '🏃 Maratón',
+            'mode.marathon.name':      '⚡ Surge',
             'mode.marathon.desc':  'Resuelve todos los puzzles que puedas antes de que se acabe el tiempo.',
             'mode.practice.name':  '🧘 Zen',
             'mode.practice.desc':  'Resuelve todos los puzzles que quieras, sin límite de tiempo.',
@@ -347,7 +358,8 @@ const I18n = (() => {
             'tooltip.twinStraightLock': '¡Ten cuidado al bloquear piezas rectas que tienen una gemela en codo! Podrías estar bloqueando la gemela en la orientación incorrecta.',
             'tooltip.firstPlay':       '¡Gira las piezas para conectar el camino y completar el circuito!',
             'tooltip.twinTiles':       'Las piezas de color giran al unísono con las demás piezas del mismo color.',
-            'tooltip.gates':           'Las puertas rojas son interruptores que cortan el flujo de un camino. Haz clic en ellas para girarlas y apartarlas.',
+            'tooltip.gates':           'Las puertas rojas son interruptores que cortan el flujo de un camino. Tócalas para girarlas y apartarlas.',
+            'tooltip.gates.desktop':   'Las puertas rojas son interruptores que cortan el flujo de un camino. Haz clic en ellas para girarlas y apartarlas.',
             'tutorial.menuButton':     '❓ Cómo resolver',
             'tutorial.title':          'Cómo resolver',
             'tutorial.intro':          'Gira las piezas para unir el camino y completar el circuito:',
@@ -356,6 +368,7 @@ const I18n = (() => {
             'tutorial.done':           'Listo',
             'tutorial.close':          'Cerrar',
             'tutorial.step1':          'Toca una pieza para girarla.',
+            'tutorial.step1.desktop':  'Haz clic en una pieza para girarla.',
             'tutorial.step1Desktop':   'El clic derecho gira en sentido horario y el clic izquierdo en sentido antihorario.',
             'tutorial.step1Touch':     'Desliza a la izquierda o hacia arriba para girar en sentido antihorario, o a la derecha o hacia abajo para girar en sentido horario.',
             'tutorial.step2':          'Si estás seguro de que la orientación de una pieza es correcta, puedes mantenerla pulsada para fijarla en su sitio.',
@@ -364,6 +377,7 @@ const I18n = (() => {
             'tutorial.step5':          '¡Ten cuidado al fijar una pieza recta que tiene una gemela en codo: la recta puede parecer correcta mientras su gemela queda en la orientación equivocada!',
             'tutorial.step6':          'Mantén pulsada una pieza fijada para desbloquearla.',
             'tutorial.step7':          'Toca las puertas que estorban para apartarlas: todas las puertas giran al unísono.',
+            'tutorial.step7.desktop':  'Haz clic en las puertas que estorban para apartarlas: todas las puertas giran al unísono.',
             'tutorial.step8':          'Cuando el circuito se completa, se vuelve dorado y sentirás una abrumadora sensación de logro. Respira hondo e intenta no desmayarte.',
             'marathon.totalTime':      'Tiempo total: {t}',
             'marathon.newBest':        '¡Nuevo récord personal — puesto {r}!',
@@ -524,6 +538,7 @@ const I18n = (() => {
             'marathon.solveMoves':     'Giros: {m} · mínimo: {b} = {p}% de eficacia',
             'marathon.solveMovesPerfect': '¡Perfecto! Resuelto con el mínimo de {m} giros',
             'marathon.clickToContinue':'Toca para continuar',
+            'marathon.clickToContinue.desktop': 'Haz clic para continuar',
             'marathon.watch':          'Ver',
             'marathon.stopReplay':     'Detener reproducción',
             'marathon.replayingHeader':'Reproducción: {name} · puzzle {n}/{total}',
@@ -570,6 +585,7 @@ const I18n = (() => {
             'redirect.fallback': "Rien ne s'ouvre ? Touchez ici pour jouer dans cette fenêtre.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Chemin connecté — appuyez pour un nouveau puzzle',
+            'game.youWon.desktop':     'Chemin connecté — cliquez pour un nouveau puzzle',
             'hint.button':     'Indice',
             'undo.button':     'Annuler',
             'reset.button':    'Recommencer',
@@ -577,7 +593,7 @@ const I18n = (() => {
             'menu.mode':           'MODE',
             'mode.potd.name':      '📅 Puzzle du Jour',
             'mode.potd.desc':      'Résolvez chaque puzzle aussi vite que possible pour figurer au classement du jour.',
-            'mode.marathon.name':  '🏃 Marathon',
+            'mode.marathon.name':      '⚡ Surge',
             'mode.marathon.desc':  'Résolvez le plus de puzzles possible avant la fin du temps.',
             'mode.practice.name':  '🧘 Zen',
             'mode.practice.desc':  'Résolvez autant de puzzles que vous voulez, sans limite de temps.',
@@ -645,7 +661,8 @@ const I18n = (() => {
             'tooltip.twinStraightLock': 'Faites attention en verrouillant des tuiles droites qui ont une jumelle en coude ! Vous pourriez verrouiller la jumelle dans le mauvais sens.',
             'tooltip.firstPlay':       'Tournez les tuiles pour relier le chemin et compléter le circuit !',
             'tooltip.twinTiles':       'Les tuiles colorées tournent à l\'unisson avec les autres tuiles de la même couleur.',
-            'tooltip.gates':           'Les portes rouges sont des disjoncteurs qui interrompent le flux d\'un chemin. Cliquez dessus pour les faire pivoter et les écarter.',
+            'tooltip.gates':           'Les portes rouges sont des disjoncteurs qui interrompent le flux d\'un chemin. Touchez-les pour les faire pivoter et les écarter.',
+            'tooltip.gates.desktop':   'Les portes rouges sont des disjoncteurs qui interrompent le flux d\'un chemin. Cliquez dessus pour les faire pivoter et les écarter.',
             'tutorial.menuButton':     '❓ Comment résoudre',
             'tutorial.title':          'Comment résoudre',
             'tutorial.intro':          'Tournez les tuiles pour relier le chemin et compléter le circuit :',
@@ -654,6 +671,7 @@ const I18n = (() => {
             'tutorial.done':           'Terminé',
             'tutorial.close':          'Fermer',
             'tutorial.step1':          'Touchez une tuile pour la faire pivoter.',
+            'tutorial.step1.desktop':  'Cliquez sur une tuile pour la faire pivoter.',
             'tutorial.step1Desktop':   'Le clic droit tourne dans le sens horaire et le clic gauche dans le sens antihoraire.',
             'tutorial.step1Touch':     'Balayez vers la gauche ou le haut pour tourner dans le sens antihoraire, ou vers la droite ou le bas pour tourner dans le sens horaire.',
             'tutorial.step2':          'Si vous êtes sûr que l\'orientation d\'une tuile est correcte, vous pouvez appuyer longuement dessus pour la verrouiller en place.',
@@ -662,6 +680,7 @@ const I18n = (() => {
             'tutorial.step5':          'Attention en verrouillant une tuile droite qui a une jumelle en coude : la droite peut sembler correcte alors que sa jumelle reste dans le mauvais sens !',
             'tutorial.step6':          'Appuyez longuement sur une tuile verrouillée pour la déverrouiller.',
             'tutorial.step7':          'Touchez les portes qui gênent pour les écarter : toutes les portes pivotent à l\'unisson.',
+            'tutorial.step7.desktop':  'Cliquez sur les portes qui gênent pour les écarter : toutes les portes pivotent à l\'unisson.',
             'tutorial.step8':          'Quand le circuit est complet, il devient doré et vous ressentirez un immense sentiment d\'accomplissement. Respirez profondément et essayez de ne pas vous évanouir.',
             'marathon.totalTime':      'Temps total : {t}',
             'marathon.newBest':        'Nouveau record personnel — rang {r} !',
@@ -822,6 +841,7 @@ const I18n = (() => {
             'marathon.solveMoves':     'Rotations : {m} · minimum : {b} = {p} % d’efficacité',
             'marathon.solveMovesPerfect': 'Parfait — résolu en {m} rotations, le minimum !',
             'marathon.clickToContinue':'Appuyez pour continuer',
+            'marathon.clickToContinue.desktop': 'Cliquez pour continuer',
             'marathon.watch':          'Regarder',
             'marathon.stopReplay':     'Arrêter la lecture',
             'marathon.replayingHeader':'Lecture : {name} · puzzle {n}/{total}',
@@ -868,6 +888,7 @@ const I18n = (() => {
             'redirect.fallback': "Öffnet sich nicht? Tippe hier, um in diesem Fenster zu spielen.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Pfad verbunden — tippe für ein neues Rätsel',
+            'game.youWon.desktop':     'Pfad verbunden — klicke für ein neues Rätsel',
             'hint.button':     'Tipp',
             'undo.button':     'Rückgängig',
             'reset.button':    'Reset',
@@ -875,7 +896,7 @@ const I18n = (() => {
             'menu.mode':           'MODUS',
             'mode.potd.name':      '📅 Rätsel des Tages',
             'mode.potd.desc':      'Löse jedes Rätsel so schnell wie möglich, um es in die heutige Bestenliste zu schaffen.',
-            'mode.marathon.name':  '🏃 Marathon',
+            'mode.marathon.name':      '⚡ Surge',
             'mode.marathon.desc':  'Löse so viele Rätsel wie möglich, bevor die Zeit abläuft.',
             'mode.practice.name':  '🧘 Zen',
             'mode.practice.desc':  'Löse so viele Rätsel wie du möchtest, ohne Zeitlimit.',
@@ -943,7 +964,8 @@ const I18n = (() => {
             'tooltip.twinStraightLock': 'Sei vorsichtig beim Sperren gerader Kacheln, die einen Winkel-Zwilling haben! Du könntest den Zwilling in der falschen Ausrichtung sperren.',
             'tooltip.firstPlay':       'Drehe die Kacheln, um den Pfad zu verbinden und den Stromkreis zu schließen!',
             'tooltip.twinTiles':       'Farbige Kacheln drehen sich im Gleichtakt mit allen anderen Kacheln derselben Farbe.',
-            'tooltip.gates':           'Rote Tore sind Schutzschalter, die den Fluss eines Pfades unterbrechen. Klicke sie an, um sie aus dem Weg zu drehen.',
+            'tooltip.gates':           'Rote Tore sind Schutzschalter, die den Fluss eines Pfades unterbrechen. Tippe sie an, um sie aus dem Weg zu drehen.',
+            'tooltip.gates.desktop':   'Rote Tore sind Schutzschalter, die den Fluss eines Pfades unterbrechen. Klicke sie an, um sie aus dem Weg zu drehen.',
             'tutorial.menuButton':     '❓ So wird gelöst',
             'tutorial.title':          'So wird gelöst',
             'tutorial.intro':          'Drehe die Kacheln, um den Pfad zu verbinden und den Stromkreis zu schließen:',
@@ -952,6 +974,7 @@ const I18n = (() => {
             'tutorial.done':           'Fertig',
             'tutorial.close':          'Schließen',
             'tutorial.step1':          'Tippe auf eine Kachel, um sie zu drehen.',
+            'tutorial.step1.desktop':  'Klicke auf eine Kachel, um sie zu drehen.',
             'tutorial.step1Desktop':   'Ein Rechtsklick dreht im Uhrzeigersinn und ein Linksklick gegen den Uhrzeigersinn.',
             'tutorial.step1Touch':     'Wische nach links oder oben, um gegen den Uhrzeigersinn zu drehen, oder nach rechts oder unten, um im Uhrzeigersinn zu drehen.',
             'tutorial.step2':          'Wenn du sicher bist, dass die Ausrichtung einer Kachel stimmt, kannst du sie gedrückt halten, um sie zu fixieren.',
@@ -960,6 +983,7 @@ const I18n = (() => {
             'tutorial.step5':          'Sei vorsichtig beim Fixieren einer geraden Kachel mit Winkel-Zwilling – die Gerade kann richtig aussehen, während ihr Zwilling in der falschen Ausrichtung bleibt!',
             'tutorial.step6':          'Halte eine fixierte Kachel gedrückt, um sie zu lösen.',
             'tutorial.step7':          'Tippe auf störende Tore, um sie aus dem Weg zu drehen – alle Tore drehen sich im Gleichklang.',
+            'tutorial.step7.desktop':  'Klicke auf störende Tore, um sie aus dem Weg zu drehen – alle Tore drehen sich im Gleichklang.',
             'tutorial.step8':          'Wenn der Schaltkreis vollständig ist, wird er golden und du wirst ein überwältigendes Gefühl des Erfolgs verspüren. Atme tief durch und versuche, nicht in Ohnmacht zu fallen.',
             'marathon.totalTime':      'Gesamtzeit: {t}',
             'marathon.newBest':        'Neuer persönlicher Rekord — Platz {r}!',
@@ -1119,6 +1143,7 @@ const I18n = (() => {
             'marathon.solveMoves':     'Drehungen: {m} · Minimum: {b} = {p} % Effizienz',
             'marathon.solveMovesPerfect': 'Perfekt — mit dem Minimum von {m} Drehungen gelöst!',
             'marathon.clickToContinue':'Tippen zum Fortfahren',
+            'marathon.clickToContinue.desktop': 'Klicken zum Fortfahren',
             'marathon.watch':          'Ansehen',
             'marathon.stopReplay':     'Wiedergabe stoppen',
             'marathon.replayingHeader':'Wiedergabe: {name} · Rätsel {n}/{total}',
@@ -1165,6 +1190,7 @@ const I18n = (() => {
             'redirect.fallback': "Não abriu? Toque aqui para jogar nesta janela.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Caminho conectado — toque para um novo puzzle',
+            'game.youWon.desktop':     'Caminho conectado — clique para um novo puzzle',
             'hint.button':     'Dica',
             'undo.button':     'Desfazer',
             'reset.button':    'Reiniciar',
@@ -1172,7 +1198,7 @@ const I18n = (() => {
             'menu.mode':           'MODO',
             'mode.potd.name':      '📅 Puzzle do Dia',
             'mode.potd.desc':      'Resolva cada puzzle o mais rápido possível para entrar no ranking do dia.',
-            'mode.marathon.name':  '🏃 Maratona',
+            'mode.marathon.name':      '⚡ Surge',
             'mode.marathon.desc':  'Resolva o maior número de puzzles possível antes que o tempo acabe.',
             'mode.practice.name':  '🧘 Zen',
             'mode.practice.desc':  'Resolva quantos puzzles quiser, sem limite de tempo.',
@@ -1240,7 +1266,8 @@ const I18n = (() => {
             'tooltip.twinStraightLock': 'Tenha cuidado ao bloquear peças retas que têm uma gêmea em cotovelo! Você pode estar bloqueando a gêmea na orientação errada.',
             'tooltip.firstPlay':       'Gire as peças para conectar o caminho e completar o circuito!',
             'tooltip.twinTiles':       'As peças coloridas giram em uníssono com as outras peças da mesma cor.',
-            'tooltip.gates':           'As portas vermelhas são disjuntores que interrompem o fluxo de um caminho. Clique nelas para girá-las para fora do caminho.',
+            'tooltip.gates':           'As portas vermelhas são disjuntores que interrompem o fluxo de um caminho. Toque nelas para girá-las para fora do caminho.',
+            'tooltip.gates.desktop':   'As portas vermelhas são disjuntores que interrompem o fluxo de um caminho. Clique nelas para girá-las para fora do caminho.',
             'tutorial.menuButton':     '❓ Como resolver',
             'tutorial.title':          'Como resolver',
             'tutorial.intro':          'Gire as peças para unir o caminho e completar o circuito:',
@@ -1249,6 +1276,7 @@ const I18n = (() => {
             'tutorial.done':           'Concluir',
             'tutorial.close':          'Fechar',
             'tutorial.step1':          'Toque numa peça para girá-la.',
+            'tutorial.step1.desktop':  'Clique numa peça para girá-la.',
             'tutorial.step1Desktop':   'O clique direito gira no sentido horário e o clique esquerdo no sentido anti-horário.',
             'tutorial.step1Touch':     'Deslize para a esquerda ou para cima para girar no sentido anti-horário, ou para a direita ou para baixo para girar no sentido horário.',
             'tutorial.step2':          'Se você tiver certeza de que a orientação de uma peça está correta, pode pressioná-la e segurá-la para travá-la no lugar.',
@@ -1257,6 +1285,7 @@ const I18n = (() => {
             'tutorial.step5':          'Cuidado ao travar uma peça reta que tem uma gêmea em cotovelo: a reta pode parecer certa enquanto a gêmea fica na orientação errada!',
             'tutorial.step6':          'Pressione e segure uma peça travada para destravá-la.',
             'tutorial.step7':          'Toque nos portões que atrapalham para afastá-los: todos os portões giram em sincronia.',
+            'tutorial.step7.desktop':  'Clique nos portões que atrapalham para afastá-los: todos os portões giram em sincronia.',
             'tutorial.step8':          'Quando o circuito é concluído, fica dourado e você sentirá uma sensação avassaladora de realização. Respire fundo e tente não desmaiar.',
             'marathon.totalTime':      'Tempo total: {t}',
             'marathon.newBest':        'Novo recorde pessoal — posição {r}!',
@@ -1416,6 +1445,7 @@ const I18n = (() => {
             'marathon.solveMoves':     'Giros: {m} · mínimo: {b} = {p}% de eficiência',
             'marathon.solveMovesPerfect': 'Perfeito — resolvido com o mínimo de {m} giros!',
             'marathon.clickToContinue':'Toque para continuar',
+            'marathon.clickToContinue.desktop': 'Clique para continuar',
             'marathon.watch':          'Assistir',
             'marathon.stopReplay':     'Parar reprodução',
             'marathon.replayingHeader':'Reprodução: {name} · puzzle {n}/{total}',
@@ -1462,6 +1492,7 @@ const I18n = (() => {
             'redirect.fallback': "開かない場合は、ここをタップしてこのウィンドウでプレイ。",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'パス接続完了 — タップで次のパズル',
+            'game.youWon.desktop':     'パス接続完了 — クリックで次のパズル',
             'hint.button':     'ヒント',
             'undo.button':     '元に戻す',
             'reset.button':    'リセット',
@@ -1469,7 +1500,7 @@ const I18n = (() => {
             'menu.mode':           'モード',
             'mode.potd.name':      '📅 今日のパズル',
             'mode.potd.desc':      'できるだけ早く各パズルを解いて今日のリーダーボードに載ろう。',
-            'mode.marathon.name':  '🏃 マラソン',
+            'mode.marathon.name':      '⚡ Surge',
             'mode.marathon.desc':  '時間切れになる前にできるだけ多くのパズルを解こう。',
             'mode.practice.name':  '🧘 禅',
             'mode.practice.desc':  '時間制限なしで、好きなだけパズルを解こう。',
@@ -1537,7 +1568,8 @@ const I18n = (() => {
             'tooltip.twinStraightLock': 'L字のツインを持つストレートタイルをロックするときは注意してください！ツインを間違った向きでロックしてしまうかもしれません。',
             'tooltip.firstPlay':       'タイルを回して道をつなぎ、回路を完成させましょう！',
             'tooltip.twinTiles':       '色付きタイルは、同じ色のタイルと一緒に回転します。',
-            'tooltip.gates':           '赤いゲートは経路の流れを遮断するブレーカーです。クリックして回転させ、道を空けましょう。',
+            'tooltip.gates':           '赤いゲートは経路の流れを遮断するブレーカーです。タップして回転させ、道を空けましょう。',
+            'tooltip.gates.desktop':   '赤いゲートは経路の流れを遮断するブレーカーです。クリックして回転させ、道を空けましょう。',
             'tutorial.menuButton':     '❓ 解き方',
             'tutorial.title':          '解き方',
             'tutorial.intro':          'タイルを回して道をつなぎ、回路を完成させましょう：',
@@ -1546,6 +1578,7 @@ const I18n = (() => {
             'tutorial.done':           '完了',
             'tutorial.close':          '閉じる',
             'tutorial.step1':          'タイルをタップすると回転します。',
+            'tutorial.step1.desktop':  'タイルをクリックすると回転します。',
             'tutorial.step1Desktop':   '右クリックで時計回り、左クリックで反時計回りに回転します。',
             'tutorial.step1Touch':     '左または上にスワイプすると反時計回り、右または下にスワイプすると時計回りに回転します。',
             'tutorial.step2':          'タイルの向きが正しいと確信したら、長押ししてその場に固定できます。',
@@ -1554,6 +1587,7 @@ const I18n = (() => {
             'tutorial.step5':          'L字のツインを持つストレートタイルを固定するときは注意してください。ストレートは正しく見えても、ツインが間違った向きのままかもしれません！',
             'tutorial.step6':          '固定したタイルを長押しすると解除できます。',
             'tutorial.step7':          '邪魔なゲートをタップして回避しましょう。すべてのゲートは一緒に回転します。',
+            'tutorial.step7.desktop':  '邪魔なゲートをクリックして回避しましょう。すべてのゲートは一緒に回転します。',
             'tutorial.step8':          '回路が完成すると金色に変わり、圧倒的な達成感に包まれます。深呼吸して、気を失わないように。',
             'marathon.totalTime':      '合計時間: {t}',
             'marathon.newBest':        '自己ベスト更新 — {r}位!',
@@ -1712,6 +1746,7 @@ const I18n = (() => {
             'marathon.solveMoves':     '{m}回で解決 · 最少は{b}回 = 効率{p}%',
             'marathon.solveMovesPerfect': 'パーフェクト! 最少の{m}回で解決!',
             'marathon.clickToContinue':'タップして続行',
+            'marathon.clickToContinue.desktop': 'クリックして続行',
             'marathon.watch':          '視聴',
             'marathon.stopReplay':     '再生停止',
             'marathon.replayingHeader':'再生: {name} · パズル{n}/{total}',
@@ -1758,6 +1793,7 @@ const I18n = (() => {
             'redirect.fallback': "열리지 않나요? 여기를 눌러 이 창에서 플레이하세요.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     '경로 연결됨 — 새 퍼즐을 보려면 탭하세요',
+            'game.youWon.desktop':     '경로 연결됨 — 새 퍼즐을 보려면 클릭하세요',
             'hint.button':     '힌트',
             'undo.button':     '실행취소',
             'reset.button':    '리셋',
@@ -1765,7 +1801,7 @@ const I18n = (() => {
             'menu.mode':           '모드',
             'mode.potd.name':      '📅 오늘의 퍼즐',
             'mode.potd.desc':      '각 퍼즐을 가능한 한 빨리 풀어 오늘의 리더보드에 오르세요.',
-            'mode.marathon.name':  '🏃 마라톤',
+            'mode.marathon.name':      '⚡ Surge',
             'mode.marathon.desc':  '시간이 다 되기 전에 가능한 많은 퍼즐을 해결하세요.',
             'mode.practice.name':  '🧘 젠',
             'mode.practice.desc':  '시간 제한 없이 원하는 만큼 퍼즐을 해결하세요.',
@@ -1833,7 +1869,8 @@ const I18n = (() => {
             'tooltip.twinStraightLock': '꺾인 모양의 쌍이 있는 직선 타일을 잠글 때는 주의하세요! 쌍을 잘못된 방향으로 잠글 수 있습니다.',
             'tooltip.firstPlay':       '타일을 돌려 경로를 잇고 회로를 완성하세요!',
             'tooltip.twinTiles':       '색이 있는 타일은 같은 색의 다른 타일과 함께 회전합니다.',
-            'tooltip.gates':           '빨간 게이트는 경로의 흐름을 차단하는 차단기입니다. 클릭해서 회전시켜 길을 비우세요.',
+            'tooltip.gates':           '빨간 게이트는 경로의 흐름을 차단하는 차단기입니다. 탭해서 회전시켜 길을 비우세요.',
+            'tooltip.gates.desktop':   '빨간 게이트는 경로의 흐름을 차단하는 차단기입니다. 클릭해서 회전시켜 길을 비우세요.',
             'tutorial.menuButton':     '❓ 푸는 방법',
             'tutorial.title':          '푸는 방법',
             'tutorial.intro':          '타일을 돌려 경로를 잇고 회로를 완성하세요:',
@@ -1842,6 +1879,7 @@ const I18n = (() => {
             'tutorial.done':           '완료',
             'tutorial.close':          '닫기',
             'tutorial.step1':          '타일을 탭하면 회전합니다.',
+            'tutorial.step1.desktop':  '타일을 클릭하면 회전합니다.',
             'tutorial.step1Desktop':   '오른쪽 클릭은 시계 방향으로, 왼쪽 클릭은 반시계 방향으로 회전합니다.',
             'tutorial.step1Touch':     '왼쪽이나 위로 쓸어넘기면 반시계 방향으로, 오른쪽이나 아래로 쓸어넘기면 시계 방향으로 회전합니다.',
             'tutorial.step2':          '타일의 방향이 맞다고 확신하면, 길게 눌러 제자리에 고정할 수 있습니다.',
@@ -1850,6 +1888,7 @@ const I18n = (() => {
             'tutorial.step5':          '꺾인 모양의 쌍이 있는 직선 타일을 고정할 때는 주의하세요. 직선은 맞아 보여도 쌍이 잘못된 방향에 남아 있을 수 있습니다!',
             'tutorial.step6':          '고정된 타일을 길게 누르면 잠금이 풀립니다.',
             'tutorial.step7':          '길을 막는 게이트를 탭해 치우세요. 모든 게이트는 함께 회전합니다.',
+            'tutorial.step7.desktop':  '길을 막는 게이트를 클릭해 치우세요. 모든 게이트는 함께 회전합니다.',
             'tutorial.step8':          '회로가 완성되면 금색으로 변하고 벅찬 성취감을 느끼게 됩니다. 심호흡을 하고, 기절하지 않도록 하세요.',
             'marathon.totalTime':      '총 시간: {t}',
             'marathon.newBest':        '개인 최고 기록 — {r}위!',
@@ -2008,6 +2047,7 @@ const I18n = (() => {
             'marathon.solveMoves':     '{m}번 돌려 해결 · 최소 {b}번 = 효율 {p}%',
             'marathon.solveMovesPerfect': '퍼펙트! 최소 {m}번 만에 해결!',
             'marathon.clickToContinue':'계속하려면 탭',
+            'marathon.clickToContinue.desktop': '계속하려면 클릭',
             'marathon.watch':          '보기',
             'marathon.stopReplay':     '재생 중지',
             'marathon.replayingHeader':'재생: {name} · 퍼즐 {n}/{total}',
@@ -2061,7 +2101,7 @@ const I18n = (() => {
             'menu.mode':           '模式',
             'mode.potd.name':      '📅 每日谜题',
             'mode.potd.desc':      '尽快解开每个谜题以登上当天的排行榜。',
-            'mode.marathon.name':  '🏃 马拉松',
+            'mode.marathon.name':      '⚡ Surge',
             'mode.marathon.desc':  '在时间用完之前尽可能多地解决谜题。',
             'mode.practice.name':  '🧘 禅',
             'mode.practice.desc':  '没有时间限制，随心所欲地解决谜题。',
@@ -2357,7 +2397,7 @@ const I18n = (() => {
             'menu.mode':           'РЕЖИМ',
             'mode.potd.name':      '📅 Головоломка дня',
             'mode.potd.desc':      'Решите каждую головоломку как можно быстрее, чтобы попасть в таблицу лидеров за день.',
-            'mode.marathon.name':  '🏃 Марафон',
+            'mode.marathon.name':      '⚡ Surge',
             'mode.marathon.desc':  'Решите как можно больше головоломок до того, как закончится время.',
             'mode.practice.name':  '🧘 Дзен',
             'mode.practice.desc':  'Решайте сколько угодно головоломок без ограничения по времени.',
@@ -2647,6 +2687,7 @@ const I18n = (() => {
             'redirect.fallback': "Non si apre? Tocca qui per giocare in questa finestra.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Percorso collegato — tocca per un nuovo puzzle',
+            'game.youWon.desktop':     'Percorso collegato — clicca per un nuovo puzzle',
             'hint.button':     'Suggerimento',
             'undo.button':     'Annulla',
             'reset.button':    'Reimposta',
@@ -2654,7 +2695,7 @@ const I18n = (() => {
             'menu.mode':           'MODALITÀ',
             'mode.potd.name':      '📅 Puzzle del Giorno',
             'mode.potd.desc':      'Risolvi ogni puzzle il più velocemente possibile per entrare nella classifica del giorno.',
-            'mode.marathon.name':  '🏃 Maratona',
+            'mode.marathon.name':      '⚡ Surge',
             'mode.marathon.desc':  'Risolvi più puzzle possibile prima che il tempo finisca.',
             'mode.practice.name':  '🧘 Zen',
             'mode.practice.desc':  'Risolvi tutti i puzzle che vuoi, senza limiti di tempo.',
@@ -2722,7 +2763,8 @@ const I18n = (() => {
             'tooltip.twinStraightLock': 'Fai attenzione quando blocchi tasselli dritti che hanno un gemello a gomito! Potresti bloccare il gemello nell\'orientamento sbagliato.',
             'tooltip.firstPlay':       'Ruota i tasselli per collegare il percorso e completare il circuito!',
             'tooltip.twinTiles':       'Le tessere colorate ruotano all\'unisono con le altre tessere dello stesso colore.',
-            'tooltip.gates':           'I cancelli rossi sono interruttori che spezzano il flusso di un percorso. Cliccaci sopra per ruotarli e toglierli di mezzo.',
+            'tooltip.gates':           'I cancelli rossi sono interruttori che spezzano il flusso di un percorso. Toccali per ruotarli e toglierli di mezzo.',
+            'tooltip.gates.desktop':   'I cancelli rossi sono interruttori che spezzano il flusso di un percorso. Cliccaci sopra per ruotarli e toglierli di mezzo.',
             'tutorial.menuButton':     '❓ Come risolvere',
             'tutorial.title':          'Come risolvere',
             'tutorial.intro':          'Ruota i tasselli per unire il percorso e completare il circuito:',
@@ -2731,6 +2773,7 @@ const I18n = (() => {
             'tutorial.done':           'Fatto',
             'tutorial.close':          'Chiudi',
             'tutorial.step1':          'Tocca un tassello per ruotarlo.',
+            'tutorial.step1.desktop':  'Clicca un tassello per ruotarlo.',
             'tutorial.step1Desktop':   'Il clic destro ruota in senso orario e il clic sinistro in senso antiorario.',
             'tutorial.step1Touch':     'Scorri a sinistra o in alto per ruotare in senso antiorario, o a destra o in basso per ruotare in senso orario.',
             'tutorial.step2':          'Se sei sicuro che l\'orientamento di un tassello sia corretto, puoi tenerlo premuto per bloccarlo in posizione.',
@@ -2739,6 +2782,7 @@ const I18n = (() => {
             'tutorial.step5':          'Attento a bloccare un tassello dritto che ha un gemello a gomito: il dritto può sembrare giusto mentre il suo gemello resta nell\'orientamento sbagliato!',
             'tutorial.step6':          'Tieni premuto un tassello bloccato per sbloccarlo.',
             'tutorial.step7':          'Tocca i cancelli che ostacolano per spostarli: tutti i cancelli ruotano all\'unisono.',
+            'tutorial.step7.desktop':  'Clicca i cancelli che ostacolano per spostarli: tutti i cancelli ruotano all\'unisono.',
             'tutorial.step8':          'Quando il circuito è completo diventa dorato e proverai un travolgente senso di realizzazione. Fai un respiro profondo e cerca di non svenire.',
             'marathon.totalTime':      'Tempo totale: {t}',
             'marathon.newBest':        'Nuovo record personale — posizione {r}!',
@@ -2897,6 +2941,7 @@ const I18n = (() => {
             'marathon.solveMoves':     'Rotazioni: {m} · minimo: {b} = {p}% di efficienza',
             'marathon.solveMovesPerfect': 'Perfetto — risolto con il minimo di {m} rotazioni!',
             'marathon.clickToContinue':'Tocca per continuare',
+            'marathon.clickToContinue.desktop': 'Clicca per continuare',
             'marathon.watch':          'Guarda',
             'marathon.stopReplay':     'Ferma riproduzione',
             'marathon.replayingHeader':'Riproduzione: {name} · puzzle {n}/{total}',
@@ -2943,6 +2988,7 @@ const I18n = (() => {
             'redirect.fallback': "Opent niet? Tik hier om in dit venster te spelen.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Pad verbonden — tik voor een nieuwe puzzel',
+            'game.youWon.desktop':     'Pad verbonden — klik voor een nieuwe puzzel',
             'hint.button':     'Hint',
             'undo.button':     'Ongedaan',
             'reset.button':    'Reset',
@@ -2950,7 +2996,7 @@ const I18n = (() => {
             'menu.mode':           'MODUS',
             'mode.potd.name':      '📅 Puzzel van de Dag',
             'mode.potd.desc':      'Los elke puzzel zo snel mogelijk op om op het scorebord van de dag te komen.',
-            'mode.marathon.name':  '🏃 Marathon',
+            'mode.marathon.name':      '⚡ Surge',
             'mode.marathon.desc':  'Los zoveel mogelijk puzzels op voordat de tijd om is.',
             'mode.practice.name':  '🧘 Zen',
             'mode.practice.desc':  'Los zoveel puzzels op als je wilt, zonder tijdslimiet.',
@@ -3018,7 +3064,8 @@ const I18n = (() => {
             'tooltip.twinStraightLock': 'Wees voorzichtig bij het vergrendelen van rechte tegels die een elleboog-tweeling hebben! Je vergrendelt de tweeling mogelijk in de verkeerde stand.',
             'tooltip.firstPlay':       'Draai de tegels om het pad te verbinden en het circuit te voltooien!',
             'tooltip.twinTiles':       'Gekleurde tegels draaien gelijktijdig met andere tegels van dezelfde kleur.',
-            'tooltip.gates':           'Rode poorten zijn stroomonderbrekers die de doorstroming van een pad blokkeren. Klik erop om ze weg te draaien.',
+            'tooltip.gates':           'Rode poorten zijn stroomonderbrekers die de doorstroming van een pad blokkeren. Tik erop om ze weg te draaien.',
+            'tooltip.gates.desktop':   'Rode poorten zijn stroomonderbrekers die de doorstroming van een pad blokkeren. Klik erop om ze weg te draaien.',
             'tutorial.menuButton':     '❓ Zo los je het op',
             'tutorial.title':          'Zo los je het op',
             'tutorial.intro':          'Draai de tegels om het pad te verbinden en het circuit te voltooien:',
@@ -3027,6 +3074,7 @@ const I18n = (() => {
             'tutorial.done':           'Klaar',
             'tutorial.close':          'Sluiten',
             'tutorial.step1':          'Tik op een tegel om hem te draaien.',
+            'tutorial.step1.desktop':  'Klik op een tegel om hem te draaien.',
             'tutorial.step1Desktop':   'Rechtsklikken draait met de klok mee en linksklikken tegen de klok in.',
             'tutorial.step1Touch':     'Veeg naar links of omhoog om tegen de klok in te draaien, of naar rechts of omlaag om met de klok mee te draaien.',
             'tutorial.step2':          'Als je zeker weet dat de stand van een tegel klopt, kun je hem ingedrukt houden om hem vast te zetten.',
@@ -3035,6 +3083,7 @@ const I18n = (() => {
             'tutorial.step5':          'Wees voorzichtig met het vastzetten van een rechte tegel die een elleboog-tweeling heeft: de rechte kan er goed uitzien terwijl zijn tweeling in de verkeerde stand blijft staan!',
             'tutorial.step6':          'Houd een vastgezette tegel ingedrukt om hem te ontgrendelen.',
             'tutorial.step7':          'Tik op hinderende poorten om ze weg te draaien — alle poorten draaien gelijktijdig.',
+            'tutorial.step7.desktop':  'Klik op hinderende poorten om ze weg te draaien — alle poorten draaien gelijktijdig.',
             'tutorial.step8':          'Als het circuit compleet is, wordt het goud en zul je een overweldigend gevoel van voldoening voelen. Haal diep adem en probeer niet flauw te vallen.',
             'marathon.totalTime':      'Totale tijd: {t}',
             'marathon.newBest':        'Nieuw persoonlijk record — rang {r}!',
@@ -3193,6 +3242,7 @@ const I18n = (() => {
             'marathon.solveMoves':     'Rotaties: {m} · minimum: {b} = {p}% efficiëntie',
             'marathon.solveMovesPerfect': 'Perfect — opgelost in het minimum van {m} rotaties!',
             'marathon.clickToContinue':'Tik om door te gaan',
+            'marathon.clickToContinue.desktop': 'Klik om door te gaan',
             'marathon.watch':          'Bekijk',
             'marathon.stopReplay':     'Stop weergave',
             'marathon.replayingHeader':'Weergave: {name} · puzzel {n}/{total}',
@@ -3239,6 +3289,7 @@ const I18n = (() => {
             'redirect.fallback': "Nie otwiera się? Dotknij tutaj, aby zagrać w tym oknie.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Ścieżka połączona — dotknij, aby uzyskać nową łamigłówkę',
+            'game.youWon.desktop':     'Ścieżka połączona — kliknij, aby uzyskać nową łamigłówkę',
             'hint.button':     'Wskazówka',
             'undo.button':     'Cofnij',
             'reset.button':    'Resetuj',
@@ -3246,7 +3297,7 @@ const I18n = (() => {
             'menu.mode':           'TRYB',
             'mode.potd.name':      '📅 Zagadka Dnia',
             'mode.potd.desc':      'Rozwiąż każdą zagadkę tak szybko, jak to możliwe, aby trafić na ranking dnia.',
-            'mode.marathon.name':  '🏃 Maraton',
+            'mode.marathon.name':      '⚡ Surge',
             'mode.marathon.desc':  'Rozwiąż jak najwięcej zagadek, zanim skończy się czas.',
             'mode.practice.name':  '🧘 Zen',
             'mode.practice.desc':  'Rozwiązuj tyle zagadek, ile chcesz, bez limitu czasu.',
@@ -3314,7 +3365,8 @@ const I18n = (() => {
             'tooltip.twinStraightLock': 'Uważaj przy blokowaniu prostych płytek, które mają bliźniaczkę w kształcie kolanka! Możesz zablokować bliźniaczkę w niewłaściwej orientacji.',
             'tooltip.firstPlay':       'Obracaj płytki, aby połączyć ścieżkę i zamknąć obwód!',
             'tooltip.twinTiles':       'Kolorowe kafelki obracają się jednocześnie z innymi kafelkami tego samego koloru.',
-            'tooltip.gates':           'Czerwone bramki to wyłączniki, które przerywają przepływ ścieżki. Kliknij je, aby obrócić je z drogi.',
+            'tooltip.gates':           'Czerwone bramki to wyłączniki, które przerywają przepływ ścieżki. Dotknij ich, aby obrócić je z drogi.',
+            'tooltip.gates.desktop':   'Czerwone bramki to wyłączniki, które przerywają przepływ ścieżki. Kliknij je, aby obrócić je z drogi.',
             'tutorial.menuButton':     '❓ Jak rozwiązać',
             'tutorial.title':          'Jak rozwiązać',
             'tutorial.intro':          'Obracaj płytki, aby połączyć ścieżkę i zamknąć obwód:',
@@ -3323,6 +3375,7 @@ const I18n = (() => {
             'tutorial.done':           'Gotowe',
             'tutorial.close':          'Zamknij',
             'tutorial.step1':          'Dotknij płytki, aby ją obrócić.',
+            'tutorial.step1.desktop':  'Kliknij płytkę, aby ją obrócić.',
             'tutorial.step1Desktop':   'Prawy przycisk obraca zgodnie z ruchem wskazówek zegara, a lewy w przeciwną stronę.',
             'tutorial.step1Touch':     'Przesuń w lewo lub w górę, aby obrócić przeciwnie do ruchu wskazówek zegara, albo w prawo lub w dół, aby obrócić zgodnie z nim.',
             'tutorial.step2':          'Jeśli masz pewność, że orientacja płytki jest poprawna, możesz nacisnąć i przytrzymać ją, aby zablokować ją na miejscu.',
@@ -3331,6 +3384,7 @@ const I18n = (() => {
             'tutorial.step5':          'Uważaj przy blokowaniu prostej płytki, która ma bliźniaczkę w kształcie kolanka: prosta może wyglądać dobrze, podczas gdy jej bliźniaczka zostaje w złej orientacji!',
             'tutorial.step6':          'Naciśnij i przytrzymaj zablokowaną płytkę, aby ją odblokować.',
             'tutorial.step7':          'Dotykaj przeszkadzających bramek, aby je odsunąć — wszystkie bramki obracają się razem.',
+            'tutorial.step7.desktop':  'Klikaj przeszkadzające bramki, aby je odsunąć — wszystkie bramki obracają się razem.',
             'tutorial.step8':          'Gdy obwód jest kompletny, staje się złoty, a Ty poczujesz przytłaczające poczucie osiągnięcia. Weź głęboki oddech i postaraj się nie zemdleć.',
             'marathon.totalTime':      'Łączny czas: {t}',
             'marathon.newBest':        'Nowy rekord życiowy — miejsce {r}!',
@@ -3489,6 +3543,7 @@ const I18n = (() => {
             'marathon.solveMoves':     'Obroty: {m} · minimum: {b} = {p}% skuteczności',
             'marathon.solveMovesPerfect': 'Perfekcyjnie — rozwiązano w minimum {m} obrotów!',
             'marathon.clickToContinue':'Dotknij, aby kontynuować',
+            'marathon.clickToContinue.desktop': 'Kliknij, aby kontynuować',
             'marathon.watch':          'Oglądaj',
             'marathon.stopReplay':     'Zatrzymaj odtwarzanie',
             'marathon.replayingHeader':'Odtwarzanie: {name} · łamigłówka {n}/{total}',
@@ -3535,6 +3590,7 @@ const I18n = (() => {
             'redirect.fallback': "Açılmıyor mu? Bu pencerede oynamak için buraya dokun.",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'Yol bağlandı — yeni bulmaca için dokun',
+            'game.youWon.desktop':     'Yol bağlandı — yeni bulmaca için tıkla',
             'hint.button':     'İpucu',
             'undo.button':     'Geri Al',
             'reset.button':    'Sıfırla',
@@ -3542,7 +3598,7 @@ const I18n = (() => {
             'menu.mode':           'MOD',
             'mode.potd.name':      '📅 Günün Bulmacası',
             'mode.potd.desc':      'Günün lider tablosuna girmek için her bulmacayı olabildiğince hızlı çöz.',
-            'mode.marathon.name':  '🏃 Maraton',
+            'mode.marathon.name':      '⚡ Surge',
             'mode.marathon.desc':  'Süre dolmadan önce mümkün olduğunca çok bulmaca çöz.',
             'mode.practice.name':  '🧘 Zen',
             'mode.practice.desc':  'Süre sınırı olmadan istediğin kadar bulmaca çöz.',
@@ -3610,7 +3666,8 @@ const I18n = (() => {
             'tooltip.twinStraightLock': 'Dirsek ikizine sahip düz karoları kilitlerken dikkatli olun! İkizi yanlış yönde kilitliyor olabilirsiniz.',
             'tooltip.firstPlay':       'Yolu birleştirmek ve devreyi tamamlamak için karoları döndürün!',
             'tooltip.twinTiles':       'Renkli karolar, aynı renkteki diğer karolarla birlikte döner.',
-            'tooltip.gates':           'Kırmızı kapılar, bir yolun akışını kesen devre kesicilerdir. Yoldan çekmek için üzerlerine tıklayın.',
+            'tooltip.gates':           'Kırmızı kapılar, bir yolun akışını kesen devre kesicilerdir. Yoldan çekmek için üzerlerine dokunun.',
+            'tooltip.gates.desktop':   'Kırmızı kapılar, bir yolun akışını kesen devre kesicilerdir. Yoldan çekmek için üzerlerine tıklayın.',
             'tutorial.menuButton':     '❓ Nasıl çözülür',
             'tutorial.title':          'Nasıl çözülür',
             'tutorial.intro':          'Yolu birleştirmek ve devreyi tamamlamak için karoları döndürün:',
@@ -3619,6 +3676,7 @@ const I18n = (() => {
             'tutorial.done':           'Bitti',
             'tutorial.close':          'Kapat',
             'tutorial.step1':          'Döndürmek için bir karoya dokunun.',
+            'tutorial.step1.desktop':  'Döndürmek için bir karoya tıklayın.',
             'tutorial.step1Desktop':   'Sağ tık saat yönünde, sol tık saat yönünün tersine döndürür.',
             'tutorial.step1Touch':     'Saat yönünün tersine döndürmek için sola veya yukarı, saat yönünde döndürmek için sağa veya aşağı kaydırın.',
             'tutorial.step2':          'Bir karonun yöneliminin doğru olduğundan eminseniz, yerine kilitlemek için ona basılı tutabilirsiniz.',
@@ -3627,6 +3685,7 @@ const I18n = (() => {
             'tutorial.step5':          'Dirsek ikizine sahip düz bir karoyu kilitlerken dikkatli olun: düz doğru görünebilir ama ikizi yanlış yönde kalmış olabilir!',
             'tutorial.step6':          'Kilitli bir karonun kilidini açmak için basılı tutun.',
             'tutorial.step7':          'Engel olan kapılara dokunarak yoldan çekin — tüm kapılar birlikte döner.',
+            'tutorial.step7.desktop':  'Engel olan kapılara tıklayarak yoldan çekin — tüm kapılar birlikte döner.',
             'tutorial.step8':          'Devre tamamlandığında altın rengine döner ve bunaltıcı bir başarı hissi duyacaksın. Derin bir nefes al ve bayılmamaya çalış.',
             'marathon.totalTime':      'Toplam süre: {t}',
             'marathon.newBest':        'Yeni kişisel rekor — sıra {r}!',
@@ -3785,6 +3844,7 @@ const I18n = (() => {
             'marathon.solveMoves':     'Döndürme: {m} · en az: {b} = %{p} verimlilik',
             'marathon.solveMovesPerfect': 'Mükemmel — en az sayı olan {m} döndürmeyle çözüldü!',
             'marathon.clickToContinue':'Devam etmek için dokun',
+            'marathon.clickToContinue.desktop': 'Devam etmek için tıkla',
             'marathon.watch':          'İzle',
             'marathon.stopReplay':     'Yeniden oynatmayı durdur',
             'marathon.replayingHeader':'Yeniden oynatma: {name} · bulmaca {n}/{total}',
@@ -3838,7 +3898,7 @@ const I18n = (() => {
             'menu.mode':           'الوضع',
             'mode.potd.name':      '📅 لغز اليوم',
             'mode.potd.desc':      'حل كل لغز بأسرع ما يمكن للوصول إلى لوحة المتصدرين لهذا اليوم.',
-            'mode.marathon.name':  '🏃 ماراثون',
+            'mode.marathon.name':      '⚡ Surge',
             'mode.marathon.desc':  'حل أكبر عدد ممكن من الألغاز قبل انتهاء الوقت.',
             'mode.practice.name':  '🧘 زِن',
             'mode.practice.desc':  'حل أكبر عدد تريده من الألغاز، دون حد زمني.',
@@ -4127,6 +4187,7 @@ const I18n = (() => {
             'redirect.fallback': "नहीं खुल रहा? इस विंडो में खेलने के लिए यहाँ टैप करें।",
             'app.title':       PROJECT_NAME,
             'game.youWon':     'पथ जुड़ा — नई पहेली के लिए टैप करें',
+            'game.youWon.desktop':     'पथ जुड़ा — नई पहेली के लिए क्लिक करें',
             'hint.button':     'संकेत',
             'undo.button':     'पूर्ववत करें',
             'reset.button':    'रीसेट',
@@ -4134,7 +4195,7 @@ const I18n = (() => {
             'menu.mode':           'मोड',
             'mode.potd.name':      '📅 आज की पहेली',
             'mode.potd.desc':      'दिन के लीडरबोर्ड पर पहुँचने के लिए जितनी जल्दी हो सके प्रत्येक पहेली हल करें।',
-            'mode.marathon.name':  '🏃 मैराथन',
+            'mode.marathon.name':      '⚡ Surge',
             'mode.marathon.desc':  'समय समाप्त होने से पहले जितनी हो सकें उतनी पहेलियाँ हल करें।',
             'mode.practice.name':  '🧘 ज़ेन',
             'mode.practice.desc':  'बिना समय सीमा के, जितनी चाहें उतनी पहेलियाँ हल करें।',
@@ -4202,7 +4263,8 @@ const I18n = (() => {
             'tooltip.twinStraightLock': 'ऐसी सीधी टाइलों को लॉक करते समय सावधान रहें जिनका कोहनी जैसा जुड़वां हो! आप जुड़वां को गलत दिशा में लॉक कर सकते हैं।',
             'tooltip.firstPlay':       'पथ को जोड़ने और सर्किट पूरा करने के लिए टाइलों को घुमाएँ!',
             'tooltip.twinTiles':       'रंगीन टाइलें उसी रंग की अन्य टाइलों के साथ एक साथ घूमती हैं।',
-            'tooltip.gates':           'लाल गेट सर्किट ब्रेकर हैं जो पथ के प्रवाह को रोक देते हैं। उन्हें रास्ते से हटाने के लिए उन पर क्लिक करें।',
+            'tooltip.gates':           'लाल गेट सर्किट ब्रेकर हैं जो पथ के प्रवाह को रोक देते हैं। उन्हें रास्ते से हटाने के लिए उन पर टैप करें।',
+            'tooltip.gates.desktop':   'लाल गेट सर्किट ब्रेकर हैं जो पथ के प्रवाह को रोक देते हैं। उन्हें रास्ते से हटाने के लिए उन पर क्लिक करें।',
             'tutorial.menuButton':     '❓ हल कैसे करें',
             'tutorial.title':          'हल कैसे करें',
             'tutorial.intro':          'पथ को जोड़ने और सर्किट पूरा करने के लिए टाइलों को घुमाएँ:',
@@ -4211,6 +4273,7 @@ const I18n = (() => {
             'tutorial.done':           'पूर्ण',
             'tutorial.close':          'बंद करें',
             'tutorial.step1':          'किसी टाइल को घुमाने के लिए उस पर टैप करें।',
+            'tutorial.step1.desktop':  'किसी टाइल को घुमाने के लिए उस पर क्लिक करें।',
             'tutorial.step1Desktop':   'दायाँ-क्लिक घड़ी की दिशा में और बायाँ-क्लिक घड़ी की विपरीत दिशा में घुमाता है।',
             'tutorial.step1Touch':     'वामावर्त घुमाने के लिए बाएँ या ऊपर स्वाइप करें, और दक्षिणावर्त घुमाने के लिए दाएँ या नीचे स्वाइप करें।',
             'tutorial.step2':          'यदि आप सुनिश्चित हैं कि किसी टाइल की दिशा सही है, तो आप उसे जगह पर लॉक करने के लिए दबाकर रख सकते हैं।',
@@ -4219,6 +4282,7 @@ const I18n = (() => {
             'tutorial.step5':          'कोहनी जैसे जुड़वां वाली सीधी टाइल को लॉक करते समय सावधान रहें: सीधी टाइल सही दिख सकती है जबकि उसका जुड़वां गलत दिशा में रह जाता है!',
             'tutorial.step6':          'लॉक की गई टाइल को अनलॉक करने के लिए दबाकर रखें।',
             'tutorial.step7':          'रास्ता रोकने वाले गेटों पर टैप करके उन्हें हटाएँ — सभी गेट एक साथ घूमते हैं।',
+            'tutorial.step7.desktop':  'रास्ता रोकने वाले गेटों पर क्लिक करके उन्हें हटाएँ — सभी गेट एक साथ घूमते हैं।',
             'tutorial.step8':          'जब परिपथ पूरा हो जाता है, तो वह सुनहरा हो जाता है और आपको उपलब्धि की जबरदस्त अनुभूति होगी। एक गहरी साँस लें, और बेहोश न होने की कोशिश करें।',
             'marathon.totalTime':      'कुल समय: {t}',
             'marathon.newBest':        'नया व्यक्तिगत सर्वश्रेष्ठ — रैंक {r}!',
@@ -4377,6 +4441,7 @@ const I18n = (() => {
             'marathon.solveMoves':     'घुमाव: {m} · न्यूनतम: {b} = {p}% दक्षता',
             'marathon.solveMovesPerfect': 'शानदार — न्यूनतम {m} घुमावों में हल किया!',
             'marathon.clickToContinue':'जारी रखने के लिए टैप करें',
+            'marathon.clickToContinue.desktop': 'जारी रखने के लिए क्लिक करें',
             'marathon.watch':          'देखें',
             'marathon.stopReplay':     'पुनः चलाना रोकें',
             'marathon.replayingHeader':'पुनः चलाना: {name} · पहेली {n}/{total}',
@@ -4431,11 +4496,56 @@ const I18n = (() => {
         return s;
     }
 
+    // ---- Pointer-aware strings -------------------------------------
+    // Some strings name a PHYSICAL ACTION the player performs, and the
+    // right word depends on the device: "tap" on a touchscreen, "click"
+    // with a mouse. Any key may carry an optional `<key>.desktop`
+    // sibling — the base string is the touch wording (the majority of
+    // our traffic) and the .desktop variant wins on a fine-pointer
+    // device when one exists. Keys with no sibling are unaffected, so
+    // adding one later is a purely additive change.
+    //
+    // Why a whole separate string rather than substituting a {tap}
+    // token into one: in several languages the verb changes more than
+    // its own word. Spanish wants "Toca una pieza" but "Haz clic EN una
+    // pieza" — the preposition moves with it — and German goes from
+    // "Tippe auf störende Tore" to "Klicke störende Tore an", a
+    // separable prefix that lands at the far end of the sentence. A
+    // token could only ever be correct for the intransitive cases.
+    //
+    // Sampled per call, not cached: a 2-in-1 laptop can gain or lose its
+    // keyboard mid-session, and the cost is one matchMedia query.
+    function isCoarsePointer() {
+        try {
+            return !!(typeof window !== 'undefined' && window.matchMedia
+                      && window.matchMedia('(pointer: coarse)').matches);
+        } catch (e) { return false; }   // no matchMedia → assume mouse
+    }
+    // t() with the device variant applied. Safe on any key.
+    //
+    // The sibling is looked up in the CURRENT language's dictionary
+    // directly, deliberately bypassing t()'s fall-back-to-English. Not
+    // every language needs one — Chinese, Russian and Arabic each use a
+    // single verb for both gestures — and going through t() would serve
+    // those players the ENGLISH desktop sentence instead of their own
+    // perfectly good base string.
+    function tDevice(key, vars) {
+        if (!isCoarsePointer()) {
+            const dict = translations[currentLang] || translations.en;
+            if (dict && dict[key + '.desktop'] !== undefined) {
+                return t(key + '.desktop', vars);
+            }
+        }
+        return t(key, vars);
+    }
+
     function applyTranslations(root) {
         const scope = root || document;
+        // tDevice, not t: markup opts in just by having a `.desktop`
+        // sibling defined, with no change to the element or this loop.
         scope.querySelectorAll('[data-i18n]').forEach((el) => {
             const key = el.getAttribute('data-i18n');
-            const text = t(key);
+            const text = tDevice(key);
             if (text !== undefined) el.innerHTML = text;
         });
         scope.querySelectorAll('[data-i18n-attr]').forEach((el) => {
@@ -4443,7 +4553,7 @@ const I18n = (() => {
             const spec = el.getAttribute('data-i18n-attr');
             spec.split(',').forEach((pair) => {
                 const [attr, key] = pair.split(':').map((s) => s.trim());
-                if (attr && key) el.setAttribute(attr, t(key));
+                if (attr && key) el.setAttribute(attr, tDevice(key));
             });
         });
     }
@@ -4465,5 +4575,8 @@ const I18n = (() => {
         applyTranslations();
     }
 
-    return { init, t, applyTranslations, setLanguage, getLanguage, getSupportedLanguages };
+    // tDevice — t() with the tap/click device variant applied. Use it for
+    // any string that names a physical action; see its comment above.
+    // data-i18n markup gets it automatically via applyTranslations.
+    return { init, t, tDevice, applyTranslations, setLanguage, getLanguage, getSupportedLanguages };
 })();
