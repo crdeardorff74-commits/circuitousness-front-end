@@ -2932,23 +2932,49 @@ const Maze = (() => {
     // completion could in principle cost less, but the generator's
     // shortcut suppression (minShortcutTwists) makes that pathological —
     // and the popup treats "player beat the floor" as perfect anyway.
-    // Mosaic arm of minSolveMoves. Every piece that carries part of a
-    // solution and sits at a non-zero offset needs min(d, 4−d) turns to come
-    // back; pieces holding only filler are never worth touching, and neither
-    // is a piece already at 0.
+    // Cheapest number of turns that brings this piece to a state
+    // indistinguishable from solved.
     //
-    // This is a LOWER bound rather than the exact figure quadMinMoves
-    // computes. quadMinMoves goes further and asks whether a rotationally
-    // symmetric quad happens to satisfy its connections at some other
-    // offset too, which can make the true cost cheaper; doing the same here
-    // means enumerating each shape's external-port signature at all four
-    // offsets, which is a bigger job than this first cut warrants. The
-    // consequence is a floor that occasionally reads a move or two high on
-    // symmetric pieces — and since the solve popup treats "player beat the
-    // floor" as perfect, erring high is the safe direction.
+    // Not simply min(offset, 4−offset): a piece can present its solved ports
+    // at more than one offset, and then the nearest of those is what a
+    // perfect solver would actually pay. A one-cell group holding a straight
+    // costs 0 at offset 2, and a cross costs 0 at every offset. Same
+    // reasoning as quadMinMoves, which honours the identical equivalence for
+    // symmetric quads — and the same reasoning the hint uses to decide a
+    // piece is not worth hinting.
+    //
+    // Walks the piece through all four offsets and compares each against the
+    // solved one; the four turns leave the grid and the offset untouched.
+    function mosaicGroupMinTurns(gi) {
+        const g = mosaicGroups[gi];
+        const scramble = g.scramble;
+        const masks = [];
+        for (let k = 0; k < 4; k++) {
+            masks.push(g.cells.map(([r, c]) => portMaskAt(grid[r][c])));
+            rotateMosaicGroup(gi, false);
+        }
+        // masks[i] is how the piece reads after i CW turns from where it
+        // stands now; solved is (4 − offset) turns away, so that entry always
+        // matches and `best` is always assigned.
+        const solved = masks[(4 - scramble) & 3];
+        let best = 4;
+        for (let i = 0; i < 4; i++) {
+            let same = true;
+            for (let j = 0; j < solved.length; j++) {
+                if (masks[i][j] !== solved[j]) { same = false; break; }
+            }
+            if (same) best = Math.min(best, Math.min(i, 4 - i));
+        }
+        return best;
+    }
+
+    // Mosaic arm of minSolveMoves. Pieces holding only filler are never worth
+    // touching — nothing lit runs through them — so only pieces carrying part
+    // of a solution are priced, each at its cheapest equivalent orientation.
     function mosaicMinMoves() {
         let total = 0;
-        for (const g of mosaicGroups) {
+        for (let gi = 0; gi < mosaicGroups.length; gi++) {
+            const g = mosaicGroups[gi];
             if (g.scramble === 0) continue;
             let carriesPath = false;
             for (const [r, c] of g.cells) {
@@ -2956,7 +2982,7 @@ const Maze = (() => {
                 if (t && t._solution !== undefined) { carriesPath = true; break; }
             }
             if (!carriesPath) continue;
-            total += Math.min(g.scramble, 4 - g.scramble);
+            total += mosaicGroupMinTurns(gi);
         }
         return total;
     }
@@ -4162,6 +4188,48 @@ const Maze = (() => {
         return dissolved;
     }
 
+    // Port set of a tile at its current rotation, as an N/E/S/W bitmask.
+    function portMaskAt(tile) {
+        let mask = 0;
+        for (const [a, b] of getConnections(tile)) mask |= (1 << a) | (1 << b);
+        return mask;
+    }
+
+    // Would snapping this piece back to its solved offset actually CHANGE
+    // anything the player can see? False means the piece is mis-rotated only
+    // on paper: every cell already presents exactly the ports it would at
+    // offset 0, so the board's connectivity through it is already the solved
+    // one and a hint spent here would rotate it without moving any path.
+    //
+    // This is the mosaic arm of a guard the other two modes already have —
+    // singular's applyHintAt port-equivalence check and quad's
+    // quadConnectionsInvariantUnderRotation. Without it a hint happily picks
+    // a one-cell group holding a STRAIGHT at offset 2, which is 2-fold
+    // symmetric and therefore already lit and already correct (reported from
+    // play, and the direct analogue of the CROSS case that prompted the
+    // singular check). Crosses are the same story at every offset, and a
+    // rotationally symmetric multi-cell piece is too.
+    //
+    // Measured by actually turning the piece rather than by reasoning about
+    // its shape: four turns are the identity (mosaic-test.js asserts it), so
+    // going to solved and continuing round to the start leaves the grid and
+    // the offset exactly as they were, and the comparison covers pieces of
+    // any shape without a symmetry table.
+    function mosaicGroupPortEquivalent(gi) {
+        const g = mosaicGroups[gi];
+        if (g.scramble === 0) return true;
+        const before = g.cells.map(([r, c]) => portMaskAt(grid[r][c]));
+        const turns = (4 - g.scramble) & 3;
+        for (let i = 0; i < turns; i++) rotateMosaicGroup(gi, false);
+        let same = true;
+        for (let i = 0; i < g.cells.length; i++) {
+            const [r, c] = g.cells[i];
+            if (portMaskAt(grid[r][c]) !== before[i]) { same = false; break; }
+        }
+        for (let i = turns; i < 4; i++) rotateMosaicGroup(gi, false);   // round trip home
+        return same;
+    }
+
     // Is any cell of this group locked (hint or player)? A lock freezes the
     // whole piece — the group is one object to the player, so letting three
     // cells of a plus turn while the fourth is pinned would be nonsense.
@@ -4525,16 +4593,22 @@ const Maze = (() => {
         // the case where the walk finds nothing (every candidate on the
         // paths already hinted or player-locked).
         //
-        // Deliberately simpler than the quad version: no port-equivalence
-        // or symmetry check, so a hint on a symmetric piece can spend a
-        // turn without visibly moving a path. That is the same class of
-        // "wasted hint" the quad code grew checks for, and the place to
-        // revisit once mosaic pieces are being played with in anger.
+        // A piece is only worth a hint if turning it would MOVE something:
+        // mosaicGroupPortEquivalent rejects pieces that are mis-rotated on
+        // paper but already present their solved ports at every cell (a
+        // symmetric piece, or a one-cell group holding a straight at offset 2
+        // or a cross at any offset). Skipping those is what the other two
+        // modes do, and skipping beats hinting-without-rotating here: a
+        // mosaic hint locks the WHOLE piece, so spending one on a piece that
+        // visibly does not move reads as the hint having done nothing.
         if (mosaicMode && mosaicIdx && mosaicGroups) {
+            const worthHinting = (gi) =>
+                gi >= 0 &&
+                mosaicGroups[gi].scramble !== 0 &&
+                !mosaicGroupLocked(gi) &&
+                !mosaicGroupPortEquivalent(gi);
             const tryGroup = (gi) => {
-                if (gi < 0) return false;
-                if (mosaicGroups[gi].scramble === 0) return false;
-                if (mosaicGroupLocked(gi)) return false;
+                if (!worthHinting(gi)) return false;
                 const [r, c] = mosaicGroups[gi].cells[0];
                 applyHintAt(r, c);
                 return true;
@@ -4546,7 +4620,7 @@ const Maze = (() => {
             }
             const candidates = [];
             for (let gi = 0; gi < mosaicGroups.length; gi++) {
-                if (mosaicGroups[gi].scramble === 0 || mosaicGroupLocked(gi)) continue;
+                if (!worthHinting(gi)) continue;
                 const carries = mosaicGroups[gi].cells.some(
                     ([r, c]) => grid[r][c]._solution !== undefined);
                 if (carries) candidates.push(gi);
