@@ -1590,18 +1590,20 @@
                 // FIRST_RUN_WARMUP_LEVELS), and a solve-count test would
                 // have spent the gate-free allowance on those and put
                 // gates on real puzzle 1. Every level below 1 is a
-                // warm-up, so `< 5` covers -2, -1, 1, 2, 3, 4 and the
-                // first gated board is real puzzle 5 — which a
-                // first-timer sees labelled #7, since their two warm-ups
-                // are counted into the displayed numbering.
-                // History: gates arrived on puzzle 3 until 2026-08-02,
-                // when the user pushed the first gate out to 5 — twins
-                // already land at 3 (TWIN_RAMP_START_LEVEL), and meeting
-                // both new mechanics on the same board was a lot at once.
+                // warm-up, so `< 3` covers -2, -1, 1, 2 and the first
+                // gated board is real puzzle 3 — exactly the schedule
+                // that predates the warm-ups.
+                // History: briefly pushed out to `< 5` (2026-08-02) to
+                // separate gates from the twins that land at 3
+                // (TWIN_RAMP_START_LEVEL), then reverted the same day —
+                // level 5 is where the auto-start run fires the
+                // "Enjoying it?" PotD nudge (marathon.js onPuzzleReady),
+                // so the first gated board arrived under a popup. Keep
+                // this off 5 unless that nudge moves too.
                 // Run-level on purpose: the fast track's quad hand-off is
                 // NOT an opening (it's level 10+), so it gets its 1 gate.
                 const zenOpening = (typeof Marathon !== 'undefined' && Marathon.isZenRun
-                                    && Marathon.isZenRun() && runLevel < 5);
+                                    && Marathon.isZenRun() && runLevel < 3);
                 const target = zenOpening ? 0 : 1 + Math.floor(growthUnits / 4);
                 // Quad mode: anchor gates at quad-corners only (every other
                 // sub-tile vertex). The prong is still one sub-tile long.

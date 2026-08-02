@@ -380,7 +380,7 @@ const MARATHON = {
     // distinguishable from a real puzzle at every site that reads
     // `level`: the twin ramp (twinScaleForLevel returns 0 below
     // TWIN_RAMP_START_LEVEL), the gate-free Zen opening (game.js keys on
-    // level < 5), and the first-run funnel's puzzle count (tracking.js
+    // level < 3), and the first-run funnel's puzzle count (tracking.js
     // firstRunPuzzleSolved is skipped for them, so the admin panel's
     // "3+ puzzles" column still means three REAL puzzles).
     //
