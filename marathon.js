@@ -355,12 +355,34 @@ const Marathon = (() => {
         goToMenu();
     }
 
+    // A HUD visibility CHANGE invalidates the canvas layout: render.js's
+    // resize reserves half the HUD's height at the top (hudReserve), so a
+    // canvas sized while the HUD was hidden reserves 0 and sits ~17px too
+    // high. Same contract music.js already honours for the Now Playing
+    // chip — whoever flips the element the canvas measures owes it a
+    // re-layout.
+    //
+    // Nothing else reliably covered this: game.js's newPuzzle only calls
+    // Render.refit() when the DIMENSIONS change, and the first-visit
+    // auto-start builds its 4×4 at the dims Render.init already set — so
+    // no refit ran, and the load-time HUD-less sizing stuck. On
+    // CrazyGames the stale sizing was then corrected by the player's
+    // FIRST CLICK (music starts → chip appears → music.js resizes),
+    // which read as the board jumping down. Diagnosed 2026-08-02 from
+    // the layout trace: hudReserve 0 → 17 across that click, with the
+    // chip's own npH identical (51) on both sides — the chip was a
+    // red herring, it just happened to trigger the resize.
     function showOnly(...els) {
         const set = new Set(els);
+        const hudWas = !!(hudEl && hudEl.classList.contains('visible'));
         [menuEl, hudEl, gameOverEl, leaderboardEl, replayHudEl, creditsPopupEl].forEach((el) => {
             if (!el) return;
             el.classList.toggle('visible', set.has(el));
         });
+        const hudNow = !!(hudEl && hudEl.classList.contains('visible'));
+        if (hudNow !== hudWas && typeof Render !== 'undefined' && Render.resize) {
+            Render.resize();
+        }
     }
 
     function clearTransition() {

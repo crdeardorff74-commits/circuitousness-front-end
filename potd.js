@@ -228,9 +228,22 @@ const Potd = (() => {
     function hideBanner() {
         if (buildBannerEl) buildBannerEl.classList.remove('visible');
     }
+    // A HUD visibility CHANGE invalidates the canvas layout — render.js
+    // reserves half the HUD's height at the top, so a board sized while
+    // the HUD was hidden sits ~17px too high. startPuzzle refits BEFORE
+    // it calls showHud (the board has to be on screen before the HUD
+    // replaces the menu), so without re-laying out here the PotD board
+    // would carry a HUD-less sizing for the whole attempt. See
+    // marathon.js's showOnly for the full diagnosis.
+    function hudVisibilityChanged(was) {
+        const now = !!(hudEl && hudEl.classList.contains('visible'));
+        if (now !== was && typeof Render !== 'undefined' && Render.resize) Render.resize();
+    }
     function showHud() {
+        const hudWas = !!(hudEl && hudEl.classList.contains('visible'));
         if (menuEl) menuEl.classList.remove('visible');
         if (hudEl)  hudEl.classList.add('visible');
+        hudVisibilityChanged(hudWas);
         // Strip any stale visual-state classes the timer container may
         // have inherited from a prior marathon run — particularly
         // `.urgent` (added by marathon when timeRemaining < 10s and
@@ -243,11 +256,15 @@ const Potd = (() => {
         }
     }
     function hideHud() {
+        const hudWas = !!(hudEl && hudEl.classList.contains('visible'));
         if (hudEl) hudEl.classList.remove('visible');
+        hudVisibilityChanged(hudWas);
     }
     function showMenu() {
+        const hudWas = !!(hudEl && hudEl.classList.contains('visible'));
         if (hudEl)  hudEl.classList.remove('visible');
         if (menuEl) menuEl.classList.add('visible');
+        hudVisibilityChanged(hudWas);
         // Restore the shared HUD HINT button to its uncapped form (plain
         // label, enabled) — every PotD exit passes through here except
         // quitToLeaderboard, which makes its own call. Without this a

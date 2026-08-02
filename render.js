@@ -582,8 +582,22 @@ const Render = (() => {
 
         canvas.style.width  = (totalW / dpr) + 'px';
         canvas.style.height = (totalH / dpr) + 'px';
-        canvas.width  = totalW;
-        canvas.height = totalH;
+        // Assigning canvas.width/height RESETS the drawing surface — the
+        // spec clears the bitmap on ANY assignment, even to the value it
+        // already holds. Plenty of resize() calls don't change the pixel
+        // dims at all: a HUD or Now Playing visibility flip only shifts
+        // marginTop, and the reserves either side often round to the same
+        // cellSize. Clearing there costs a visibly blank frame — the board
+        // winks out for an instant before draw() repaints it (reported on
+        // CG as a flicker on the first click, 2026-08-02, once the bigger
+        // 17px jump was out of the way). Only reset when the size actually
+        // changed; drawCore's own clearRect still repaints the frame, and
+        // skipping the reset leaves the previous (correct) pixels up in
+        // the meantime instead of a hole.
+        if (canvas.width !== totalW || canvas.height !== totalH) {
+            canvas.width  = totalW;
+            canvas.height = totalH;
+        }
 
         // Identity transform — coordinates passed to the canvas are device pixels.
         ctx.setTransform(1, 0, 0, 1, 0, 0);
