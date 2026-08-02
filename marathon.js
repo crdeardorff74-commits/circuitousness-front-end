@@ -1973,7 +1973,13 @@ const Marathon = (() => {
         // with the ladders.
         if (typeof Tracking !== 'undefined') {
             if (isFirstRunAutoStart) {
-                if (!isWarmupLevel(level) && Tracking.firstRunPuzzleSolved) {
+                if (isWarmupLevel(level)) {
+                    // Its own counter — see firstRunWarmupSolved. Feeds
+                    // the admin depth histogram's -2 / -1 buckets, which
+                    // separate "gave up at once" from "warmed up but
+                    // never reached a real puzzle".
+                    if (Tracking.firstRunWarmupSolved) Tracking.firstRunWarmupSolved();
+                } else if (Tracking.firstRunPuzzleSolved) {
                     Tracking.firstRunPuzzleSolved();
                 }
             } else if (Tracking.firstRunOutsideSolve) {

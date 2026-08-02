@@ -556,6 +556,13 @@ const Tracking = (function () {
                     // caught 2026-08-02 — a real 4-puzzle CG run left the
                     // Standard arm's 3+ count sitting at 1).
                     puzzles:           st.p || 0,
+                    // Warm-up solves (the 3x3 and 4x3 that open a new
+                    // player's run — front-end v1.45). Kept OUT of
+                    // `puzzles` on purpose; the server stores it in its
+                    // own column so the admin depth histogram can split
+                    // the 0 bucket into "gave up immediately" vs "warmed
+                    // up but never reached a real puzzle".
+                    warmupPuzzles:     st.w || 0,
                     howtoClicked:      !!st.howto,
                     tutorialCompleted: !!st.tut,
                     nudgeClicked:      !!st.nudge,
@@ -636,7 +643,7 @@ const Tracking = (function () {
         if (_frRead()) return;
         // `eng: 0` + no sync scheduled: recording starts now, DELIVERY
         // waits for firstRunEngaged (see the engagement-gate note above).
-        _frWrite({ p: 0, howto: 0, tut: 0, nudge: 0, daily: 0,
+        _frWrite({ p: 0, w: 0, howto: 0, tut: 0, nudge: 0, daily: 0,
                    oStart: 0, oSolve: 0, eng: 0,
                    v: forcedVariant || null, vLocked: forcedVariant ? 1 : 0,
                    rev: 1, dirty: 1 });
@@ -681,6 +688,19 @@ const Tracking = (function () {
     }
     function firstRunPuzzleSolved() {
         _frUpdate(function (st) { st.p = (st.p || 0) + 1; return true; });
+    }
+    // A WARM-UP solve (the 3x3 or the 4x3 that open the auto-start run —
+    // marathon.js FIRST_RUN_WARMUP_LEVELS). Counted separately from `p`
+    // so the funnel's "3+ puzzles" figure keeps meaning three REAL
+    // puzzles; its own use is splitting the depth histogram's 0 bucket.
+    // Capped at the number of warm-ups that exist, so a replayed or
+    // duplicated event can't inflate it past 2.
+    function firstRunWarmupSolved() {
+        _frUpdate(function (st) {
+            if ((st.w || 0) >= 2) return false;
+            st.w = (st.w || 0) + 1;
+            return true;
+        });
     }
     // Boolean setters — one tiny factory, all identical semantics.
     function _frFlag(field) {
@@ -746,6 +766,7 @@ const Tracking = (function () {
         firstRunVariant:            firstRunVariant,
         firstRunLockVariant:        firstRunLockVariant,
         firstRunPuzzleSolved:       firstRunPuzzleSolved,
+        firstRunWarmupSolved:       firstRunWarmupSolved,
         firstRunHowToClicked:       firstRunHowToClicked,
         firstRunTutorialCompleted:  firstRunTutorialCompleted,
         firstRunNudgeClicked:       firstRunNudgeClicked,
