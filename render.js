@@ -881,6 +881,21 @@ const Render = (() => {
     // edges lets the 4 sub-tiles' walls visually merge into one big tile face.
     // Returns null when not in quad mode (no edges to skip).
     function quadInnerSides(r, c) {
+        // Mosaic answers the same question for an arbitrary piece shape:
+        // which of this cell's sides face another cell of the same piece.
+        // Maze owns the layout, so it does the lookup and we just unpack
+        // the bitmask. A one-cell (singular-fill) group returns 0 and
+        // therefore behaves exactly like a singular-mode tile.
+        if (Maze.mosaicMode && Maze.mosaicInnerMask) {
+            const m = Maze.mosaicInnerMask(r, c);
+            if (!m) return null;
+            return {
+                top:    !!(m & (1 << 0)),   // N
+                right:  !!(m & (1 << 1)),   // E
+                bottom: !!(m & (1 << 2)),   // S
+                left:   !!(m & (1 << 3))    // W
+            };
+        }
         if (!Maze.quadMode) return null;
         return {
             top:    (r & 1) === 1,   // bottom row of quad → top edge faces top sibling
@@ -1746,7 +1761,24 @@ const Render = (() => {
                 keys
             });
         }
-        if (Maze.quadMode) {
+        // Mosaic: the whole piece swings about its own centre. The pivot is
+        // half-integral for even-sided pieces (a 2×2 or 4×4 turns about a
+        // lattice point) and cell-centred for odd-sided ones, which is why
+        // it comes from Maze rather than being derived here.
+        if (Maze.mosaicMode && Maze.mosaicPivot) {
+            const pivot = Maze.mosaicPivot(r, c);
+            const cells = Maze.mosaicGroupCells(r, c);
+            if (pivot) {
+                rotationAnims.push({
+                    cx: originX + pivot.col * cellSize,
+                    cy: originY + pivot.row * cellSize,
+                    deltaRad, startTime, duration: ROTATION_ANIM_MS,
+                    keys: new Set(cells.map(([cr, cc]) => cr + ',' + cc))
+                });
+            } else {
+                pushTileAnim(r, c);
+            }
+        } else if (Maze.quadMode) {
             const qr0 = Math.floor(r / 2) * 2;
             const qc0 = Math.floor(c / 2) * 2;
             pushQuadAnim(qr0, qc0);
@@ -1978,7 +2010,13 @@ const Render = (() => {
             tiles.push({ r: qr0 + 1, c: qc0     });
             tiles.push({ r: qr0 + 1, c: qc0 + 1 });
         }
-        if (Maze.quadMode) {
+        if (Maze.mosaicMode && Maze.mosaicGroupCells) {
+            // Same intent as the quad branch: pulse the whole PIECE, since
+            // that is the object the player perceives as one tile.
+            for (const [cr, cc] of Maze.mosaicGroupCells(r, c)) {
+                tiles.push({ r: cr, c: cc });
+            }
+        } else if (Maze.quadMode) {
             // Pulse spans the WHOLE clicked quad and every WHOLE partner
             // quad — not just the clicked sub-tile and the partner quads'
             // TLs — so the lock relationship reads at quad scale, matching

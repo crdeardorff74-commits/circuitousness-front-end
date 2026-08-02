@@ -368,7 +368,57 @@ const Maze = (() => {
     // quads and snap them to 0.
     let quadMode = false;
     let quadScramble = null;
-    function setQuadMode(on) { quadMode = !!on; }
+    // Setting the quad/singular mode CLEARS mosaic mode. The three groupings
+    // are mutually exclusive, and this is the one place that enforces it —
+    // far safer than asking a dozen existing callers to know about a mode
+    // that did not exist when they were written. Every caller that says
+    // "quad" or "singular" means "not mosaic", and now says so.
+    //
+    // The ordering contract that falls out: a caller wanting mosaic must set
+    // quad mode FIRST and mosaic SECOND. potd-gen2.js (buildOnMain,
+    // placeGates, loadIntoPlay) and maze-worker.js all do.
+    function setQuadMode(on) {
+        quadMode = !!on;
+        mosaicMode = false;
+    }
+
+    // Mosaic mode: the general case of quad. Instead of one fixed 2×2 group
+    // shape, the board is packed with pieces of MANY shapes — plus signs,
+    // rings, solid squares, pinwheels — each of which occupies the same
+    // cells after a quarter turn (mosaic.js owns the shape library and the
+    // packing; see its header for why that invariance constrains the legal
+    // piece sizes to 4, 5, 8, 9, 12, 13, 16). Cells no piece claimed become
+    // one-cell groups, so EVERY cell belongs to a group and singular fill
+    // needs no separate code path — it is just a group of size 1 whose
+    // rotation permutation is the identity.
+    //
+    // mosaicGroups[i] = { cells, r0, c0, n, size, single, scramble }, where
+    // `scramble` is the CW offset from solved (0..3), exactly as
+    // quadScramble[qr][qc] is for a quad. mosaicIdx[r][c] indexes into it.
+    //
+    // Quad mode is deliberately left ALONE rather than reimplemented on top
+    // of this: it is load-bearing for Marathon, PotD and every stored
+    // recording, and the 2×2 fast paths throughout this file are correct.
+    // Mosaic runs alongside it. The two are mutually exclusive — mosaic
+    // wins if both are somehow set (see the init branch order).
+    let mosaicMode   = false;
+    let mosaicGroups = null;
+    let mosaicIdx    = null;
+    // How many pieces the last mosaic build had to dissolve back into
+    // singular cells because their interiors were unsatisfiable (see
+    // solveGroupFillers). Surfaced to the debug panel: dissolution is
+    // invisible on the board — a dissolved piece just looks like an area
+    // that happened to get singular fill — so without a number there is no
+    // way to tell a packing that worked from one that mostly fell apart.
+    let lastMosaicDissolved = 0;
+    // Symmetric to setQuadMode's clearing of mosaic: turning mosaic ON turns
+    // quad OFF, so the two flags can never both be true no matter which
+    // order a caller sets them in. Turning mosaic off leaves quad alone —
+    // "not mosaic" does not imply "not quad".
+    function setMosaicMode(on) {
+        mosaicMode = !!on;
+        if (mosaicMode) quadMode = false;
+    }
     let highlighted = [];  // [{ row, col, inPort, outPort }, ...]
     let locked = new Set();// "r,c" of hint-locked tiles — cannot be rotated
     let won = false;
@@ -953,10 +1003,12 @@ const Maze = (() => {
     // Returns null in quad mode (the type-level BFS runs on the
     // SCRAMBLED grid, where positions don't match the solved layout —
     // a preference computed there would be noise) and when no
-    // alternates are found. Runs once per puzzle at gate-assignment
+    // alternates are found. Mosaic is excluded for exactly that reason:
+    // it scrambles positions too, so the BFS would be reading a layout
+    // the solved board never has. Runs once per puzzle at gate-assignment
     // time: ≤ paths × pathLen BFS passes ≈ single-digit milliseconds.
     function alternateRouteEdges() {
-        if (quadMode || !grid) return null;
+        if (quadMode || mosaicMode || !grid) return null;
         const out = new Set();
         const pairs = [[entry, exit, 0], [entry2, exit2, 1], [entry3, exit3, 2], [entry4, exit4, 3]];
         const savedEntry = entry, savedExit = exit;
@@ -1788,6 +1840,20 @@ const Maze = (() => {
             // never carry it outside quad mode.
             quadScramble: (quadMode && quadScramble)
                 ? quadScramble.map((row) => row.slice()) : null,
+            // Mosaic layout + per-piece offsets. Same mode gate and same
+            // reason as quadScramble above: a stale layout must never ride
+            // along inside a snapshot of a different mode. Deep-copied and
+            // plain-JSON throughout, because this crosses the worker
+            // boundary by structured clone and potd-gen2 round-trips it
+            // through JSON.stringify on the way into play.
+            mosaic: (mosaicMode && mosaicGroups && mosaicIdx) ? {
+                groups: mosaicGroups.map((g) => ({
+                    cells: g.cells.map((cell) => cell.slice()),
+                    r0: g.r0, c0: g.c0, n: g.n, size: g.size,
+                    single: g.single, scramble: g.scramble
+                })),
+                idx: mosaicIdx.map((row) => row.slice())
+            } : null,
             // Set of "r,c" keys for hint-locked tiles, serialized as an
             // array (Sets don't survive JSON / structured-clone of plain
             // objects). PotD's background-gen save/restore relies on this
@@ -1825,6 +1891,22 @@ const Maze = (() => {
         entry4 = s.entry4 || null;
         exit4  = s.exit4  || null;
         quadScramble = s.quadScramble ? s.quadScramble.map((row) => row.slice()) : null;
+        // Adopt the snapshot's mosaic layout, or clear it. Clearing on
+        // absence matters as much as adopting on presence — this Maze is
+        // long-lived and loads boards of every mode, so a layout left behind
+        // by the previous puzzle would otherwise be read against the new
+        // one's grid.
+        if (s.mosaic && s.mosaic.groups && s.mosaic.idx) {
+            mosaicGroups = s.mosaic.groups.map((g) => ({
+                cells: g.cells.map((cell) => cell.slice()),
+                r0: g.r0, c0: g.c0, n: g.n, size: g.size,
+                single: g.single, scramble: g.scramble | 0
+            }));
+            mosaicIdx = s.mosaic.idx.map((row) => row.slice());
+        } else {
+            mosaicGroups = null;
+            mosaicIdx = null;
+        }
         // Restore the hint-lock set if the snapshot carried one (PotD's
         // mid-play save/restore needs this). Older snapshots without the
         // `locked` field — e.g. recordings predating this addition, or
@@ -1987,6 +2069,11 @@ const Maze = (() => {
             }
             quadScramble = nq;
         }
+        // Mosaic layout rides the same map. Offsets are preserved, not
+        // negated — see remapMosaic. Note the piece SHAPES survive a board
+        // rotation unchanged, since every one of them is rotation-invariant
+        // by construction; only their positions move.
+        remapMosaic(mapCell, true, false);
         grid = ng;
         ROWS = C;
         COLS = R;
@@ -2100,6 +2187,11 @@ const Maze = (() => {
             }
             quadScramble = nq;
         }
+        // Mirroring a mosaic piece gives another rotation-invariant piece
+        // (reflection commutes with the invariance test), so the layout
+        // stays legal — but reflections conjugate rotations, so the offsets
+        // negate exactly as quadScramble's do just above.
+        remapMosaic(mapCell, false, true);
         grid = ng;
         updateHighlighted();
         return true;
@@ -2120,8 +2212,10 @@ const Maze = (() => {
         won = false;
         pathsWon = [false, false, false, false];
         quadScramble = null;
-        // Keep ROWS, COLS, pathCount, quadMode at their current values — those
-        // are configuration, not puzzle state.
+        mosaicGroups = null;
+        mosaicIdx = null;
+        // Keep ROWS, COLS, pathCount, quadMode, mosaicMode at their current
+        // values — those are configuration, not puzzle state.
     }
 
     // Yields back to the browser event loop so heavy generation doesn't
@@ -2186,6 +2280,46 @@ const Maze = (() => {
         // path count, keeping the best (most-paths) snapshot. Mirrors the
         // multi-path branch so a 2- or 3-path quad puzzle isn't silently
         // dropped to 1 path on the first lucky-but-incomplete build.
+        // Stale-layout hygiene, the lesson quadScramble taught the hard way
+        // (see snapshotState): this Maze instance is long-lived and the
+        // pre-gen worker alternates modes, so a mosaic layout left over from
+        // a previous build must not survive into a non-mosaic one. Every
+        // consumer gates on mosaicMode, but clearing here means a stale
+        // layout can never be reachable in the first place.
+        if (!mosaicMode) { mosaicGroups = null; mosaicIdx = null; }
+
+        // Mosaic mode. Same strict retry contract as quad — the requested
+        // path count is a hard promise, so keep building at these dims until
+        // it is met — and the same reason for skipping canonical-uniqueness
+        // and twins: both assume tiles rotate independently, which is false
+        // once cells are grouped. Checked BEFORE quadMode so the two can
+        // never both fire; callers are expected to set only one.
+        if (mosaicMode) {
+            let bestSnapshot = null;
+            let bestCount = 0;
+            const target = pathCount;
+            const ATTEMPTS_PER_PASS = pathCount === 4 ? 10000 : (pathCount === 3 ? 400 : (pathCount === 2 ? 20 : 8));
+            while (bestCount < target) {
+                for (let attempt = 0; attempt < ATTEMPTS_PER_PASS; attempt++) {
+                    await yieldToBrowser();
+                    if (abortFlag) return false;
+                    if (!buildPuzzle(startCap)) continue;
+                    const got = entry4 ? 4 : (entry3 ? 3 : (entry2 ? 2 : 1));
+                    if (got > bestCount) {
+                        bestCount = got;
+                        bestSnapshot = snapshotState();
+                    }
+                    if (got >= target) break;
+                }
+            }
+            if (bestSnapshot) restoreState(bestSnapshot);
+            locked = new Set();
+            buildMosaicLayout();
+            lastMosaicDissolved = scrambleMosaic();
+            finalizeStartScramble();
+            return true;
+        }
+
         if (quadMode) {
             let bestSnapshot = null;
             let bestCount = 0;
@@ -2519,7 +2653,36 @@ const Maze = (() => {
     // is back at its original position with rotation = _solution, walk, then
     // restore via snapshotState/restoreState. quadScramble is saved separately
     // because restoreState doesn't currently round-trip it.
+    // Mosaic counterpart of the quad un-scramble dance. Mosaic scrambles
+    // positions as well as rotations — that is the defining property of a
+    // grouped mode — so any read of the SOLVED board has to undo it first.
+    // Backing every group out by (4 - scramble) turns lands the whole board
+    // on its solved layout; restoreState puts the player's board back.
+    //
+    // mosaicIdx and each group's cell list survive untouched, because a
+    // group's footprint is rotation-invariant: only WHICH tile sits in each
+    // of its cells changes, never which cells it owns. That is why this
+    // needs no positional remap while the quad dance needs none either.
+    function withMosaicSolved(fn) {
+        if (!mosaicMode || !mosaicIdx || !mosaicGroups) return fn();
+        const snap = snapshotState();
+        const saved = mosaicGroups.map((g) => g.scramble);
+        try {
+            for (let gi = 0; gi < mosaicGroups.length; gi++) {
+                const turns = (4 - mosaicGroups[gi].scramble) & 3;
+                for (let i = 0; i < turns; i++) rotateMosaicGroup(gi, false);
+            }
+            return fn();
+        } finally {
+            restoreState(snap);
+            for (let gi = 0; gi < mosaicGroups.length; gi++) {
+                mosaicGroups[gi].scramble = saved[gi];
+            }
+        }
+    }
+
     function solutionEdges() {
+        if (mosaicMode && mosaicIdx) return withMosaicSolved(walkSolutionEdges);
         if (!quadMode || !quadScramble) return walkSolutionEdges();
         const snap = snapshotState();
         const savedQuadScramble = quadScramble.map((row) => row.slice());
@@ -2577,6 +2740,7 @@ const Maze = (() => {
     // so the walk follows the SOLVED grid even when the player has the
     // quads scrambled; state is restored before returning.
     function solutionPaths() {
+        if (mosaicMode && mosaicIdx) return withMosaicSolved(walkAllSolutionPaths);
         if (!quadMode || !quadScramble) return walkAllSolutionPaths();
         const snap = snapshotState();
         const savedQuadScramble = quadScramble.map((row) => row.slice());
@@ -2768,9 +2932,40 @@ const Maze = (() => {
     // completion could in principle cost less, but the generator's
     // shortcut suppression (minShortcutTwists) makes that pathological —
     // and the popup treats "player beat the floor" as perfect anyway.
+    // Mosaic arm of minSolveMoves. Every piece that carries part of a
+    // solution and sits at a non-zero offset needs min(d, 4−d) turns to come
+    // back; pieces holding only filler are never worth touching, and neither
+    // is a piece already at 0.
+    //
+    // This is a LOWER bound rather than the exact figure quadMinMoves
+    // computes. quadMinMoves goes further and asks whether a rotationally
+    // symmetric quad happens to satisfy its connections at some other
+    // offset too, which can make the true cost cheaper; doing the same here
+    // means enumerating each shape's external-port signature at all four
+    // offsets, which is a bigger job than this first cut warrants. The
+    // consequence is a floor that occasionally reads a move or two high on
+    // symmetric pieces — and since the solve popup treats "player beat the
+    // floor" as perfect, erring high is the safe direction.
+    function mosaicMinMoves() {
+        let total = 0;
+        for (const g of mosaicGroups) {
+            if (g.scramble === 0) continue;
+            let carriesPath = false;
+            for (const [r, c] of g.cells) {
+                const t = grid[r] && grid[r][c];
+                if (t && t._solution !== undefined) { carriesPath = true; break; }
+            }
+            if (!carriesPath) continue;
+            total += Math.min(g.scramble, 4 - g.scramble);
+        }
+        return total;
+    }
+
     function minSolveMoves() {
         let total = 0;
-        if (quadMode && quadScramble) {
+        if (mosaicMode && mosaicGroups) {
+            total += mosaicMinMoves();
+        } else if (quadMode && quadScramble) {
             total += quadMinMoves();
         } else {
             const seen = new Set();
@@ -3051,6 +3246,41 @@ const Maze = (() => {
         if (entry3 && exit3) pathIdxs.push(2);
         if (entry4 && exit4) pathIdxs.push(3);
 
+        // Mosaic: quota is counted in GROUPS carrying the path, not cells.
+        // Rotating an individual cell here would be a correctness bug, not
+        // just a stylistic one — a cell can only ever move with its piece,
+        // so a lone twist would put the board in a state no sequence of
+        // player moves can undo.
+        if (mosaicMode && mosaicIdx) {
+            for (const p of pathIdxs) {
+                const gis = new Set();
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        if (cellIsOnPath(r, c, p)) gis.add(mosaicGroupIndex(r, c));
+                    }
+                }
+                const groupList = [...gis].filter((gi) => gi >= 0);
+                const n = groupList.length;
+                if (n === 0) continue;
+                const untouched = groupList.filter((gi) => mosaicGroups[gi].scramble === 0);
+                const quota = Math.min(n, Math.max(2, Math.ceil(n * MIN_PATH_SCRAMBLE_FRACTION)));
+                let need = quota - (n - untouched.length);
+                if (need <= 0) continue;
+                for (const gi of shuffle(untouched)) {
+                    if (need <= 0) break;
+                    // 1-3 turns, honouring the terminal-lit rule. A group
+                    // with no qualifying turn is skipped WITHOUT counting
+                    // against the quota — same convention as quad.
+                    const pool = allowedMosaicTurns(gi).filter((t) => t !== 0);
+                    if (pool.length === 0) continue;
+                    const turns = pool[Math.floor(Math.random() * pool.length)];
+                    for (let t = 0; t < turns; t++) rotateMosaicGroup(gi, false);
+                    need--;
+                }
+            }
+            return;
+        }
+
         if (quadMode) {
             if (!quadScramble) return;
             for (const p of pathIdxs) {
@@ -3197,8 +3427,14 @@ const Maze = (() => {
                 const key = row + ',' + col;
                 if (seen.has(key)) return;
                 seen.add(key);
-                if (!quadMode && endpoints.has(key)) return;
-                if (!quadMode && grid[row][col].type === T_CROSS) return;
+                // Mosaic joins quad in being exempt from both exclusions,
+                // and for the same reason: turning a piece permutes which
+                // cell sits where, so an endpoint still moves (it just has
+                // to keep its notch lit, which allowedMosaicTurns enforces)
+                // and a cross is no longer a rotational no-op.
+                const grouped = quadMode || mosaicMode;
+                if (!grouped && endpoints.has(key)) return;
+                if (!grouped && grid[row][col].type === T_CROSS) return;
                 cells.push({ row, col });
             };
             if (wonIdx >= 0) {
@@ -3284,7 +3520,13 @@ const Maze = (() => {
                         const alt = (t.rotation === a) ? b : a;
                         if (alt !== t.rotation) flips.push({ row: ep.row, col: ep.col, rot: alt });
                     }
-                    if (flips.length > 0) {
+                    // Mosaic must never take this branch: it writes a single
+                    // tile's rotation directly, which is precisely the move
+                    // no player can make once cells are grouped. The general
+                    // candidate list below is never empty in mosaic mode
+                    // anyway (nothing is excluded from it), so skipping the
+                    // last resort costs nothing.
+                    if (flips.length > 0 && !mosaicMode) {
                         const f = flips[Math.floor(Math.random() * flips.length)];
                         const t = grid[f.row][f.col];
                         const turns = (f.rot - t.rotation) & 3;
@@ -3303,7 +3545,18 @@ const Maze = (() => {
             }
             if (cells.length === 0) return; // nothing safe to touch — ship as-is
             const cell = cells[Math.floor(Math.random() * cells.length)];
-            if (quadMode && quadScramble) {
+            if (mosaicMode && mosaicIdx) {
+                // 1-3 extra turns on the piece containing the cell. Endpoint
+                // pieces honour the terminal-lit rule; a piece with no
+                // qualifying turn is left alone and the next iteration picks
+                // a different cell.
+                const gi = mosaicGroupIndex(cell.row, cell.col);
+                if (gi < 0) continue;
+                const pool = allowedMosaicTurns(gi).filter((t) => t !== 0);
+                if (pool.length === 0) continue;
+                const turns = pool[Math.floor(Math.random() * pool.length)];
+                for (let i = 0; i < turns; i++) rotateMosaicGroup(gi, false);
+            } else if (quadMode && quadScramble) {
                 // 1-3 extra turns on the quad containing the cell, the
                 // whole twin group in lockstep (mirrors scrambleQuads).
                 // Endpoint quads honor the terminal-lit rule: only turns
@@ -3616,8 +3869,354 @@ const Maze = (() => {
         }
     }
 
+    // ══ MOSAIC MODE ═══════════════════════════════════════════════════
+    // Everything below is the mosaic counterpart of the quad block above.
+    // The shape of the flow is identical — build the maze at sub-tile
+    // resolution exactly as singular mode does, THEN group cells, fix the
+    // group interiors, then scramble each group — which is what makes
+    // mosaic cheap to add: no generation code changes at all.
+
+    // Group index of a cell, or -1 outside mosaic mode. Every in-bounds
+    // cell has a group once mosaicIdx exists (pack() guarantees total
+    // coverage), so a -1 from this in mosaic mode means "no layout yet".
+    function mosaicGroupIndex(r, c) {
+        if (!mosaicMode || !mosaicIdx) return -1;
+        const row = mosaicIdx[r];
+        if (!row) return -1;
+        const gi = row[c];
+        return (gi == null || gi < 0) ? -1 : gi;
+    }
+    function mosaicGroupOf(r, c) {
+        const gi = mosaicGroupIndex(r, c);
+        return gi < 0 ? null : mosaicGroups[gi];
+    }
+
+    // Which of a cell's four sides face another cell of the SAME group, as
+    // a bitmask over N/E/S/W. These are the "interior" sides: two cells on
+    // either side of one always move together, so a port mismatch across an
+    // interior side is a dead end the player can never rotate away. Every
+    // side of a one-cell group is exterior, which is exactly why singular
+    // fill needs no interior repair.
+    //
+    // The renderer uses the same notion to decide which bevels to skip so a
+    // piece reads as one object rather than a cluster of tiles.
+    function mosaicInnerMask(r, c) {
+        const gi = mosaicGroupIndex(r, c);
+        if (gi < 0) return 0;
+        let mask = 0;
+        for (const p of [N, E, S, W]) {
+            const d = DELTA[p];
+            const nr = r + d.dr, nc = c + d.dc;
+            if (!inBounds(nr, nc)) continue;
+            if (mosaicIdx[nr][nc] === gi) mask |= (1 << p);
+        }
+        return mask;
+    }
+
+    // The seven distinct port sets a tile can present: two straights, four
+    // elbows, one cross. Derived from BASE_CONNECTIONS rather than typed out
+    // so a future tile type joins the mosaic solver for free.
+    const MOSAIC_PORT_SETS = (function () {
+        const out = [];
+        for (const type of [T_STRAIGHT, T_ELBOW, T_CROSS]) {
+            const seen = new Set();
+            for (let r = 0; r < 4; r++) {
+                let mask = 0;
+                for (const [a, b] of BASE_CONNECTIONS[type]) {
+                    mask |= (1 << rot(a, r)) | (1 << rot(b, r));
+                }
+                if (seen.has(mask)) continue;   // symmetric rotation — same shape
+                seen.add(mask);
+                out.push({ type: type, rotation: r, mask: mask });
+            }
+        }
+        return out;
+    })();
+
+    // Solve one group's filler tiles so no interior side carries a dead end.
+    //
+    // This REPLACES quad's fixDeadEnds/breakSymmetricFillerQuads repair pair
+    // with a constructive constraint solve, because repair does not
+    // generalise: quad's "convert the offender to an outward-facing elbow"
+    // move assumes every sub-tile has exactly two exterior sides, and a cell
+    // in the middle of a 3×3 solid has none.
+    //
+    // The constraint is simply: for two adjacent cells of one group, either
+    // both have the shared port or neither does. Path tiles (_solution set)
+    // are FIXED — they are the puzzle — so they enter as constants; note a
+    // path tile can legitimately point INTO a filler, because a path cross
+    // carries a decoy lane alongside its solution lane. Filler cells with no
+    // interior sides are left untouched: nothing constrains them.
+    //
+    // Most-constrained-first ordering plus immediate consistency checking
+    // makes the backtracking search finish instantly at these sizes (≤16
+    // cells, 7 options each). NODE_CAP is a safety net, not a working limit.
+    //
+    // A group CAN be unsatisfiable, and not rarely. The common shape is a
+    // filler POCKET: a cell whose interior neighbours are path tiles that
+    // all decline to point at it, leaving it one free side or none. Since
+    // every tile has at least two ports, a cell with fewer than two usable
+    // sides cannot be filled at all. (Observed on a 4×4 solid piece laid
+    // over a dense path region — three path neighbours, one exterior side.)
+    //
+    // Returns TRUE only if it fully succeeded, and writes nothing on
+    // failure, so the caller can dissolve the piece instead of shipping a
+    // board with a dead end welded into it. Dissolving costs one mosaic
+    // piece; the alternative — a least-bad assignment — costs a pipe that
+    // visibly runs into a blank neighbour and can never be rotated away.
+    const MOSAIC_NODE_CAP = 20000;
+    function solveGroupFillers(g, gi) {
+        const opposite = (p) => (p + 2) & 3;
+
+        // Cells we get to choose, most-constrained first.
+        const vars = [];
+        for (const [r, c] of g.cells) {
+            if (grid[r][c]._solution !== undefined) continue;
+            const inner = mosaicInnerMask(r, c);
+            if (inner === 0) continue;
+            let count = 0;
+            for (const p of [N, E, S, W]) if (inner & (1 << p)) count++;
+            vars.push({ r: r, c: c, inner: inner, count: count });
+        }
+        if (vars.length === 0) return true;
+        vars.sort((a, b) => b.count - a.count);
+        const slotOf = new Map();
+        vars.forEach((v, i) => slotOf.set(v.r + ',' + v.c, i));
+
+        // Precompute each variable's interior neighbours, split into the
+        // ones already fixed (path tiles) and the ones we are also solving.
+        for (const v of vars) {
+            v.fixed = [];    // { port, required }
+            v.links = [];    // { port, slot }
+            for (const p of [N, E, S, W]) {
+                if (!(v.inner & (1 << p))) continue;
+                const d = DELTA[p];
+                const nr = v.r + d.dr, nc = v.c + d.dc;
+                const slot = slotOf.get(nr + ',' + nc);
+                if (slot === undefined) {
+                    v.fixed.push({ port: p, required: tileHasPort(grid[nr][nc], opposite(p)) });
+                } else {
+                    v.links.push({ port: p, slot: slot });
+                }
+            }
+        }
+
+        const chosen = new Array(vars.length).fill(null);
+        let nodes = 0;
+
+        // Is `cand` consistent with everything decided so far for vars[i]?
+        function consistent(i, cand) {
+            const v = vars[i];
+            for (const f of v.fixed) {
+                if (!!(cand.mask & (1 << f.port)) !== f.required) return false;
+            }
+            for (const l of v.links) {
+                const other = chosen[l.slot];
+                if (!other) continue;   // not decided yet — constrained later
+                const mine  = !!(cand.mask & (1 << l.port));
+                const theirs = !!(other.mask & (1 << opposite(l.port)));
+                if (mine !== theirs) return false;
+            }
+            return true;
+        }
+
+        function search(i) {
+            if (i === vars.length) return true;
+            if (++nodes > MOSAIC_NODE_CAP) return false;
+            // Shuffled candidates are what give mosaic filler its variety —
+            // without it every board would show the same tile in the same
+            // spot, which is how quad's all-elbow monotony problem started.
+            for (const cand of shuffle(MOSAIC_PORT_SETS)) {
+                if (!consistent(i, cand)) continue;
+                chosen[i] = cand;
+                if (search(i + 1)) return true;
+                chosen[i] = null;
+            }
+            return false;
+        }
+
+        if (!search(0)) return false;   // caller dissolves; grid untouched
+
+        for (let i = 0; i < vars.length; i++) {
+            const v = vars[i], cand = chosen[i];
+            grid[v.r][v.c].type     = cand.type;
+            grid[v.r][v.c].rotation = cand.rotation;
+        }
+        return true;
+    }
+
+    // Break a piece back down into one-cell singular groups. Used when its
+    // interior cannot be satisfied (see solveGroupFillers).
+    //
+    // The whole piece goes, not just the offending cell: removing one cell
+    // from a shape destroys the rotation invariance that makes the rest of
+    // it a legal piece at all, so a partial dissolve would leave something
+    // that cannot be rotated.
+    //
+    // Index gi is REUSED for the first cell rather than spliced out, so
+    // indices already handed to mosaicIdx stay valid and a caller iterating
+    // by index is undisturbed. The appended one-cell groups are skipped by
+    // that loop anyway (n === 1 needs no interior solve).
+    function dissolveMosaicGroup(gi) {
+        const cells = mosaicGroups[gi].cells;
+        const single = (r, c) => ({
+            cells: [[r, c]], r0: r, c0: c, n: 1, size: 1, single: true, scramble: 0
+        });
+        mosaicGroups[gi] = single(cells[0][0], cells[0][1]);
+        for (let i = 1; i < cells.length; i++) {
+            const [r, c] = cells[i];
+            mosaicIdx[r][c] = mosaicGroups.length;
+            mosaicGroups.push(single(r, c));
+        }
+    }
+
+    // Roll a fresh packing for the CURRENT dimensions and adopt it.
+    function buildMosaicLayout() {
+        const packed = Mosaic.pack(ROWS, COLS, {});
+        mosaicGroups = packed.groups.map((g) => ({
+            cells: g.cells, r0: g.r0, c0: g.c0,
+            n: g.n, size: g.size, single: g.single, scramble: 0
+        }));
+        mosaicIdx = packed.idx;
+    }
+
+    // Rotate one group a quarter turn. Because every shape maps onto its own
+    // footprint, each cell's image is another cell of the SAME group — so
+    // reading all four (or nine, or sixteen) tiles out and writing them back
+    // never touches a cell outside the piece, and no other group can be
+    // disturbed. Each tile's own rotation moves with it, exactly as in
+    // rotateQuad.
+    function rotateMosaicGroup(gi, ccw) {
+        const g = mosaicGroups[gi];
+        const delta = ccw ? 3 : 1;
+        if (g.n > 1) {
+            const moved = [];
+            for (const [r, c] of g.cells) {
+                const dest = Mosaic.rotatedCell(g, r, c, ccw);
+                moved.push([dest[0], dest[1], grid[r][c]]);
+            }
+            for (const [nr, nc, t] of moved) grid[nr][nc] = t;
+        }
+        // One bump per member, after the permutation — walking g.cells is
+        // safe because the permutation is closed over exactly that set.
+        for (const [r, c] of g.cells) {
+            grid[r][c].rotation = (grid[r][c].rotation + delta) & 3;
+        }
+        g.scramble = (g.scramble + delta) & 3;
+    }
+
+    // Turn counts a group may take at scramble time. Same terminal-lit rule
+    // quad uses: a group carrying an entry/exit may only take turns that
+    // leave every notch stub of its lit, so the player never starts with a
+    // terminal facing into the board. Groups with no terminal are
+    // unconstrained. Four rotations are the identity, so this leaves the
+    // grid AND every scramble offset exactly as it found them.
+    function allowedMosaicTurns(gi) {
+        const eps = [];
+        for (const ep of [entry, exit, entry2, exit2, entry3, exit3, entry4, exit4]) {
+            if (ep && mosaicGroupIndex(ep.row, ep.col) === gi) eps.push(ep);
+        }
+        if (eps.length === 0) return [0, 1, 2, 3];
+        const ok = [];
+        for (let t = 0; t < 4; t++) {
+            let all = true;
+            for (const ep of eps) {
+                if (!tileHasPort(grid[ep.row][ep.col], ep.port)) { all = false; break; }
+            }
+            if (all) ok.push(t);
+            rotateMosaicGroup(gi, false);
+        }
+        // 0 always qualifies by construction (the solved board exposes every
+        // notch), so this is belt-and-braces rather than a real fallback.
+        return ok.length ? ok : [0];
+    }
+
+    // Mosaic counterpart of scrambleQuads: snap the maze to solved, resolve
+    // every group's interior, then give each group a random quarter-turn
+    // offset. Returns the interior-solve failure count for diagnostics.
+    function scrambleMosaic() {
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                const t = grid[r][c];
+                if (t._solution !== undefined) t.rotation = t._solution;
+            }
+        }
+        // Resolve each piece's interior, dissolving any piece whose interior
+        // has no valid filling. Length is re-read each iteration on purpose:
+        // dissolving appends one-cell groups, and those are skipped below.
+        let dissolved = 0;
+        for (let gi = 0; gi < mosaicGroups.length; gi++) {
+            const g = mosaicGroups[gi];
+            if (g.n === 1) continue;            // no interior sides to solve
+            if (!solveGroupFillers(g, gi)) {
+                dissolveMosaicGroup(gi);
+                dissolved++;
+            }
+        }
+        for (const g of mosaicGroups) g.scramble = 0;
+        for (let gi = 0; gi < mosaicGroups.length; gi++) {
+            const pool = allowedMosaicTurns(gi);
+            const turns = pool[Math.floor(Math.random() * pool.length)];
+            for (let i = 0; i < turns; i++) rotateMosaicGroup(gi, false);
+        }
+        return dissolved;
+    }
+
+    // Is any cell of this group locked (hint or player)? A lock freezes the
+    // whole piece — the group is one object to the player, so letting three
+    // cells of a plus turn while the fourth is pinned would be nonsense.
+    function mosaicGroupLocked(gi) {
+        for (const [r, c] of mosaicGroups[gi].cells) {
+            if (locked.has(r + ',' + c)) return true;
+            if (grid[r][c]._playerLocked) return true;
+        }
+        return false;
+    }
+
+    // Remap the layout through a whole-board transform. `mapCell` is the
+    // caller's cell map; `swapDims` says the board's rows/cols exchanged
+    // (rotateBoard) so the new index grid is built at the right shape.
+    //
+    // Scramble offsets: a rotation carries every group's contents AND its
+    // solved reference through the same quarter turn, so offsets are
+    // invariant — the same argument the quadScramble remap rests on. A
+    // mirror conjugates rotations (M∘R^k = R^-k∘M), so offsets negate.
+    function remapMosaic(mapCell, swapDims, negateScramble) {
+        if (!mosaicMode || !mosaicGroups || !mosaicIdx) return;
+        const nRows = swapDims ? COLS : ROWS;
+        const nCols = swapDims ? ROWS : COLS;
+        const nIdx = [];
+        for (let r = 0; r < nRows; r++) nIdx.push(new Array(nCols).fill(-1));
+        for (const g of mosaicGroups) {
+            const cells = g.cells.map(([r, c]) => mapCell(r, c));
+            let minR = Infinity, minC = Infinity;
+            for (const [r, c] of cells) {
+                if (r < minR) minR = r;
+                if (c < minC) minC = c;
+            }
+            g.cells = cells;
+            g.r0 = minR;
+            g.c0 = minC;
+            if (negateScramble) g.scramble = (4 - g.scramble) & 3;
+        }
+        for (let gi = 0; gi < mosaicGroups.length; gi++) {
+            for (const [r, c] of mosaicGroups[gi].cells) nIdx[r][c] = gi;
+        }
+        mosaicIdx = nIdx;
+    }
+
     function rotate(row, col, ccw = false) {
         if (!inBounds(row, col)) return false;
+
+        // Mosaic mode: the whole piece containing (row, col) turns as one.
+        if (mosaicMode && mosaicIdx) {
+            const gi = mosaicGroupIndex(row, col);
+            if (gi < 0) return false;
+            if (mosaicGroupLocked(gi)) return false;
+            rotateMosaicGroup(gi, ccw);
+            updateHighlighted();
+            return true;
+        }
 
         // Quad mode: rotate the 2×2 quad containing (row, col) as one unit.
         if (quadMode) {
@@ -3685,6 +4284,20 @@ const Maze = (() => {
     // its red palette would mask the player-lock indicator anyway.
     function togglePlayerLock(row, col) {
         if (!inBounds(row, col)) return;
+        // Mosaic: the piece is one object, so it locks as one — same
+        // reasoning as the quad branch below, just over an arbitrary shape.
+        // A one-cell group behaves exactly like the singular branch.
+        if (mosaicMode && mosaicIdx) {
+            const gi = mosaicGroupIndex(row, col);
+            if (gi < 0) return;
+            const cells = mosaicGroups[gi].cells;
+            for (const [r, c] of cells) {
+                if (locked.has(r + ',' + c)) return;   // hint-locked already
+            }
+            const next = !cells.some(([r, c]) => grid[r][c]._playerLocked);
+            for (const [r, c] of cells) grid[r][c]._playerLocked = next;
+            return;
+        }
         if (quadMode) {
             const qr0 = Math.floor(row / 2) * 2;
             const qc0 = Math.floor(col / 2) * 2;
@@ -3751,6 +4364,25 @@ const Maze = (() => {
     // and clears any player-lock that would otherwise mask the hint visual.
     // Used by both the random-pick `hint()` and the move-replay path.
     function applyHintAt(row, col) {
+        // Mosaic: snap the whole piece back to its solved offset and lock
+        // every cell of it. Direct counterpart of the quad branch — the
+        // stored offset IS the answer, so no port-equivalence search is
+        // needed to find the target orientation. (Twins are not assigned in
+        // mosaic mode yet, so there is no lockstep group to carry along.)
+        if (mosaicMode && mosaicIdx) {
+            const gi = mosaicGroupIndex(row, col);
+            if (gi < 0) return { turns: 0 };
+            const g = mosaicGroups[gi];
+            const turns = (4 - g.scramble) & 3;
+            for (let i = 0; i < turns; i++) rotateMosaicGroup(gi, false);
+            for (const [r, c] of g.cells) {
+                locked.add(r + ',' + c);
+                grid[r][c]._hinted = true;
+                grid[r][c]._playerLocked = false;
+            }
+            updateHighlighted();
+            return { turns: turns };
+        }
         if (quadMode) {
             const qr = Math.floor(row / 2);
             const qc = Math.floor(col / 2);
@@ -3885,6 +4517,44 @@ const Maze = (() => {
     }
 
     function hint() {
+        // ── Mosaic ──────────────────────────────────────────────────────
+        // Walk the solved paths in order and hint the first piece that is
+        // both mis-rotated and unlocked, so hints advance along a path the
+        // way they do in the other modes rather than jumping around the
+        // board. Falling back to any mis-rotated path-carrying piece covers
+        // the case where the walk finds nothing (every candidate on the
+        // paths already hinted or player-locked).
+        //
+        // Deliberately simpler than the quad version: no port-equivalence
+        // or symmetry check, so a hint on a symmetric piece can spend a
+        // turn without visibly moving a path. That is the same class of
+        // "wasted hint" the quad code grew checks for, and the place to
+        // revisit once mosaic pieces are being played with in anger.
+        if (mosaicMode && mosaicIdx && mosaicGroups) {
+            const tryGroup = (gi) => {
+                if (gi < 0) return false;
+                if (mosaicGroups[gi].scramble === 0) return false;
+                if (mosaicGroupLocked(gi)) return false;
+                const [r, c] = mosaicGroups[gi].cells[0];
+                applyHintAt(r, c);
+                return true;
+            };
+            for (const path of solutionPaths()) {
+                for (const cell of path) {
+                    if (tryGroup(mosaicGroupIndex(cell.r, cell.c))) return true;
+                }
+            }
+            const candidates = [];
+            for (let gi = 0; gi < mosaicGroups.length; gi++) {
+                if (mosaicGroups[gi].scramble === 0 || mosaicGroupLocked(gi)) continue;
+                const carries = mosaicGroups[gi].cells.some(
+                    ([r, c]) => grid[r][c]._solution !== undefined);
+                if (carries) candidates.push(gi);
+            }
+            if (candidates.length === 0) return false;
+            return tryGroup(candidates[Math.floor(Math.random() * candidates.length)]);
+        }
+
         // ── Helpers shared by both the path-walk strategy and the
         //    random-pick fallback below. ──
 
@@ -4419,6 +5089,7 @@ const Maze = (() => {
         N, E, S, W,
         T_STRAIGHT, T_ELBOW, T_CROSS,
         init, rotate, hint, applyHintAt, togglePlayerLock, setDimensions, setHurry, setAbort, setTwoPathMode, setPathCount, setQuadMode,
+        setMosaicMode,
         setTwinCoverageScale,  // per-run twin ramp (0..1 × TWIN_COVERAGE) — set before init; see its comment
         setTwinCoverageTarget, // ABSOLUTE coverage override (0..1, null = off) — the experimental PotD generator's knob
         setTwinGroupSizeRange, // MIXED group sizes (min, max; null/invalid = off) — same generator, see its comment
@@ -4454,6 +5125,39 @@ const Maze = (() => {
         get won()         { return won; },
         get pathsWon()    { return pathsWon; },
         get pathCount()   { return pathCount; },
-        get quadMode()    { return quadMode; }
+        get quadMode()    { return quadMode; },
+        get mosaicMode()  { return mosaicMode; },
+        // ── Mosaic group queries, for the render and input layers ───────
+        // All three return the singular answer outside mosaic mode, so a
+        // caller can use them unconditionally.
+        //
+        // The cells of the piece containing (r, c), as [row, col] pairs —
+        // just [[r, c]] when there is no piece. This is what lets the
+        // renderer pulse, animate and outline a piece as one object.
+        mosaicGroupCells(r, c) {
+            const g = mosaicGroupOf(r, c);
+            return g ? g.cells.map((cell) => cell.slice()) : [[r, c]];
+        },
+        // Bitmask over N/E/S/W of the sides that face another cell of the
+        // SAME piece — the sides whose bevels should be skipped so the
+        // piece reads as one face rather than a cluster of tiles. 0 outside
+        // mosaic mode and for every one-cell group.
+        mosaicInnerMask(r, c) { return mosaicInnerMask(r, c); },
+        // Pivot for the rotation animation, in CELL units and possibly
+        // half-integral (an even-sided piece turns about a lattice point,
+        // an odd-sided one about a cell centre). null outside mosaic mode.
+        mosaicPivot(r, c) {
+            const g = mosaicGroupOf(r, c);
+            if (!g) return null;
+            return { row: g.r0 + g.n / 2, col: g.c0 + g.n / 2 };
+        },
+        // Layout summary for the debug readout, plus how many pieces the
+        // last build dissolved (see solveGroupFillers / dissolveMosaicGroup).
+        mosaicStats() {
+            if (!mosaicMode || !mosaicGroups) return null;
+            const d = Mosaic.describe(mosaicGroups);
+            d.dissolved = lastMosaicDissolved;
+            return d;
+        }
     };
 })();

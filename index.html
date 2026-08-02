@@ -1235,9 +1235,26 @@
         <label>Paths (<span id="pg2PathVal">1</span>)
             <input type="range" id="pg2PathSlider" min="1" max="4" value="1">
         </label>
-        <label class="check">
-            <input type="checkbox" id="pg2QuadCheck"> Quad Tiles
-        </label>
+        <!-- Tile grouping. Was a lone "Quad Tiles" checkbox until Mosaic
+             arrived and made it a three-way choice — the modes are mutually
+             exclusive, so radios rather than checkboxes.
+               Singular — every tile rotates on its own.
+               Quad     — fixed 2×2 groups rotate as one unit.
+               Mosaic   — the general case: pieces of many shapes (plus
+                          signs, rings, solid squares, pinwheels), each of
+                          which occupies the same cells after a quarter
+                          turn. mosaic.js enumerates the library and packs
+                          the board; leftovers become singular tiles.
+             Board size steps by 2 for quad's sake (see the size slider
+             comment); mosaic has no such constraint — its pieces are placed
+             wherever they fit rather than on a fixed lattice — but it
+             inherits the even step harmlessly. -->
+        <label>Tiles</label>
+        <div class="pg2Radios">
+            <label class="check"><input type="radio" name="pg2Tiles" id="pg2TilesSingular" value="singular" checked> Singular</label>
+            <label class="check"><input type="radio" name="pg2Tiles" id="pg2TilesQuad" value="quad"> Quad</label>
+            <label class="check"><input type="radio" name="pg2Tiles" id="pg2TilesMosaic" value="mosaic"> Mosaic</label>
+        </div>
         <button type="button" id="pg2GenBtn">Generate PotD</button>
         <!-- Last generation: rolled parameters, then the timing split.
              Live elapsed counter while a build runs. -->
@@ -1270,7 +1287,7 @@
     (function() {
         var dev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
         var bust = dev ? ('?t=' + Date.now()) : '';
-        var srcs = ['config.js','cg-sdk.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd-streaks.js','potd-calendar.js','potd-gen2.js','potd.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
+        var srcs = ['config.js','cg-sdk.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','mosaic.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd-streaks.js','potd-calendar.js','potd-gen2.js','potd.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
         for (var i = 0; i < srcs.length; i++) {
             document.write('<script src="' + srcs[i] + bust + '"><\/script>');
         }

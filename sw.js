@@ -20,6 +20,7 @@ const CORE_ASSETS = [
     '/controls-config.js',
     '/gamepad.js',
     '/touch-controls.js',
+    '/mosaic.js',
     '/maze.js',
     '/maze-worker.js',
     '/render.js',

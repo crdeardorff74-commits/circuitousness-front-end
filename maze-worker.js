@@ -34,6 +34,10 @@
 (function () {
     var match = self.location.search && self.location.search.match(/[?&]t=([^&]+)/);
     var bust = match ? match[1] : Date.now();
+    // mosaic.js FIRST — maze.js's mosaic branch calls into it at build
+    // time, and importScripts shares one global scope, so load order here
+    // is the same dependency contract index.html's script list expresses.
+    importScripts('mosaic.js?t=' + bust);
     importScripts('maze.js?t=' + bust);
 })();
 
@@ -50,6 +54,10 @@ async function processNext() {
     while (pending.length > 0) {
         const req = pending.shift();
         Maze.setQuadMode(!!req.quadMode);
+        // Set UNCONDITIONALLY, same rule as the coverage knobs below: this
+        // Maze outlives the job, so an absent flag has to RESET the mode,
+        // not inherit the previous job's.
+        if (Maze.setMosaicMode) Maze.setMosaicMode(!!req.mosaicMode);
         Maze.setPathCount(req.pathCount);
         // Twin-coverage ramp scale — set UNCONDITIONALLY per job (the
         // worker's Maze is long-lived, so a job that skipped this would
@@ -72,6 +80,7 @@ async function processNext() {
             postMessage({
                 type: 'ready', state: Maze.snapshotState(),
                 pathCount: req.pathCount, quadMode: !!req.quadMode,
+                mosaicMode: !!req.mosaicMode,
                 twinScale: req.twinScale, twinCoverage: req.twinCoverage,
                 id: req.id != null ? req.id : null
             });
@@ -91,6 +100,8 @@ self.onmessage = function (e) {
             rows: e.data.rows, cols: e.data.cols,
             pathCount: e.data.pathCount | 0 || 1,
             quadMode: !!e.data.quadMode,
+            // Absent (every caller but potd-gen2.js) → false.
+            mosaicMode: !!e.data.mosaicMode,
             // Absent (PotD bg-gen, stale main threads) → 1 = full coverage.
             twinScale: (typeof e.data.twinScale === 'number') ? e.data.twinScale : 1,
             // Absent (every caller but potd-gen2.js) → null = no override.

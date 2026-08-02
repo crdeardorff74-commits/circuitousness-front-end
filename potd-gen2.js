@@ -179,6 +179,10 @@ const PotdGen2 = (() => {
             groupMin: DEF_GROUP_MIN, groupMax: DEF_GROUP_MAX,
             gateMin:  DEF_GATE_MIN,  gateMax:  DEF_GATE_MAX,
             pathCount: pathCount, quadMode: !!quadMode,
+            // Mosaic never comes from a PotD slot — the eight daily
+            // puzzles are s1-s4 / q1-q4 — so it defaults off here and is
+            // only ever turned on by the debug panel's Tiles radio.
+            mosaicMode: false,
         };
     }
 
@@ -231,6 +235,7 @@ const PotdGen2 = (() => {
             gateTarget:   randInt(p.gateMin, p.gateMax),
             pathCount:    p.pathCount,
             quadMode:     p.quadMode,
+            mosaicMode:   !!p.mosaicMode,
         };
     }
 
@@ -296,6 +301,7 @@ const PotdGen2 = (() => {
                 id,
                 rows: roll.rows, cols: roll.cols,
                 pathCount: roll.pathCount, quadMode: roll.quadMode,
+                mosaicMode: roll.mosaicMode,
                 twinCoverage: roll.twinCoverage,   // absolute override
                 twinGroupMin: roll.twinGroupMin,
                 twinGroupMax: roll.twinGroupMax,
@@ -365,14 +371,22 @@ const PotdGen2 = (() => {
     // swaps the live grid reference, leaving the worker's snapshot in
     // its un-scrambled (solved!) state.
     function placeGates(mazeSnap, roll) {
-        const savedMaze      = (Maze.grid && Maze.ROWS > 0) ? Maze.snapshotState() : null;
-        const savedQuadMode  = Maze.quadMode;
-        const savedPathCount = Maze.pathCount;
+        const savedMaze       = (Maze.grid && Maze.ROWS > 0) ? Maze.snapshotState() : null;
+        const savedQuadMode   = Maze.quadMode;
+        const savedMosaicMode = Maze.mosaicMode;
+        const savedPathCount  = Maze.pathCount;
         const savedGates     = (typeof Gates !== 'undefined' && Gates.snapshot) ? Gates.snapshot() : null;
 
         let out = { maze: mazeSnap, gates: null, gatesPlaced: 0, minMoves: null, twins: null };
         try {
             Maze.setQuadMode(roll.quadMode);
+            // Mosaic scrambles POSITIONS as well as rotations, so — exactly
+            // like quad — solutionEdges has to un-scramble before it can
+            // read the solved routes. That only happens when the flag is on,
+            // and without it gates would be assigned against the player's
+            // scrambled board and could land right on a solution edge.
+            // minSolveMoves below needs it for the same reason.
+            if (Maze.setMosaicMode) Maze.setMosaicMode(roll.mosaicMode);
             Maze.setPathCount(roll.pathCount);
             Maze.loadSnapshot(mazeSnap);
             out.maze = Maze.snapshotState();
@@ -397,6 +411,7 @@ const PotdGen2 = (() => {
             }
         } finally {
             Maze.setQuadMode(savedQuadMode);
+            if (Maze.setMosaicMode) Maze.setMosaicMode(savedMosaicMode);
             Maze.setPathCount(savedPathCount);
             if (savedMaze) {
                 Maze.loadSnapshot(savedMaze);
@@ -418,6 +433,7 @@ const PotdGen2 = (() => {
     // Maze, this one is the live game's.
     async function buildOnMain(roll) {
         Maze.setQuadMode(roll.quadMode);
+        if (Maze.setMosaicMode) Maze.setMosaicMode(roll.mosaicMode);
         Maze.setPathCount(roll.pathCount);
         if (Maze.setTwinCoverageTarget) Maze.setTwinCoverageTarget(roll.twinCoverage);
         if (Maze.setTwinGroupSizeRange) {
@@ -476,6 +492,10 @@ const PotdGen2 = (() => {
         if (typeof Game !== 'undefined' && Game.clearWinBanner) Game.clearWinBanner();
 
         Maze.setQuadMode(res.roll.quadMode);
+        // Must be set BEFORE loadSnapshot, same as quadMode: the flag is
+        // what makes every mosaic branch live, and the snapshot's layout is
+        // only meaningful once it is on.
+        if (Maze.setMosaicMode) Maze.setMosaicMode(res.roll.mosaicMode);
         Maze.setPathCount(res.roll.pathCount);
         Maze.loadSnapshot(JSON.parse(JSON.stringify(res.maze)));
         if (res.gates && typeof Gates !== 'undefined' && Gates.restore) {
@@ -601,11 +621,39 @@ const PotdGen2 = (() => {
         }
         const readTiles = bindRangePair('pg2TilesMin', 'pg2TilesMax', 'pg2TilesFill', 'pg2TilesVal',
             (a, b) => (a === b) ? String(a) : (a + '–' + b));
-        const quadCheck = document.getElementById('pg2QuadCheck');
+        // Tile grouping — Singular / Quad / Mosaic radios (was a lone Quad
+        // checkbox before mosaic made it a three-way choice). Read at
+        // generate time rather than watched, like every other control here.
+        function readTileMode() {
+            const checked = document.querySelector('input[name="pg2Tiles"]:checked');
+            return checked ? checked.value : 'singular';
+        }
+
+        // "14 pieces (4×3 5×2 8×4 16×5), 38 singular". Empty string outside
+        // mosaic mode. `dissolved` counts pieces broken back into singular
+        // cells because their interiors had no valid filling (see maze.js
+        // solveGroupFillers) — worth surfacing because a dissolved piece is
+        // indistinguishable from ordinary singular fill on the board. It is
+        // only ever non-zero on a MAIN-THREAD build: the worker counts it in
+        // its own Maze instance and the snapshot does not carry it, which is
+        // why it is shown when present rather than always printing a 0 that
+        // would be misleading on the usual (worker) path.
+        function mosaicSummary() {
+            if (!Maze.mosaicStats) return '';
+            const s = Maze.mosaicStats();
+            if (!s) return '';
+            const spread = Object.keys(s.bySize)
+                .map(Number).sort((a, b) => a - b)
+                .map((size) => size + '×' + s.bySize[size]).join(' ');
+            return '\n' + s.pieces + ' pieces (' + spread + '), ' +
+                   s.singles + ' singular' +
+                   (s.dissolved ? ' · ' + s.dissolved + ' dissolved' : '');
+        }
 
         function readParams() {
             const size = readSize(), twin = readTwin(), gate = readGate(), tiles = readTiles();
             const group = readGroup();
+            const tileMode = readTileMode();
             return {
                 sizeMin: size.lo, sizeMax: size.hi,
                 twinMin: twin.lo / 100, twinMax: twin.hi / 100,
@@ -613,7 +661,8 @@ const PotdGen2 = (() => {
                 gateMin: gate.lo, gateMax: gate.hi,
                 minTiles: tiles.lo, maxTiles: tiles.hi,
                 pathCount: pathSlider ? parseInt(pathSlider.value, 10) : 1,
-                quadMode: !!(quadCheck && quadCheck.checked),
+                quadMode:   tileMode === 'quad',
+                mosaicMode: tileMode === 'mosaic',
             };
         }
 
@@ -654,6 +703,7 @@ const PotdGen2 = (() => {
                 // board is only 5×4 tiles to solve.
                 const label = r.cols + '×' + r.rows + ' ' + r.pathCount + 'p' +
                               (r.quadMode ? ' q(' + (r.cols / 2) + '×' + (r.rows / 2) + ')' : '') +
+                              (r.mosaicMode ? ' mosaic' : '') +
                               // ⤓ shrunk to fit the ceiling, ⤒ grown to reach
                               // the floor — with the dims the roll wanted.
                               (r.resizedFrom
@@ -679,6 +729,13 @@ const PotdGen2 = (() => {
                             : '') +
                         ' · gates ' + res.gatesPlaced + '/' + r.gateTarget +
                         (res.minMoves != null ? ' · ' + res.minMoves + ' moves' : '') +
+                        // Mosaic layout: how many pieces the packer fitted,
+                        // their size spread, and how many cells were left to
+                        // singular fill. Read off the LOADED board, so it
+                        // describes what is actually on screen. Worth
+                        // showing because "the packer stopped early" and
+                        // "the packer did well" look identical otherwise.
+                        (mosaicSummary() || '') +
                         '\n' + secs(res.totalMs) + ' total (maze ' + secs(res.mazeMs) +
                         ', gates ' + Math.round(res.gatesMs) + 'ms)' +
                         ((competing || preGenBusy()) ? '\n⚠ pre-gen ran alongside — time inflated' : '');

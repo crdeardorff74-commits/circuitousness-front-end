@@ -3631,8 +3631,18 @@ html.dbgHidden #resetBtn { display: none !important; }
     align-items: center;
     gap: 0.4rem;
 }
-#debugSliders label.check input[type="checkbox"] {
+#debugSliders label.check input[type="checkbox"],
+#debugSliders label.check input[type="radio"] {
     margin: 0;
+}
+/* Tile-grouping radios (Singular / Quad / Mosaic). One row that wraps
+   rather than a column, so the three options cost the panel one line
+   instead of three — the panel is already tall enough to scroll. */
+#debugSliders .pg2Radios {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.15rem 0.9rem;
+    margin-top: 0.15rem;
 }
 #preGenStatus {
     margin-top: 0.6rem;
