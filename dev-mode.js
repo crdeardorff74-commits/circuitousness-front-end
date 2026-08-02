@@ -2,8 +2,8 @@
 //
 // ACTIVATION WINDOW (2026-08-02): Ctrl+D no longer needs the URL flag, so
 // dev mode is reachable on any deployment without editing the address —
-// but ONLY while the intro overlay is still on screen. Two groups are
-// therefore locked out by construction:
+// but the panel can ONLY BE OPENED while the intro overlay is still on
+// screen. Two groups are locked out by construction:
 //   • CrazyGames players — intro.js hides the overlay during load and
 //     auto-starts, so the window has already closed before anyone can
 //     press a key (and IS_CRAZYGAMES is checked outright besides).
@@ -11,6 +11,14 @@
 //     so a player who has started a game can never open the panel.
 // Activation is per page load and deliberately NOT persisted: a reload
 // puts the intro back, which is the only way back in.
+//
+// The window applies to ?dev=true as well (tightened 2026-08-02 on user
+// report — the flag used to let the panel open mid-game). The flag still
+// activates dev mode's BACKGROUND work at boot; what it no longer buys is
+// a way into the panel outside the intro. Note this also means a
+// ?debug=true session — which starts in the panel with the intro already
+// hidden — cannot re-open it after toggling to game mode; reload to get
+// it back.
 //
 // The two doors are equivalent now. They used to differ because the panel
 // carried destructive wipe buttons that only ?dev=true revealed; those
@@ -36,8 +44,10 @@
 // modules it touches are guaranteed available.
 
 const DevMode = (function () {
-    // ?dev=true activates immediately; Ctrl+D at the intro is the second
-    // door (see the header). `active` is mutable because of it.
+    // ?dev=true activates the background work immediately; Ctrl+D at the
+    // intro is the second door (see the header). `active` is mutable
+    // because of it. Neither door opens the PANEL outside the intro
+    // window — that gate lives in bindCtrlD and applies to both.
     let active = (new URLSearchParams(window.location.search)).get('dev') === 'true';
     let initialized = false;
 
@@ -84,39 +94,56 @@ const DevMode = (function () {
     // (so typing "d" in the gameOverName field with Ctrl held by
     // accident doesn't yank the UI out from under them).
     //
-    // Bound unconditionally; the handler decides whether this particular
-    // keystroke is allowed to ACTIVATE. Once dev mode IS active the
-    // toggle keeps working for the rest of the session — the gate is on
-    // getting in, not on flipping the panel afterwards.
+    // THE GATE IS ON OPENING, AND IT APPLIES TO EVERY DOOR (2026-08-02,
+    // user call). It used to guard only ACTIVATION, which meant a
+    // ?dev=true session could open the panel at any point — mid-game,
+    // after the intro was long gone. Now the intro overlay has to be on
+    // screen to open the panel no matter how dev mode was switched on;
+    // the URL flag buys the background work (rollover watcher, PotD
+    // seeding), not a permanent way in.
+    //
+    // CLOSING is never gated — being unable to leave the panel would be a
+    // worse trap than being unable to enter it. In a ?dev=true session
+    // the intro overlay is still in the DOM (mode-debug just hides it via
+    // CSS), so closing restores it and re-opening works again; the panel
+    // only becomes unreachable once the intro is actually dismissed and
+    // play begins, which is exactly the intent.
     function bindCtrlD() {
         document.addEventListener('keydown', function (ev) {
             if (!ev.ctrlKey) return;
             if (ev.key !== 'd' && ev.key !== 'D') return;
             const t = ev.target;
             if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-            if (!active) {
+
+            const html    = document.documentElement;
+            const opening = !html.classList.contains('mode-debug');
+
+            if (opening) {
                 // Window closed → fall through untouched, so Ctrl+D keeps
-                // its normal browser meaning for ordinary players.
+                // its normal browser meaning for ordinary players (and for
+                // anyone who has started playing, flag or no flag).
                 if (!canActivate()) return;
-                active = true;
-                init();
-                if (typeof Logger !== 'undefined') Logger.info('[dev] activated from the intro screen');
-                // The toggle below switches to mode-debug, which hides the
-                // intro overlay for us (html.mode-debug #introOverlay in
-                // styles.css). The board starts empty — Marathon never got
-                // a mode picked — so the panel's Generate PotD button is
-                // the way to put a puzzle on screen.
+                if (!active) {
+                    active = true;
+                    init();
+                    if (typeof Logger !== 'undefined') Logger.info('[dev] activated from the intro screen');
+                }
+                // Switching to mode-debug hides the intro overlay for us
+                // (html.mode-debug #introOverlay in styles.css). The board
+                // starts empty — Marathon never got a mode picked — so the
+                // panel's Generate PotD button is the way to put a puzzle
+                // on screen.
             }
+
             ev.preventDefault();
-            const html = document.documentElement;
-            if (html.classList.contains('mode-debug')) {
-                html.classList.remove('mode-debug');
-                html.classList.add('mode-game');
-                if (typeof Logger !== 'undefined') Logger.info('[dev] Ctrl+D → game mode');
-            } else {
+            if (opening) {
                 html.classList.remove('mode-game');
                 html.classList.add('mode-debug');
                 if (typeof Logger !== 'undefined') Logger.info('[dev] Ctrl+D → debug mode');
+            } else {
+                html.classList.remove('mode-debug');
+                html.classList.add('mode-game');
+                if (typeof Logger !== 'undefined') Logger.info('[dev] Ctrl+D → game mode');
             }
         });
     }
