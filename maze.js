@@ -318,6 +318,21 @@ const Maze = (() => {
     function twinPartnerCells(row, col) {
         return twinPartnerKeys(row, col).map((k) => k.split(',').map(Number));
     }
+    // Does the CURRENT board contain any twin group at all? The twin
+    // coverage ramp (and quad's own group pass) can legitimately land
+    // zero groups on a small or early board, so the tooltip layer asks
+    // the grid rather than inferring from the ramp scale.
+    function hasTwins() {
+        if (!grid) return false;
+        for (let r = 0; r < ROWS; r++) {
+            const row = grid[r];
+            if (!row) continue;
+            for (let c = 0; c < COLS; c++) {
+                if (row[c] && row[c]._twin) return true;
+            }
+        }
+        return false;
+    }
     // Quad-mode counterpart: partner QUAD coords as [qr, qc] pairs.
     // Every quad-turn site needs this to keep a group in lockstep.
     function quadTwinPartners(qr, qc) {
@@ -5191,6 +5206,9 @@ const Maze = (() => {
         // render and input layers use this to mirror lockstep rotation
         // and lock visuals across a group of any size.
         twinPartnerCells,
+        // "Does this board have colored tiles at all?" — drives the
+        // first-twin-board tooltip (tooltip.js showBoardMechanicTips).
+        hasTwins,
         isLocked(r, c)    { return locked.has(r + ',' + c); },
         get ROWS()        { return ROWS; },
         get COLS()        { return COLS; },

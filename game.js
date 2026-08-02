@@ -1539,8 +1539,12 @@
             // Recompute the walk so any newly-blocked edge is reflected in
             // highlighted before refresh()/draw runs.
             if (typeof Gates !== 'undefined') {
-                const solveCount = (typeof Marathon !== 'undefined' && Marathon.getSolvedCount)
-                    ? Marathon.getSolvedCount() : 0;
+                // Puzzle index of the run in play. Missing getter (stale
+                // marathon.js) → 3, i.e. "past the opening", so the
+                // fallback is gates-on rather than a permanently
+                // gate-free run.
+                const runLevel = (typeof Marathon !== 'undefined' && Marathon.getLevel)
+                    ? Marathon.getLevel() : 3;
                 // Gate-count progression: 1 gate on a start-size board,
                 // +1 for every 4 SUB-TILE units of growth past it, where a
                 // unit is +1 physical row or column. Size-based (was
@@ -1580,12 +1584,18 @@
                 // puzzle 3. Marathon is untouched: it's the mode players
                 // choose deliberately, and its clock makes an easier
                 // opening a scoring advantage rather than a kindness.
-                // solveCount is puzzles solved BEFORE this one, so < 2
-                // covers exactly puzzles 1 and 2. Run-level on purpose:
-                // the fast track's quad hand-off is NOT an opening (the
-                // player has 9 solves behind them), so it gets its 1 gate.
+                // Keyed to the LEVEL (< 3 = puzzles 1 and 2), not to the
+                // solve count it used to read: the first-visit auto-start
+                // run now opens with warm-up puzzles numbered -2 and -1
+                // (config.js FIRST_RUN_WARMUP_LEVELS), and a solve-count
+                // test would have spent the gate-free allowance on those
+                // and put gates on real puzzle 1. Levels below 1 are warm-
+                // ups, so `< 3` covers -2, -1, 1, 2 — gates still arrive
+                // on real puzzle 3, exactly as before. Run-level on
+                // purpose: the fast track's quad hand-off is NOT an
+                // opening (it's level 10+), so it gets its 1 gate.
                 const zenOpening = (typeof Marathon !== 'undefined' && Marathon.isZenRun
-                                    && Marathon.isZenRun() && solveCount < 2);
+                                    && Marathon.isZenRun() && runLevel < 3);
                 const target = zenOpening ? 0 : 1 + Math.floor(growthUnits / 4);
                 // Quad mode: anchor gates at quad-corners only (every other
                 // sub-tile vertex). The prong is still one sub-tile long.

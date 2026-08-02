@@ -14,6 +14,9 @@
  *     re-queue and the callback gets its chance on the real acknowledgment.
  *     (e.g. the firstPlay tip revealing the in-HUD How-to-Solve button.)
  *   Tooltip.cancelPending(key)   — remove a queued (but not-yet-shown) tip
+ *   Tooltip.showBoardMechanicTips() — fire the twin-tile / gate
+ *     explainers if the CURRENT board contains either. Board-driven
+ *     rather than level-driven; see the function's own comment.
  *
  * Each `key` corresponds to a localStorage flag (`<slug>_tooltipSeen_<key>`)
  * that flips to '1' when the player dismisses the tooltip via "Got it!".
@@ -39,7 +42,11 @@ const Tooltip = (function () {
     // form. Once the player has watched the tutorial, these never fire during
     // gameplay. (Hint tips like potdHint/marathonHint are about SCORING, not
     // how to solve, so they stay.)
-    const SUPPRESSED_AFTER_TUTORIAL = { lockTile: 1, twinStraightLock: 1 };
+    const SUPPRESSED_AFTER_TUTORIAL = {
+        lockTile: 1, twinStraightLock: 1,
+        // The tutorial's step 3 and step 7 teach exactly these two.
+        twinTiles: 1, gates: 1,
+    };
 
     let card      = null;
     let textEl    = null;
@@ -88,6 +95,35 @@ const Tooltip = (function () {
             onAcknowledge: onAcknowledge || null,
         });
         processQueue();
+    }
+
+    // Public — fire the once-each explainers for the two board MECHANICS
+    // a player meets partway into their first run: colored (twin) tiles
+    // and red gates.
+    //
+    // Triggered by what the LIVE BOARD actually contains, not by a level
+    // number, because every mode introduces them on a different schedule
+    // — Zen's twin ramp starts at puzzle 3 and its gate-free opening ends
+    // there, PotD ships a fixed gate count on every board, and a resumed
+    // or menu-started run can begin already past both. "The first board
+    // that has one" is the only trigger that is correct everywhere.
+    //
+    // Callers fire this at puzzle-ready, AFTER gates are placed. Repeat
+    // calls are free — showOnce's seen-flag and queue dedupe absorb them.
+    function showBoardMechanicTips() {
+        const hasTwins = (typeof Maze !== 'undefined') && Maze.hasTwins && Maze.hasTwins();
+        const hasGates = (typeof Gates !== 'undefined') && Gates.list && Gates.list.length > 0;
+        const tr = function (key, fallback) {
+            return (typeof I18n !== 'undefined' && I18n.t) ? I18n.t(key) : fallback;
+        };
+        if (hasTwins) {
+            showOnce('twinTiles', tr('tooltip.twinTiles',
+                'Colored tiles rotate in unison with other tiles of the same color.'));
+        }
+        if (hasGates) {
+            showOnce('gates', tr('tooltip.gates',
+                'Red gates are circuit breakers that disrupt the flow of a path.  Click on them to rotate them out of the way.'));
+        }
     }
 
     // Public — cancel a queued (but not-yet-shown) tip. If the tip is
@@ -217,6 +253,9 @@ const Tooltip = (function () {
 
     return {
         showOnce:      showOnce,
+        // Board-driven mechanic explainers (twins / gates) — see above.
+        // Called from every mode's puzzle-ready hook.
+        showBoardMechanicTips: showBoardMechanicTips,
         cancelPending: cancelPending,
         // Called by puzzle-exit transitions (menu return, end credits,
         // PotD solve). Pass false so the tip isn't marked seen — the

@@ -718,6 +718,28 @@ const Marathon = (() => {
         return decoded.progressive ? pathCountForLevel(lev) : decoded.pathCount;
     }
 
+    // ----- Warm-up levels (first-visit auto-start only) -----
+    // See MARATHON.FIRST_RUN_WARMUP_LEVELS in config.js. Two tiny boards
+    // numbered -2 and -1 open a brand-new player's run; every other run
+    // (and every resume) starts at 1.
+
+    // True for any level below the ladder's puzzle 1.
+    function isWarmupLevel(lev) { return lev < 1; }
+    // The ladder's successor to `lev`. THERE IS NO PUZZLE 0 — a run that
+    // opened on the warm-ups jumps -1 → 1. Every level walk (the
+    // per-solve advance AND pre-gen's lookahead) must go through this,
+    // or a 0 would leak into levelConfig/dimsForLevel.
+    function levelAfter(lev) { return lev === -1 ? 1 : lev + 1; }
+    // Seed value for startGame: one step BELOW the run's opening level,
+    // since startNextPuzzle advances before it builds. Warm-ups apply to
+    // the auto-start run only; a stale config with no warm-up list falls
+    // back to the standard 0 → puzzle 1.
+    function openingLevelSeed() {
+        if (!isFirstRunAutoStart) return 0;
+        const first = MARATHON.firstWarmupLevel ? MARATHON.firstWarmupLevel() : null;
+        return (typeof first === 'number') ? first - 1 : 0;
+    }
+
     // ----- First-visit ladder experiment -----
     // The auto-start run walks one of FOUR ladder variants. The SERVER
     // assigns the arm (least-used, so the split stays near-even) when it
@@ -806,6 +828,20 @@ const Marathon = (() => {
     // site, because on the fast track quadMode varies BY LEVEL rather
     // than being fixed by the type string.
     function levelConfig(lev) {
+        // Warm-up levels are below ALL the ladder machinery and must be
+        // answered first: pathCountForLevel's floor((lev-1)/4)+1 goes to
+        // zero and negative down here, which would ask the generator for
+        // a 0-path board. One path, singular tiles, no growth — the
+        // gentlest thing the engine can build.
+        if (isWarmupLevel(lev)) {
+            return {
+                quadMode:    false,
+                pathCount:   1,
+                growthSteps: 0,
+                progressive: true,
+                warmup:      true
+            };
+        }
         const decoded = decodeType(activeType);
         // First-run experiment variants (see the MARATHON.FIRST_RUN_*
         // comment in config.js). 'fast' routes through the tier machinery
@@ -954,6 +990,14 @@ const Marathon = (() => {
     // exactly — and, on the fast track, that the quad phase re-reads the
     // same rolled axes from the start.
     function dimsForLevel(lev, cfg) {
+        // Warm-ups carry fixed dims from config and deliberately roll NO
+        // growth entries: the sequence is anchored to the 4×4 start, so a
+        // warm-up that consumed a step would shift every later puzzle.
+        if (isWarmupLevel(lev)) {
+            const warm = MARATHON.warmupLevelFor ? MARATHON.warmupLevelFor(lev) : null;
+            if (warm) return { rows: warm.rows, cols: warm.cols };
+            return MARATHON.startDimsFor(false, 1);   // stale config — behave like puzzle 1
+        }
         const start = MARATHON.startDimsFor(cfg.quadMode, cfg.pathCount);
         const steps = cfg.growthSteps;
         ensureGrowthSequence(steps);
@@ -983,8 +1027,12 @@ const Marathon = (() => {
     function upcomingDims(count) {
         if (state !== STATE.PLAYING) return [];
         const out = [];
+        // Walk the ladder with levelAfter rather than level + i — a run
+        // still on the warm-ups would otherwise look ahead at puzzle 0,
+        // which doesn't exist, and pre-build a board nothing ever asks for.
+        let lev = level;
         for (let i = 1; i <= count; i++) {
-            const lev      = level + i;
+            lev = levelAfter(lev);
             // Per-level config, not a once-per-call decode: on the
             // first-run fast track quadMode flips partway through the
             // lookahead window, and pre-gen must build each entry under
@@ -1228,7 +1276,12 @@ const Marathon = (() => {
             if (!isPractice) startTimer();
             if (typeof Sfx !== 'undefined') Sfx.play('cinematic_bass');
             if (typeof CgSdk !== 'undefined') CgSdk.gameplayStart();
-            if (typeof Tooltip !== 'undefined') scheduleLockTip();
+            if (typeof Tooltip !== 'undefined') {
+                // Board is fully restored (grid + gates) — same
+                // mechanic-tip check every puzzle-ready path makes.
+                if (Tooltip.showBoardMechanicTips) Tooltip.showBoardMechanicTips();
+                scheduleLockTip();
+            }
             saveRunState();   // refresh savedAt so the slot reflects the live run
         }
     }
@@ -1291,7 +1344,10 @@ const Marathon = (() => {
         runStartedAtMs   = Date.now();
         activeType       = type;
         sessionToken     = null;  // cleared until /api/game/start resolves
-        level            = 0;
+        // One step below the run's OPENING level (startNextPuzzle advances
+        // first). Normally 0 → puzzle 1; the first-visit auto-start seeds
+        // below the warm-up ladder instead, so it opens on puzzle -2.
+        level            = openingLevelSeed();
         solvedCount      = 0;
         hintsUsed        = 0;     // fresh hint count per run, bumped by onHintUsed
         totalSolveTime   = 0;
@@ -1481,7 +1537,7 @@ const Marathon = (() => {
         // (with the level/time grant below rolled back).
         puzzleLive = false;
 
-        level++;
+        level = levelAfter(level);
         // Pick up the server's ladder-arm assignment (or fall back to a
         // locked local draw) BEFORE levelConfig reads it — this is the
         // one place that knows which level is actually about to be
@@ -1682,6 +1738,10 @@ const Marathon = (() => {
                         ? I18n.t('tooltip.marathonHint')
                         : 'Use HINT for help strategically, as it will cost you 25% of your remaining time every time you use it');
             }
+            // Twin-tile / gate explainers, fired by what the BOARD holds
+            // rather than by level — see Tooltip.showBoardMechanicTips.
+            // Safe here: game.js places gates before it calls us back.
+            if (Tooltip.showBoardMechanicTips) Tooltip.showBoardMechanicTips();
             scheduleLockTip();
         }
     }
@@ -1827,6 +1887,15 @@ const Marathon = (() => {
         inTransition = true;
         transitionQuietUntil = Date.now() + TRANSITION_QUIET_MS;
         stopTimer();
+        // The puzzle is over, so any tip about it is over too: cancel the
+        // pending 30s lock tip and pull down whatever is on-screen. Passing
+        // false leaves the tip UNSEEN, so one the player never acknowledged
+        // re-fires on their next puzzle instead of being silently spent.
+        // (Matches potd.js onSolve, which has always done this.)
+        cancelLockTip();
+        if (typeof Tooltip !== 'undefined' && Tooltip.dismissActive) {
+            Tooltip.dismissActive(false);
+        }
         if (typeof Sfx !== 'undefined') {
             Sfx.stopLoop('glitch_overlap');  // any lingering overlap-loop dies with the win
             Sfx.play('applause_long');
@@ -1850,9 +1919,16 @@ const Marathon = (() => {
         // "outside the initial run" (both calls no-op unless this browser
         // was a tracked first-timer — see tracking.js). PotD solves make
         // the matching outside call in potd.js onSolve.
+        // Warm-ups (levels -2/-1) are EXCLUDED from the count: it drives
+        // the admin panel's "3+ puzzles" column and the variant balancer,
+        // which have to keep meaning three REAL puzzles or the ladder
+        // experiment's numbers jump for a reason that has nothing to do
+        // with the ladders.
         if (typeof Tracking !== 'undefined') {
             if (isFirstRunAutoStart) {
-                if (Tracking.firstRunPuzzleSolved) Tracking.firstRunPuzzleSolved();
+                if (!isWarmupLevel(level) && Tracking.firstRunPuzzleSolved) {
+                    Tracking.firstRunPuzzleSolved();
+                }
             } else if (Tracking.firstRunOutsideSolve) {
                 Tracking.firstRunOutsideSolve();
             }
@@ -1902,9 +1978,10 @@ const Marathon = (() => {
         // what startNextPuzzle will grant. No cap on banking — all of
         // leftover carries.
         const curCfg      = levelConfig(level);
-        const nextCfg     = levelConfig(level + 1);
+        const nextLev     = levelAfter(level);   // -1 → 1; there is no puzzle 0
+        const nextCfg     = levelConfig(nextLev);
         const nextPaths   = nextCfg.pathCount;
-        const nextLogical = dimsForLevel(level + 1, nextCfg);
+        const nextLogical = dimsForLevel(nextLev, nextCfg);
         const fresh       = timeForPuzzle(nextCfg.quadMode, nextPaths, solvedCount, nextLogical);
         const nextStart = timeRemaining + fresh;
         const bankedMs  = timeRemaining;
@@ -1913,7 +1990,11 @@ const Marathon = (() => {
         // was just solved; subline tells the player what they're carrying
         // into the next puzzle.
         if (solveTransitionEl && solveHeadline && solveBanked) {
-            solveHeadline.textContent = I18n.t('marathon.solveHeadline', { n: level });
+            // Same reasoning as the HUD label: never print the negative
+            // warm-up number at the player.
+            solveHeadline.textContent = isWarmupLevel(level)
+                ? I18n.t('marathon.solveHeadlineWarmup')
+                : I18n.t('marathon.solveHeadline', { n: level });
             // Tier-up cue: the NEXT puzzle steps the path count up (a
             // progressive-run tier boundary). Announce it on the popup so
             // the jump doesn't read as a random difficulty spike; hidden
@@ -2119,7 +2200,13 @@ const Marathon = (() => {
         // Progressive runs re-render this on every startNextPuzzle, so the
         // label's path digit tracks the current tier automatically.
         hudType.textContent  = I18n.t(typeLabelKey(activeType, level, levelConfig(level)));
-        hudLevel.textContent = I18n.t('marathon.hudLevel', { n: level, r: logical.rows, c: logical.cols });
+        // Warm-ups are numbered -2/-1 internally (see config.js
+        // FIRST_RUN_WARMUP_LEVELS), which is a fine key for tracking and a
+        // terrible thing to show a first-time player — "Puzzle -2" reads
+        // as a bug. They get a named label instead; the dims still show.
+        hudLevel.textContent = isWarmupLevel(level)
+            ? I18n.t('marathon.hudWarmup', { r: logical.rows, c: logical.cols })
+            : I18n.t('marathon.hudLevel', { n: level, r: logical.rows, c: logical.cols });
         renderTimer();
     }
 
@@ -3150,6 +3237,11 @@ const Marathon = (() => {
              // tracked internally).
              setupMobileKeyboard, teardownMobileKeyboard, isStandaloneIos,
              getSolvedCount: () => solvedCount,
+             // Current puzzle index — 1-based, but NEGATIVE on the
+             // first-visit auto-start run's warm-up puzzles (config.js
+             // FIRST_RUN_WARMUP_LEVELS) and never 0. game.js keys the
+             // gate-free Zen opening on it.
+             getLevel: () => level,
              // Zen (untimed, no leaderboard) vs Marathon. Read by game.js
              // to hold gates back on a Zen run's opening puzzles.
              isZenRun: () => isPractice };

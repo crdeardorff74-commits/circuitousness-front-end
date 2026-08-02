@@ -1674,6 +1674,11 @@ const Potd = (() => {
                 (typeof I18n !== 'undefined' && I18n.t)
                     ? I18n.t('tooltip.potdHint')
                     : 'Using HINT will hurt your rank on the Puzzle of the Day leaderboards — max 5 per puzzle');
+            // Twin-tile / gate explainers for a player whose first board
+            // ever is a daily. Shared seen-flags with the Zen/Marathon
+            // triggers, so whichever mode shows one first silences the
+            // other. Gates are already placed by this point.
+            if (Tooltip.showBoardMechanicTips) Tooltip.showBoardMechanicTips();
             scheduleLockTip();
         }
     }
@@ -1747,7 +1752,12 @@ const Potd = (() => {
         // resumes at 0 remaining). Repaint the button to match.
         refreshHintButton();
         if (typeof CgSdk !== 'undefined') CgSdk.gameplayStart();
-        if (typeof Tooltip !== 'undefined') scheduleLockTip();
+        if (typeof Tooltip !== 'undefined') {
+            // Gates were restored from the save above, so the board is
+            // complete and the mechanic tips can read it.
+            if (Tooltip.showBoardMechanicTips) Tooltip.showBoardMechanicTips();
+            scheduleLockTip();
+        }
     }
 
     // Same lock-tip scheduling pattern marathon uses — see marathon.js
