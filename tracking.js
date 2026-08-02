@@ -752,17 +752,6 @@ const Tracking = (function () {
         firstRunDailyMoreClicked:   firstRunDailyMoreClicked,
         firstRunOutsideStart:       firstRunOutsideStart,
         firstRunOutsideSolve:       firstRunOutsideSolve,
-        // DEV ONLY (debug panel's "Wipe First-Run Stats"): drop this
-        // browser's local first-run state so it counts as brand new
-        // again. Pairs with the server-side wipe — without it the local
-        // state survives the wipe and re-creates this browser's row on
-        // the next sync, which would quietly re-poison a fresh baseline.
-        // Keeps the storage key private to this module rather than
-        // duplicating it in the panel's wiring.
-        firstRunDevReset: function () {
-            try { localStorage.removeItem(FIRSTRUN_KEY); return true; }
-            catch (e) { return false; }
-        },
         // Exposed for diagnostics — admin/dev can paste
         // `Tracking.visitId()` in the console to see what they were
         // tagged with this session.

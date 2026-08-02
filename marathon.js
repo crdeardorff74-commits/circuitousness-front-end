@@ -3109,51 +3109,9 @@ const Marathon = (() => {
     function isInTransition()  { return inTransition; }
     function isReplaying()     { return state === STATE.REPLAYING; }
 
-    // DEV: drops all leaderboard-related localStorage entries so the
-    // next render shows whatever the server is currently holding.
-    // Paired with the back-end's /api/admin/wipe-leaderboards
-    // endpoint by the debug-panel button; either one without the
-    // other only fixes half the picture. Wipes: cached marathon boards
-    // (_lb_<type>), cached PotD boards (_potd_lb_<date>_<type>),
-    // pending offline submissions (_lb_pending), per-type own-recording
-    // bookkeeping (_own_rec_<type>), and the player's last-saved name
-    // (_lastPlayerName) since that's a leaderboard-adjacent value.
-    function wipeLocalLeaderboards() {
-        try {
-            const prefixes = [
-                PROJECT_SLUG + '_lb_',
-                PROJECT_SLUG + '_potd_lb_',
-                PROJECT_SLUG + '_own_rec_',
-            ];
-            const exactKeys = [
-                PROJECT_SLUG + '_lastPlayerName',
-            ];
-            const stale = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const k = localStorage.key(i);
-                if (!k) continue;
-                if (exactKeys.indexOf(k) >= 0) { stale.push(k); continue; }
-                for (const p of prefixes) {
-                    if (k.indexOf(p) === 0) { stale.push(k); break; }
-                }
-            }
-            for (const k of stale) localStorage.removeItem(k);
-            // Re-render any open leaderboard view so the wipe is visible
-            // immediately (otherwise the user still sees the stale list).
-            if (typeof leaderboardEl !== 'undefined' && leaderboardEl &&
-                leaderboardEl.classList.contains('visible')) {
-                renderLeaderboard();
-            }
-            return { wiped: stale.length };
-        } catch (e) {
-            return { wiped: 0, error: e && e.message || String(e) };
-        }
-    }
-
     return { init, onSolve, onHintUsed, onPuzzleReady, advance, isPlaying, isMenuVisible, isInTransition, isReplaying, upcomingDims,
              autoStartFirstPractice,
              notifyPuzzleInteraction,
-             wipeLocalLeaderboards,
              showPotdLeaderboard,
              // Reusable iOS-standalone keyboard helpers — exposed so PotD's
              // solve-modal name entry can share the same on-screen keyboard

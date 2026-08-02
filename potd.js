@@ -2232,72 +2232,6 @@ const Potd = (() => {
 
     // ── Init ──
 
-    // DEV: manual reset wired to the debug page's "Reset PotD (today)"
-    // button. Wipes localStorage's PotD state AND today's server-side
-    // PotdPuzzle / PotdScore / PotdSession rows, then nukes the
-    // in-memory cache so the next slot click re-fetches from scratch.
-    // Lets the dev test the fresh-play flow without waiting for the
-    // UTC day to roll over. Remove the back-end's /api/potd/dev-reset
-    // route + this function + the debug button before public release.
-    function resetLocalState() {
-        try {
-            const slug = projectSlug();
-            const prefix = slug + '_potd_';
-            const toRemove = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.indexOf(prefix) === 0) toRemove.push(key);
-            }
-            for (const k of toRemove) localStorage.removeItem(k);
-            // Also nuke the persisted sessionId — without this, the server
-            // still sees this browser as a returning client (PotdSession
-            // table keys eligibility by sessionId) so every replay would
-            // come back ineligible. A fresh sessionId regenerates on the
-            // next getSessionId() call.
-            localStorage.removeItem(slug + '_session_id');
-        } catch (e) { /* private mode — silent */ }
-    }
-
-    // Public dev hook. Returns a small status object the caller can
-    // surface in the debug UI. Any in-flight background generation is
-    // left to drain naturally — its seed POST will just land in the
-    // post-reset (empty) server set, which is benign.
-    //
-    // Order matters: local wipe + UI refresh fire FIRST (synchronously),
-    // then the server wipe runs over its (potentially slow) network
-    // round-trip. Without that ordering, a user who clicks Reset and
-    // reloads before the server fetch completes would never trigger the
-    // local wipe — which lives after the await — and the page would
-    // come back painted with the same checkmarks they thought they
-    // cleared.
-    async function devReset() {
-        const base = apiBase();
-        // Local-state wipe FIRST — synchronous, fast, can't be aborted
-        // by a quick page reload. Includes both the localStorage keys
-        // AND the in-memory caches so the menu indicators update
-        // immediately on the next refresh call.
-        resetLocalState();
-        puzzles              = null;
-        serverFetchPromise   = null;
-        serverFetchResolved  = false;
-        queue                = [];
-        slotWaiters.clear();
-        refreshMenuIndicators();
-        // Server-side wipe SECOND — this can hang on a cold backend,
-        // but the local visual state has already updated so the user
-        // sees an immediate response. The server-reachability flag in
-        // the returned status object tells the debug-UI caller which
-        // outcome message to surface.
-        let serverOk = false;
-        if (base) {
-            try {
-                const resp = await fetch(base + '/potd/dev-reset', { method: 'POST' });
-                serverOk = resp.ok;
-            } catch (e) { /* offline / endpoint missing — leave serverOk false */ }
-        }
-        return { serverOk: serverOk, serverReachable: !!base };
-    }
-
     function init() {
         menuEl        = document.getElementById('menu');
         hudEl         = document.getElementById('hud');
@@ -2476,7 +2410,6 @@ const Potd = (() => {
         noteHintUsed,
         hintsRemaining,
         refreshMenuIndicators,
-        devReset,
         devSeedAllSlots,
         get SLOTS() { return SLOTS.slice(); },
     };

@@ -12,11 +12,12 @@
 // Activation is per page load and deliberately NOT persisted: a reload
 // puts the intro back, which is the only way back in.
 //
-// THE TWO DOORS DIFFER. ?dev=true is the only one that reveals the
-// destructive dev-action buttons (wipe leaderboards / visits / first-run,
-// reset PotD — #dbgDevActions in index.html). Ctrl+D opens the debug
-// PANEL only, leaving those hidden: the panel is worth making easy to
-// reach, a one-keystroke "delete every leaderboard" is not.
+// The two doors are equivalent now. They used to differ because the panel
+// carried destructive wipe buttons that only ?dev=true revealed; those
+// were DELETED outright on 2026-08-02 (user call) rather than hidden,
+// since shipping them at all put the admin endpoint URLs in the bundle
+// for anyone to read. The endpoints still exist server-side — call them
+// by hand when needed.
 //
 // Three responsibilities:
 //   1. Ctrl+D toggles the `<html>` element between mode-game and
@@ -35,14 +36,9 @@
 // modules it touches are guaranteed available.
 
 const DevMode = (function () {
-    // Two doors, and they are NOT equivalent. ?dev=true activates
-    // immediately and is the ONLY one that reveals the destructive
-    // dev-action buttons (wipe leaderboards / visits / first-run, reset
-    // PotD) — those delete real production data, so reaching them should
-    // take deliberately editing the URL. Ctrl+D at the intro opens the
-    // debug PANEL for anyone, with those buttons still hidden.
-    const urlActive = (new URLSearchParams(window.location.search)).get('dev') === 'true';
-    let active = urlActive;
+    // ?dev=true activates immediately; Ctrl+D at the intro is the second
+    // door (see the header). `active` is mutable because of it.
+    let active = (new URLSearchParams(window.location.search)).get('dev') === 'true';
     let initialized = false;
 
     // Poll cadence for the daily-rollover watcher. 1 minute is fine —
@@ -80,16 +76,6 @@ const DevMode = (function () {
         try {
             return window.getComputedStyle(ov).display !== 'none';
         } catch (e) { return false; }
-    }
-
-    // The destructive dev actions (wipe leaderboards / visits / first-run,
-    // reset PotD) ship `hidden` so they can't be stumbled into. ONLY the
-    // ?dev=true door calls this — activating from the intro deliberately
-    // leaves them hidden, so the panel stays explorable without putting a
-    // "delete every leaderboard" button one keystroke away.
-    function revealDevActions() {
-        const el = document.getElementById('dbgDevActions');
-        if (el) el.hidden = false;
     }
 
     // Ctrl+D handler — toggles between mode-game and mode-debug on
@@ -169,9 +155,6 @@ const DevMode = (function () {
     function init() {
         if (initialized) return;
         initialized = true;
-        // URL flag only — see revealDevActions. Ctrl+D activation gets
-        // the panel and the PotD watcher, never the wipe buttons.
-        if (urlActive) revealDevActions();
         startRolloverWatcher();
         // Initial seed for today — give the rest of the page a beat to
         // finish booting (PotD module init, fetch first, etc.) before
