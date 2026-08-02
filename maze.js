@@ -5143,6 +5143,14 @@ const Maze = (() => {
         // piece reads as one face rather than a cluster of tiles. 0 outside
         // mosaic mode and for every one-cell group.
         mosaicInnerMask(r, c) { return mosaicInnerMask(r, c); },
+        // Do two cells belong to the same piece? Unlike mosaicInnerMask this
+        // answers for DIAGONAL neighbours too, which is what the renderer
+        // needs to spot a reflex (concave) corner of a piece outline. O(1)
+        // and allocation-free — it is called per cell per corner per frame.
+        mosaicSameGroup(r1, c1, r2, c2) {
+            const a = mosaicGroupIndex(r1, c1);
+            return a >= 0 && a === mosaicGroupIndex(r2, c2);
+        },
         // Pivot for the rotation animation, in CELL units and possibly
         // half-integral (an even-sided piece turns about a lattice point,
         // an odd-sided one about a cell centre). null outside mosaic mode.

@@ -784,18 +784,26 @@ const Render = (() => {
         return tctx.createPattern(tex, 'repeat');
     }
 
+    // BEVEL_FRAC is a fraction of cellSize, but in quad mode the visible tile
+    // is 2× cellSize on each side — so double the bevel to keep its visual
+    // proportion consistent with non-quad tiles. Skipped edges still receive
+    // 0 inset, so this only fattens the bevels that frame each 2×2 group.
+    //
+    // Mosaic stays at 1×: its pieces are all different sizes, so there is no
+    // single multiplier that would be right for a 2×2 and a 5×5 at once, and
+    // the sub-tile grid is the one constant scale across them.
+    //
+    // Factored out of drawBeveledPolygon because drawMosaicCornerPatches has
+    // to inset by exactly the same amount — a patch a pixel out from the
+    // bevels it joins would read as a worse defect than the gap it fills.
+    function bevelWidth() {
+        return Math.max(2, Math.floor(cellSize * BEVEL_FRAC * (Maze.quadMode ? 2 : 1)));
+    }
+
     function drawBeveledPolygon(verts, palette, skipEdges, arcEdges, bevelOverride) {
-        // BEVEL_FRAC is a fraction of cellSize, but in quad mode the visible
-        // tile is 2× cellSize on each side — so double the bevel to keep its
-        // visual proportion consistent with non-quad tiles. The inner-quad
-        // edges (skipEdges) still receive 0 inset, so this only fattens the
-        // outer-quad bevels that frame each 2×2 group.
         // bevelOverride lets small overlays (gates) pick a thinner inset so
         // tiny polygons don't get bevel-dominated.
-        const bevelMul = Maze.quadMode ? 2 : 1;
-        const bevel = (bevelOverride != null)
-            ? bevelOverride
-            : Math.max(2, Math.floor(cellSize * BEVEL_FRAC * bevelMul));
+        const bevel = (bevelOverride != null) ? bevelOverride : bevelWidth();
         const inner = insetPolygon(verts, bevel, skipEdges);
         const n = verts.length;
 
@@ -1030,6 +1038,96 @@ const Render = (() => {
         drawBeveledPolygon(innerCorner, palette, quadSkipEdges(innerCorner, px, py, cs, inner), innerArcEdges);
     }
 
+    // ── Bevel mitres at a piece's REFLEX corners (mosaic only) ──────────
+    //
+    // The bevel-skip model is per-EDGE: an edge lying between two cells of
+    // one piece gets no bevel, so the cells' faces merge. That is complete
+    // for quad, because a 2×2 group is convex — every corner of its outline
+    // is a right angle turning outward, and the cell that owns it draws both
+    // of its bevels and mitres them itself.
+    //
+    // A mosaic piece can turn the other way. Where its outline has a REFLEX
+    // corner — interior angle 270°, i.e. three of the four cells around a
+    // grid vertex are in the piece and one is not — the two outline edges
+    // meeting there belong to two DIFFERENT cells, and each mitres against
+    // its own skipped edge rather than against the other. Both bevel strips
+    // stop dead at the vertex, leaving a bevel-square of face colour in the
+    // third cell that nothing draws. That is the missing inner corner.
+    //
+    // Insetting the piece outline as one polygon puts its vertex at
+    // V + (b, b) inward, so the square between V and that point is bevel,
+    // split along the V-to-inset diagonal — one triangle per outline edge,
+    // each taking that edge's shade. This draws exactly those two triangles.
+    //
+    // Ownership: the patch belongs to the cell that has BOTH adjacent sides
+    // inner and is missing the diagonal neighbour between them. That cell is
+    // always the one diagonally opposite the gap, so every reflex corner is
+    // claimed exactly once and no two cells draw the same patch.
+    //
+    // Safe to draw straight after the walls: b is a fraction of a cell and
+    // wall material is at least wallThickness() deep at every corner of
+    // every tile type (cross corner squares, straight side-bars, and the
+    // elbow's outer L plus its quarter-disc inner corner), so the triangles
+    // always land on wall and never intrude on the path channel.
+    const M_N = 0, M_E = 1, M_S = 2, M_W = 3;
+    // [vertical inner side, horizontal inner side, diagonal dr, dc]
+    const REFLEX_CORNERS = [
+        [M_N, M_W, -1, -1],
+        [M_N, M_E, -1,  1],
+        [M_S, M_E,  1,  1],
+        [M_S, M_W,  1, -1]
+    ];
+    // A unit edge wound the way beveledRect winds that side, so
+    // bevelColorForEdge derives the same shade the neighbouring cell used.
+    // (CW winding: top runs +x, right +y, bottom -x, left -y.)
+    const SIDE_EDGE = [
+        [{ x: 0, y: 0 }, { x:  1, y:  0 }],   // N — outward normal up
+        [{ x: 0, y: 0 }, { x:  0, y:  1 }],   // E — outward normal right
+        [{ x: 0, y: 0 }, { x: -1, y:  0 }],   // S — outward normal down
+        [{ x: 0, y: 0 }, { x:  0, y: -1 }]    // W — outward normal left
+    ];
+    function drawMosaicCornerPatches(px, py, palette, r, c) {
+        if (!Maze.mosaicMode || !Maze.mosaicInnerMask || !Maze.mosaicSameGroup) return;
+        const mask = Maze.mosaicInnerMask(r, c);
+        if (!mask) return;
+        const cs = cellSize;
+        const b  = bevelWidth();
+        for (const [vert, horiz, ddr, ddc] of REFLEX_CORNERS) {
+            // Both sides must be skipped, or the owning cell already bevels
+            // this corner itself and there is nothing missing.
+            if (!(mask & (1 << vert)) || !(mask & (1 << horiz))) continue;
+            // Diagonal present → the corner is interior to the piece (e.g.
+            // the middle of a 2×2 block), so no outline passes through it.
+            if (Maze.mosaicSameGroup(r, c, r + ddr, c + ddc)) continue;
+
+            const vx = px + (horiz === M_W ? 0 : cs);   // the corner point
+            const vy = py + (vert  === M_N ? 0 : cs);
+            const dx = (horiz === M_W ? 1 : -1);        // inward, into this cell
+            const dy = (vert  === M_N ? 1 : -1);
+            const ix = vx + dx * b, iy = vy + dy * b;   // inset-outline vertex
+            // Nudge the corner point outward by the same overlap the bevel
+            // trapezoids use, so the patch tucks under the two strips it
+            // joins instead of leaving a hairline seam at each.
+            const ox = vx - dx * SEAM_OVERLAP, oy = vy - dy * SEAM_OVERLAP;
+
+            // The VERTICAL outline edge runs along this cell's `horiz` side,
+            // so it carries that side's shade; its half of the mitre is the
+            // triangle on the horizontal leg. The horizontal edge lies on the
+            // `vert` side and takes the other triangle.
+            const tri = (side, thirdX, thirdY) => {
+                ctx.fillStyle = bevelColorForEdge(SIDE_EDGE[side][0], SIDE_EDGE[side][1], palette);
+                ctx.beginPath();
+                ctx.moveTo(ox, oy);
+                ctx.lineTo(thirdX, thirdY);
+                ctx.lineTo(ix, iy);
+                ctx.closePath();
+                ctx.fill();
+            };
+            tri(horiz, ix, vy);
+            tri(vert,  vx, iy);
+        }
+    }
+
     // Dispatch on tile type/rotation. T_STRAIGHT rotation 0/2 = vertical lane,
     // 1/3 = horizontal. T_ELBOW uses rotation directly (canonical N→E).
     function drawWalls(px, py, tile, palette, r, c) {
@@ -1040,6 +1138,7 @@ const Render = (() => {
         } else { // T_ELBOW
             drawElbowWalls(px, py, tile.rotation, palette, r, c);
         }
+        drawMosaicCornerPatches(px, py, palette, r, c);
     }
 
     // ---- groove path through a tile ----
