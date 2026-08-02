@@ -730,6 +730,28 @@ const Marathon = (() => {
     // per-solve advance AND pre-gen's lookahead) must go through this,
     // or a 0 would leak into levelConfig/dimsForLevel.
     function levelAfter(lev) { return lev === -1 ? 1 : lev + 1; }
+    // How many warm-ups the ACTIVE run is walking (0 for every run but
+    // the first-visit auto-start).
+    function warmupCount() {
+        if (!isFirstRunAutoStart) return 0;
+        const list = MARATHON.FIRST_RUN_WARMUP_LEVELS;
+        return Array.isArray(list) ? list.length : 0;
+    }
+    // The number the PLAYER sees. Internally the warm-ups are -2 and -1
+    // so that tracking, the twin ramp and the gate schedule can tell them
+    // from real puzzles — but from the player's side they're just the
+    // first two puzzles of their run, so the HUD and the solve card count
+    // 1, 2, 3, … straight through. A first-timer's puzzle 1 therefore
+    // shows as 3. Runs without warm-ups are unaffected (offset 0), which
+    // includes every resumed run and the Continue cards.
+    function displayLevel(lev) {
+        if (lev >= 1) return lev + warmupCount();
+        const list = MARATHON.FIRST_RUN_WARMUP_LEVELS || [];
+        for (let i = 0; i < list.length; i++) {
+            if (list[i].level === lev) return i + 1;
+        }
+        return 1;   // stale config — a warm-up we can't place is the first one
+    }
     // Seed value for startGame: one step BELOW the run's opening level,
     // since startNextPuzzle advances before it builds. Warm-ups apply to
     // the auto-start run only; a stale config with no warm-up list falls
@@ -1135,6 +1157,10 @@ const Marathon = (() => {
             const cfg     = levelConfig(level);
             const logical = dimsForLevel(level, cfg);
             const fresh   = timeForPuzzle(cfg.quadMode, cfg.pathCount, solvedCount, logical);
+            // Plain -1 rather than the ladder's levelAfter inverse: the
+            // only run with warm-up levels is the auto-start one, which
+            // bailed out of this function at the top. If that ever
+            // changes, this needs a levelBefore that skips 0 too.
             saveLevel     = level - 1;
             saveRemaining = Math.max(0, timeRemaining - fresh);
             if (saveLevel < 1 && solvedCount === 0) return;   // nothing to resume
@@ -1658,7 +1684,12 @@ const Marathon = (() => {
         // (2026-07-29, user call): the ladder A/B/C/D experiment made a
         // path-count trigger uneven — the 'single' variant never reaches
         // 2 paths at all — and a variant-independent trigger keeps the
-        // nudge column comparable across variants. The shallow-quit case
+        // nudge column comparable across variants. Left on the LEVEL (so
+        // still four REAL solves) when the warm-up puzzles were added
+        // 2026-08-02 — moving an in-flight experiment's trigger would
+        // break comparability with the arms' existing data; the player
+        // now has six solves behind them rather than four.
+        // The shallow-quit case
         // is covered by the SAME-KEY pitch in quitToMenu — whichever
         // surface fires first wins, the seen-flag silences the other. The
         // action jumps straight into today's 1-path daily: tear the Zen
@@ -1888,13 +1919,16 @@ const Marathon = (() => {
         transitionQuietUntil = Date.now() + TRANSITION_QUIET_MS;
         stopTimer();
         // The puzzle is over, so any tip about it is over too: cancel the
-        // pending 30s lock tip and pull down whatever is on-screen. Passing
-        // false leaves the tip UNSEEN, so one the player never acknowledged
-        // re-fires on their next puzzle instead of being silently spent.
-        // (Matches potd.js onSolve, which has always done this.)
+        // pending 30s lock tip and retire whatever is on-screen. Solving
+        // the board counts as acknowledgment, so dismissSolved marks it
+        // seen and it never returns — the older re-queue-it-unseen
+        // behavior meant a player who just kept playing met the same card
+        // again on every puzzle. Falls back to the old call on a stale
+        // cached tooltip.js.
         cancelLockTip();
-        if (typeof Tooltip !== 'undefined' && Tooltip.dismissActive) {
-            Tooltip.dismissActive(false);
+        if (typeof Tooltip !== 'undefined') {
+            if (Tooltip.dismissSolved)      Tooltip.dismissSolved();
+            else if (Tooltip.dismissActive) Tooltip.dismissActive(false);
         }
         if (typeof Sfx !== 'undefined') {
             Sfx.stopLoop('glitch_overlap');  // any lingering overlap-loop dies with the win
@@ -1990,11 +2024,8 @@ const Marathon = (() => {
         // was just solved; subline tells the player what they're carrying
         // into the next puzzle.
         if (solveTransitionEl && solveHeadline && solveBanked) {
-            // Same reasoning as the HUD label: never print the negative
-            // warm-up number at the player.
-            solveHeadline.textContent = isWarmupLevel(level)
-                ? I18n.t('marathon.solveHeadlineWarmup')
-                : I18n.t('marathon.solveHeadline', { n: level });
+            solveHeadline.textContent =
+                I18n.t('marathon.solveHeadline', { n: displayLevel(level) });
             // Tier-up cue: the NEXT puzzle steps the path count up (a
             // progressive-run tier boundary). Announce it on the popup so
             // the jump doesn't read as a random difficulty spike; hidden
@@ -2200,13 +2231,8 @@ const Marathon = (() => {
         // Progressive runs re-render this on every startNextPuzzle, so the
         // label's path digit tracks the current tier automatically.
         hudType.textContent  = I18n.t(typeLabelKey(activeType, level, levelConfig(level)));
-        // Warm-ups are numbered -2/-1 internally (see config.js
-        // FIRST_RUN_WARMUP_LEVELS), which is a fine key for tracking and a
-        // terrible thing to show a first-time player — "Puzzle -2" reads
-        // as a bug. They get a named label instead; the dims still show.
-        hudLevel.textContent = isWarmupLevel(level)
-            ? I18n.t('marathon.hudWarmup', { r: logical.rows, c: logical.cols })
-            : I18n.t('marathon.hudLevel', { n: level, r: logical.rows, c: logical.cols });
+        hudLevel.textContent = I18n.t('marathon.hudLevel',
+            { n: displayLevel(level), r: logical.rows, c: logical.cols });
         renderTimer();
     }
 

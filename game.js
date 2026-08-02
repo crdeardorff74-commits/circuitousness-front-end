@@ -1575,27 +1575,33 @@
                     : { rows: 4, cols: 4 };
                 const startSum = (startL.rows + startL.cols) * (Maze.quadMode ? 2 : 1);
                 const growthUnits = Math.max(0, Maze.ROWS + Maze.COLS - startSum);
-                // Zen opens GATE-FREE for its first two puzzles. Gates are
-                // the mechanic newcomers find most confusing — they rotate
-                // in unison, the opposite of the per-tile lesson a first
-                // puzzle is teaching — and Zen is where brand-new players
-                // land (the first-visit auto-start run is a Zen run). Let
-                // the tile mechanic land on its own first; gates arrive on
-                // puzzle 3. Marathon is untouched: it's the mode players
-                // choose deliberately, and its clock makes an easier
-                // opening a scoring advantage rather than a kindness.
-                // Keyed to the LEVEL (< 3 = puzzles 1 and 2), not to the
-                // solve count it used to read: the first-visit auto-start
-                // run now opens with warm-up puzzles numbered -2 and -1
-                // (config.js FIRST_RUN_WARMUP_LEVELS), and a solve-count
-                // test would have spent the gate-free allowance on those
-                // and put gates on real puzzle 1. Levels below 1 are warm-
-                // ups, so `< 3` covers -2, -1, 1, 2 — gates still arrive
-                // on real puzzle 3, exactly as before. Run-level on
-                // purpose: the fast track's quad hand-off is NOT an
-                // opening (it's level 10+), so it gets its 1 gate.
+                // Zen opens GATE-FREE. Gates are the mechanic newcomers
+                // find most confusing — they rotate in unison, the
+                // opposite of the per-tile lesson a first puzzle is
+                // teaching — and Zen is where brand-new players land (the
+                // first-visit auto-start run is a Zen run). Let the tile
+                // mechanic land on its own first. Marathon is untouched:
+                // it's the mode players choose deliberately, and its clock
+                // makes an easier opening a scoring advantage rather than
+                // a kindness.
+                // Keyed to the LEVEL, not to the solve count it used to
+                // read: the first-visit auto-start run opens with warm-up
+                // puzzles numbered -2 and -1 (config.js
+                // FIRST_RUN_WARMUP_LEVELS), and a solve-count test would
+                // have spent the gate-free allowance on those and put
+                // gates on real puzzle 1. Every level below 1 is a
+                // warm-up, so `< 5` covers -2, -1, 1, 2, 3, 4 and the
+                // first gated board is real puzzle 5 — which a
+                // first-timer sees labelled #7, since their two warm-ups
+                // are counted into the displayed numbering.
+                // History: gates arrived on puzzle 3 until 2026-08-02,
+                // when the user pushed the first gate out to 5 — twins
+                // already land at 3 (TWIN_RAMP_START_LEVEL), and meeting
+                // both new mechanics on the same board was a lot at once.
+                // Run-level on purpose: the fast track's quad hand-off is
+                // NOT an opening (it's level 10+), so it gets its 1 gate.
                 const zenOpening = (typeof Marathon !== 'undefined' && Marathon.isZenRun
-                                    && Marathon.isZenRun() && runLevel < 3);
+                                    && Marathon.isZenRun() && runLevel < 5);
                 const target = zenOpening ? 0 : 1 + Math.floor(growthUnits / 4);
                 // Quad mode: anchor gates at quad-corners only (every other
                 // sub-tile vertex). The prong is still one sub-tile long.

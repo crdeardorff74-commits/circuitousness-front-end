@@ -1796,12 +1796,14 @@ const Potd = (() => {
         // Cancel the lock-tip timer — it would otherwise pop up over the
         // solve modal if the player solved within 30s.
         cancelLockTip();
-        // Drop any active first-play tooltip without marking seen, so
-        // it'll fire again on the player's next puzzle. The solve modal
-        // + end-credits scene shouldn't have a play-time tip layered on
-        // top of them.
-        if (typeof Tooltip !== 'undefined' && Tooltip.dismissActive) {
-            Tooltip.dismissActive(false);
+        // Retire any active tooltip: the solve modal + end-credits scene
+        // shouldn't have a play-time tip layered on top of them, and
+        // solving the board under a tip counts as acknowledging it, so
+        // dismissSolved marks it seen rather than re-queueing it for the
+        // player's next puzzle. Falls back on a stale cached tooltip.js.
+        if (typeof Tooltip !== 'undefined') {
+            if (Tooltip.dismissSolved)      Tooltip.dismissSolved();
+            else if (Tooltip.dismissActive) Tooltip.dismissActive(false);
         }
 
         // Solve SFX (stage 1): immediate applause as soon as the player

@@ -8,11 +8,15 @@
  *     Clicking it marks the tip seen, dismisses, THEN runs onClick — that
  *     order lets onClick tear game state down without racing the card.
  *     onAcknowledge — optional callback fired once when the player
- *     acknowledges the tip via EITHER button (Got It or the action), right
- *     after the seen-flag persists and before the action's onClick. NOT
- *     fired on a dismiss-by-transition (markAsSeen=false) — the tip will
- *     re-queue and the callback gets its chance on the real acknowledgment.
- *     (e.g. the firstPlay tip revealing the in-HUD How-to-Solve button.)
+ *     acknowledges the tip — via EITHER button (Got It or the action), or
+ *     by solving the puzzle under it — right after the seen-flag persists
+ *     and before the action's onClick. NOT fired when the player navigates
+ *     away unread (dismissActive(false)); the tip re-queues and the
+ *     callback gets its chance on the real acknowledgment. (e.g. the
+ *     firstPlay tip revealing the in-HUD How-to-Solve button.)
+ *   Tooltip.dismissSolved()      — the puzzle under the tip was SOLVED.
+ *     Marks the on-screen tip seen (it never comes back) and drops the
+ *     rest of the queue unread.
  *   Tooltip.cancelPending(key)   — remove a queued (but not-yet-shown) tip
  *   Tooltip.showBoardMechanicTips() — fire the twin-tile / gate
  *     explainers if the CURRENT board contains either. Board-driven
@@ -190,15 +194,51 @@ const Tooltip = (function () {
     //   true  → user clicked Got It. Persist the seen-flag so this tip
     //           never shows again, then drain the queue normally (next
     //           tip slides in).
-    //   false → an external transition (puzzle end, navigation to menu
-    //           or credits) is pulling the tip away. DON'T persist seen
-    //           — the player never had a chance to actually acknowledge
-    //           it, so we want the same tip to fire again on the NEXT
-    //           puzzle. Also clear the entire queue so a pending second
-    //           tip doesn't pop up on a menu screen where it has no
-    //           context. Future showOnce calls re-queue from scratch.
+    //   false → the player NAVIGATED AWAY (quit to menu, time ran out,
+    //           credits) with the tip unread. DON'T persist seen — they
+    //           never had a chance to acknowledge it, so the same tip
+    //           fires again on their next puzzle. Also clear the entire
+    //           queue so a pending second tip doesn't pop up on a menu
+    //           screen where it has no context. Future showOnce calls
+    //           re-queue from scratch.
+    // A SOLVE is neither of these — see dismissSolved below.
     function dismissActive(markAsSeen) {
         if (!card) return;
+        const activeEntry = takeDownCard();
+        if (markAsSeen) {
+            acknowledge(activeEntry);
+            queue.shift();
+            // Drain anything that queued behind the dismissed tip.
+            processQueue();
+        } else {
+            // Forget everything pending. The next puzzle's showOnce
+            // calls will re-queue any unseen tips fresh.
+            queue.length = 0;
+        }
+    }
+
+    // Public — the player SOLVED the puzzle a tip was sitting on. The
+    // on-screen tip is treated exactly as if Got It had been clicked:
+    // seen-flag persisted, onAcknowledge fired, gone for good. Solving
+    // the board underneath a tip is acknowledgment enough, and the old
+    // behavior (re-queue it, unseen) meant a player who simply kept
+    // playing got the same card again on every single puzzle until they
+    // happened to click the button.
+    //
+    // Tips still QUEUED behind it are dropped UNSEEN rather than drained:
+    // the player never laid eyes on those, and popping one up over the
+    // solve card would be the same nagging in a different place. They
+    // re-queue on the next puzzle and get their own turn there.
+    function dismissSolved() {
+        if (!card) return;
+        acknowledge(takeDownCard());
+        queue.length = 0;
+    }
+
+    // Hide the card + detach this tip's button handlers. Returns the
+    // entry that was on-screen (null if nothing was), WITHOUT touching
+    // the queue — each caller decides what happens to it.
+    function takeDownCard() {
         const activeEntry = showing && queue.length > 0 ? queue[0] : null;
         if (currentGotItHandler && gotItBtn) {
             gotItBtn.removeEventListener('click', currentGotItHandler);
@@ -211,25 +251,19 @@ const Tooltip = (function () {
         if (actionBtn) actionBtn.hidden = true;
         card.hidden = true;
         showing = false;
-        if (markAsSeen) {
-            if (activeEntry) {
-                markSeen(activeEntry.key);
-                // Acknowledgment hook — after the seen-flag persists, before
-                // the queue drains (and, on the action path, before the
-                // action's onClick runs — dismissActive is called first
-                // there). Guarded so a callback failure can't break the
-                // queue.
-                if (typeof activeEntry.onAcknowledge === 'function') {
-                    try { activeEntry.onAcknowledge(); } catch (err) { /* keep draining */ }
-                }
-            }
-            queue.shift();
-            // Drain anything that queued behind the dismissed tip.
-            processQueue();
-        } else {
-            // Forget everything pending. The next puzzle's showOnce
-            // calls will re-queue any unseen tips fresh.
-            queue.length = 0;
+        return activeEntry;
+    }
+
+    // Persist the seen-flag and fire the acknowledgment hook. Ordering
+    // matters: the flag lands FIRST, so a callback that repaints UI (or,
+    // on the action path, an onClick that tears down game state) already
+    // sees the tip as spent. Guarded so a callback failure can't break
+    // the queue.
+    function acknowledge(entry) {
+        if (!entry) return;
+        markSeen(entry.key);
+        if (typeof entry.onAcknowledge === 'function') {
+            try { entry.onAcknowledge(); } catch (err) { /* keep draining */ }
         }
     }
 
@@ -257,11 +291,13 @@ const Tooltip = (function () {
         // Called from every mode's puzzle-ready hook.
         showBoardMechanicTips: showBoardMechanicTips,
         cancelPending: cancelPending,
-        // Called by puzzle-exit transitions (menu return, end credits,
-        // PotD solve). Pass false so the tip isn't marked seen — the
+        // Called by NAVIGATION-away transitions (menu return, game over,
+        // end credits). Pass false so the tip isn't marked seen — the
         // player never clicked Got It, so the same tip should still
-        // fire on their next puzzle.
+        // fire on their next puzzle. Solves use dismissSolved instead.
         dismissActive: dismissActive,
+        // Called from every mode's onSolve — see the function comment.
+        dismissSolved: dismissSolved,
         // Exposed for callers that want to know whether to bother
         // scheduling a delayed timer — e.g., marathon.js skipping the
         // 30s lock-tip timer entirely if the tip's already been seen.

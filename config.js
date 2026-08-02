@@ -376,13 +376,17 @@ const MARATHON = {
     //
     // NUMBERED NEGATIVELY, ascending, with NO puzzle 0: the run's level
     // sequence is -2 → -1 → 1 → 2 → … (marathon.js levelAfter). The
-    // negative numbers are what make a warm-up distinguishable from a
-    // real puzzle at every site that reads `level` — the twin ramp
-    // (twinScaleForLevel returns 0 below TWIN_RAMP_START_LEVEL), the
-    // gate-free Zen opening (game.js keys on level < 3), the HUD label,
-    // and the first-run funnel's puzzle count (tracking.js
+    // negative numbers are INTERNAL ONLY — they're what makes a warm-up
+    // distinguishable from a real puzzle at every site that reads
+    // `level`: the twin ramp (twinScaleForLevel returns 0 below
+    // TWIN_RAMP_START_LEVEL), the gate-free Zen opening (game.js keys on
+    // level < 5), and the first-run funnel's puzzle count (tracking.js
     // firstRunPuzzleSolved is skipped for them, so the admin panel's
     // "3+ puzzles" column still means three REAL puzzles).
+    //
+    // The PLAYER never sees a negative number: the HUD and solve card
+    // run marathon.js's displayLevel, which counts the warm-ups into an
+    // ordinary 1, 2, 3, … so a first-timer's puzzle 1 shows as 3.
     //
     // Dims are FIXED rather than folded into the growth sequence: the
     // ladder's growth accumulator is anchored to the 4×4 start, so a
