@@ -1256,13 +1256,19 @@
              rather than reading this element. game.js keeps updating it, so
              dropping the `hidden` brings it straight back. -->
         <div id="preGenStatus" hidden>Next: idle</div>
-        <!-- DESTRUCTIVE DEV ACTIONS — HIDDEN, NOT REMOVED (2026-08-01, user
-             call). The markup, the handlers in the wiring script below, and
-             the back-end endpoints all stay exactly as they were; only the
-             display is off. `hidden` (rather than a CSS rule) keeps that
-             reversible in one step: drop the attribute here, or toggle it in
-             devtools, and the buttons are back with their handlers already
-             bound — getElementById finds hidden elements fine. -->
+        <!-- DESTRUCTIVE DEV ACTIONS — ship HIDDEN; ONLY ?dev=true reveals
+             them (dev-mode.js revealDevActions). These wipe real
+             production data — leaderboards, the visit funnel, the
+             first-run funnel + ladder experiment — so reaching them takes
+             deliberately editing the URL. Ctrl+D from the intro activates
+             dev mode for anyone and opens this panel, but leaves this
+             block hidden on purpose. `hidden` rather than a CSS rule so
+             the reveal is one property and the handlers below bind either
+             way — getElementById finds hidden elements fine.
+             NOTE: the panel is not a security boundary. The endpoints
+             themselves are open/unauthenticated by design during dev —
+             anyone who knows the URLs can POST them regardless of this
+             attribute. Gate them server-side before public release. -->
         <div id="dbgDevActions" hidden>
             <!-- DEV: wipe today's PotD state on the server (puzzles, scores,
                  sessions) AND in localStorage. Lets the dev test the fresh-
@@ -1284,6 +1290,15 @@
                  handler + endpoint) before public release. -->
             <button type="button" id="wipeVisitsBtn">Wipe Visit Stats</button>
             <div id="wipeVisitsStatus" style="font-size: 0.8em; color: #aaa;"></div>
+            <!-- DEV: wipe ALL FirstRunStats rows — the whole First-Time
+                 Players funnel AND the ladder experiment's arm
+                 assignments. Also clears THIS browser's local first-run
+                 state, so the dev can immediately re-test as a brand-new
+                 player (mirrors Reset PotD's server+local shape); without
+                 that, the local state would just re-create this browser's
+                 row on the next sync. Doesn't touch visits or scores. -->
+            <button type="button" id="wipeFirstRunBtn">Wipe First-Run Stats</button>
+            <div id="wipeFirstRunStatus" style="font-size: 0.8em; color: #aaa;"></div>
         </div>
     </div>
 
@@ -1550,6 +1565,45 @@
                     }
                 }
                 wipeVisitsBtn.disabled = false;
+            });
+        }
+
+        // DEV: "Wipe First-Run Stats" — empties the server's
+        // first_run_stats table (the whole First-Time Players funnel AND
+        // the ladder experiment's arm assignments), then clears THIS
+        // browser's local first-run state so it reads as brand new
+        // again. Both halves matter: leaving the local state behind lets
+        // the next sync re-create this browser's row, re-seeding the
+        // table we just emptied. Remove this block (markup + handler +
+        // endpoint) before public release.
+        var wipeFirstRunBtn    = document.getElementById('wipeFirstRunBtn');
+        var wipeFirstRunStatus = document.getElementById('wipeFirstRunStatus');
+        if (wipeFirstRunBtn) {
+            wipeFirstRunBtn.addEventListener('click', async function() {
+                wipeFirstRunBtn.disabled = true;
+                if (wipeFirstRunStatus) wipeFirstRunStatus.textContent = 'Wiping…';
+                var serverResult = null;
+                var serverErr    = null;
+                try {
+                    if (AppConfig && AppConfig.GAME_API) {
+                        var resp = await fetch(AppConfig.GAME_API + '/admin/wipe-first-run', { method: 'POST' });
+                        if (resp.ok) serverResult = await resp.json();
+                        else         serverErr    = 'HTTP ' + resp.status;
+                    } else {
+                        serverErr = 'no API base configured';
+                    }
+                } catch (e) { serverErr = (e && e.message) || String(e); }
+                var localCleared = (typeof Tracking !== 'undefined' && Tracking.firstRunDevReset)
+                    ? Tracking.firstRunDevReset() : false;
+                if (wipeFirstRunStatus) {
+                    wipeFirstRunStatus.textContent =
+                        (serverResult
+                            ? 'Server: ' + serverResult.rows + ' rows deleted at ' +
+                              new Date().toLocaleTimeString() + '.'
+                            : 'Server: ' + serverErr + '.') +
+                        ' Local state ' + (localCleared ? 'cleared' : 'NOT cleared') + '.';
+                }
+                wipeFirstRunBtn.disabled = false;
             });
         }
     })();

@@ -545,6 +545,17 @@ const Tracking = (function () {
                     // player who has interacted but not yet solved or
                     // clicked anything.
                     engaged:           (st.eng === undefined) ? true : !!st.eng,
+                    // Initial-run solve count. THE server key is `puzzles`
+                    // (app.py reads data.get('puzzles')) and it drives
+                    // initial_run_puzzles, which is what the admin panel's
+                    // engaged bar, avg-puzzles and the ladder table's 3+
+                    // column all key off — and what the server's variant
+                    // balancer counts. Omitting it made every one of those
+                    // read 0 forever (regression: the field was dropped
+                    // when this payload was restructured for `engaged`;
+                    // caught 2026-08-02 — a real 4-puzzle CG run left the
+                    // Standard arm's 3+ count sitting at 1).
+                    puzzles:           st.p || 0,
                     howtoClicked:      !!st.howto,
                     tutorialCompleted: !!st.tut,
                     nudgeClicked:      !!st.nudge,
@@ -694,9 +705,29 @@ const Tracking = (function () {
     // keeps a worker context (importScripts) inert. The first-run sync
     // retry rides the same schedule (slightly later so the two POSTs
     // don't contend on a cold dyno's first connection).
+    // One-time backfill for the dropped-`puzzles` regression above. A
+    // browser that solved during its first run recorded the count locally
+    // but shipped syncs without it, and once those syncs settled `dirty`
+    // there was nothing left to trigger a resend — the count would sit in
+    // localStorage forever while the server row read 0. Re-dirty any state
+    // that HAS solves so the next sync carries them. The `pSync` marker
+    // makes this run exactly once per browser; without it every load would
+    // re-dirty and re-POST unchanged state. Rows only ever move up
+    // (app.py max()es the incoming count), so a late backfill can't
+    // regress a row that was already correct.
+    function _frBackfillPuzzles() {
+        const st = _frRead();
+        if (!st || st.pSync) return;
+        st.pSync = 1;
+        if ((st.p || 0) > 0) {
+            st.rev   = (st.rev || 0) + 1;
+            st.dirty = 1;
+        }
+        _frWrite(st);
+    }
     if (typeof window !== 'undefined') {
         setTimeout(_flushStaleMilestones, 1500);
-        setTimeout(_frSyncNow, 2000);
+        setTimeout(function () { _frBackfillPuzzles(); _frSyncNow(); }, 2000);
     }
 
     return {
@@ -721,6 +752,17 @@ const Tracking = (function () {
         firstRunDailyMoreClicked:   firstRunDailyMoreClicked,
         firstRunOutsideStart:       firstRunOutsideStart,
         firstRunOutsideSolve:       firstRunOutsideSolve,
+        // DEV ONLY (debug panel's "Wipe First-Run Stats"): drop this
+        // browser's local first-run state so it counts as brand new
+        // again. Pairs with the server-side wipe — without it the local
+        // state survives the wipe and re-creates this browser's row on
+        // the next sync, which would quietly re-poison a fresh baseline.
+        // Keeps the storage key private to this module rather than
+        // duplicating it in the panel's wiring.
+        firstRunDevReset: function () {
+            try { localStorage.removeItem(FIRSTRUN_KEY); return true; }
+            catch (e) { return false; }
+        },
         // Exposed for diagnostics — admin/dev can paste
         // `Tracking.visitId()` in the console to see what they were
         // tagged with this session.

@@ -282,6 +282,16 @@ const Render = (() => {
 
     let canvas = null;
     let ctx = null;
+    // Last good Now Playing chip height, cached for the session. The
+    // reserve below has to produce the SAME number whether the chip is
+    // merely expected or actually on screen — any difference between the
+    // two IS the first-click jump the prediction exists to prevent. A
+    // measurement can come back 0 (element or an ancestor not laid out
+    // yet at the moment we ask, which on CrazyGames is the earliest
+    // possible moment: the intro is skipped and autoStartFirstPractice
+    // runs synchronously during load), and a 0 silently drops the reserve
+    // altogether. Falling back to the cache makes that impossible.
+    let npBandHeight = 0;
     let cellSize = 0;
     let originX = 0, originY = 0;  // top-left of grid in CSS pixels
     let dpr = 1;
@@ -526,6 +536,12 @@ const Render = (() => {
                 npEl.style.visibility = '';
                 if (padTitle) titleEl.textContent = '';
             }
+            // Remember a good measurement; reuse it when a later one comes
+            // back 0. Both states read the same number, so the reserve
+            // can't change as the chip goes from expected to visible —
+            // which is the whole point of predicting it.
+            if (npH > 0) npBandHeight = npH;
+            else if (chipVisible || chipExpected) npH = npBandHeight;
             // + 13px ≈ the chip's ~0.8rem bottom offset.
             if (npH > 0) bottomReserve = Math.max(bottomReserve, (npH + 13) / 2);
         }
