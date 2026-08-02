@@ -2100,9 +2100,17 @@ const Marathon = (() => {
         return m + ':' + (s < 10 ? '0' : '') + s;
     }
     function fmtTimePrecise(ms) {
-        // For elapsed totals — round DOWN.
+        // For elapsed totals — round DOWN. Grows an hours field at 1:00:00:
+        // Marathon totals stay under the 1h MAX_TOTAL_MS cap, but this also
+        // renders PotD leaderboard entries, and those can legitimately run
+        // to multiple hours since the resume window went to a full day
+        // (PotD's clock is wall-clock, so away time is on the score).
         const total = Math.max(0, Math.floor(ms / 1000));
-        const m = Math.floor(total / 60), s = total % 60;
+        const h = Math.floor(total / 3600);
+        const m = Math.floor(total / 60) % 60, s = total % 60;
+        if (h > 0) {
+            return h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+        }
         return m + ':' + (s < 10 ? '0' : '') + s;
     }
 

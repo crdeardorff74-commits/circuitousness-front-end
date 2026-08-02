@@ -720,6 +720,15 @@
             if (recording.moves.length === 0) recording.startTime = Date.now();
             move.t = Date.now() - recording.startTime;
             recording.moves.push(move);
+            // Checkpoint the PotD attempt (throttled, and deferred to a
+            // timer — see Potd.scheduleAttemptSave). Hooked here rather
+            // than in recordMove so undo, which appends directly, also
+            // checkpoints; a resumed board that ignored undos would come
+            // back out of sync with its own recording. No-op outside PotD
+            // play, and replays never reach this line (guard above).
+            if (typeof Potd !== 'undefined' && Potd.onMoveRecorded) {
+                Potd.onMoveRecorded();
+            }
             return true;
         }
         function recordMove(move) {

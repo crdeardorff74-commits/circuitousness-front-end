@@ -285,10 +285,18 @@ const Potd = (() => {
         refreshMenuIndicators();
     }
 
+    // m:ss under an hour, h:mm:ss at or past it. The hour branch used to be
+    // unreachable (the server capped a submit at 1h) but a day-long resume
+    // window makes multi-hour wall-clock times legitimate, and "185:07" is
+    // not a time anyone can read. Same rule as marathon.js fmtTimePrecise.
     function fmtTime(ms) {
         const totalSec = Math.floor(ms / 1000);
-        const m = Math.floor(totalSec / 60);
+        const h = Math.floor(totalSec / 3600);
+        const m = Math.floor(totalSec / 60) % 60;
         const s = totalSec % 60;
+        if (h > 0) {
+            return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        }
         return m + ':' + String(s).padStart(2, '0');
     }
     function startTimerDisplay() {
@@ -472,7 +480,7 @@ const Potd = (() => {
         } catch (e) {}
     }
 
-    // ── In-progress attempt saves (quit/pagehide → resume) ──
+    // ── In-progress attempt saves (quit/pagehide/per-move → resume) ──
     //
     // A mid-solve PotD attempt persists to localStorage so quitting (or a
     // killed tab) no longer costs the player their progress OR their
@@ -485,14 +493,27 @@ const Potd = (() => {
     // time counts. The PotD board is time-ranked; a clock that stopped
     // on quit would make quitting a free "study the board" button.
     // (Marathon's exact-clock restore is different on purpose: its
-    // countdown is a resource, not a score.) This also matches the
-    // server's timing validation, which only believes wall time.
+    // countdown is a resource, not a score.)
+    //
+    // Since 2026-08-02 this is enforced rather than merely intended:
+    // /api/potd/solve makes the SERVER's own started_at → solve-ping
+    // measurement the ranked time, so the restored puzzleStartMs is now
+    // display-only (it drives the HUD timer). Restoring it accurately
+    // still matters — a HUD that disagreed with the posted score would
+    // read as a bug — but nothing about the score depends on it.
     //
     //   key = <slug>_potd_resume_<date>_<slot>
     // The 'resume_' infix keeps these clear of the bare state keys
     // (<slug>_potd_<date>_<slot>) that potd-streaks.js's backfill regex
     // scans. Pruned alongside the puzzle caches on init/day-rollover.
-    const RESUME_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;   // server MAX_SESSION_MS
+    // Must not exceed the server's POTD_MAX_SESSION_MS (24h) — a save the
+    // client happily resumes past the server's TTL would submit into a
+    // 'session expired' 400 and be dropped as a non-transient 4xx, i.e. a
+    // solve that silently never reaches the board. Raised 6h → 24h on
+    // 2026-08-02 alongside the server pair; PotD's wall-clock scoring
+    // makes a long absence self-penalising rather than exploitable.
+    // The UTC-day prune (pruneOldResumes) is the real ceiling either way.
+    const RESUME_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;  // server POTD_MAX_SESSION_MS
 
     function resumeKey(date, slot) {
         return projectSlug() + '_potd_resume_' + date + '_' + slot;
@@ -513,6 +534,10 @@ const Potd = (() => {
         } catch (e) { return null; }
     }
     function clearResume(date, slot) {
+        // Kill any queued per-move checkpoint first — a timer that fired
+        // after this removal would resurrect the save we just deleted
+        // (solve, watch-confirm and TTL-expiry all clear then move on).
+        cancelScheduledSave();
         try { localStorage.removeItem(resumeKey(date, slot)); } catch (e) {}
         refreshMenuIndicators();
     }
@@ -530,10 +555,14 @@ const Potd = (() => {
         } catch (e) {}
     }
 
-    // Checkpoint the live attempt. Called from quitToMenu and the
-    // pagehide/visibility-hidden listeners; a no-op outside PLAYING (so
-    // the solve modal, replays, and menu idling never write).
+    // Checkpoint the live attempt. Called from quitToMenu, the
+    // pagehide/visibility-hidden listeners, and the per-move scheduler
+    // below; a no-op outside PLAYING (so the solve modal, replays, and
+    // menu idling never write).
     function saveCurrentAttempt() {
+        // A write now satisfies whatever the pending timer was going to
+        // do, and re-arms the throttle window from this moment.
+        cancelScheduledSave();
         if (state !== STATE.PLAYING || !currentSlot) return;
         const date = (puzzles && puzzles.date) || todayUTC();
         const data = {
@@ -551,7 +580,50 @@ const Potd = (() => {
         };
         try { localStorage.setItem(resumeKey(date, currentSlot), JSON.stringify(data)); }
         catch (e) { /* quota/private mode — quit just loses progress, as before */ }
+        lastAttemptSaveMs = Date.now();
         refreshMenuIndicators();
+    }
+
+    // ── Per-move checkpointing ──
+    //
+    // The pagehide/visibilitychange listeners cover the ordinary "closed
+    // the tab / switched apps" exits, but they are not guaranteed: a tab
+    // crash, an OOM kill, or a hard force-quit can skip both, and then
+    // nothing was ever written and the attempt is lost. Sister-reported
+    // (2026-08-02). So every committed board action also checkpoints,
+    // which makes the save independent of any exit event firing.
+    //
+    // Throttled, not per-move: snapshotState + JSON.stringify of a large
+    // board on every tap during a fast rotation burst is real work on the
+    // input path. At most one write per MOVE_SAVE_MIN_INTERVAL_MS, and
+    // ALWAYS via a timer (never synchronously inside the move handler) —
+    // callers like undo() and resetPuzzle() append their move with the
+    // board mid-restore, so a same-tick save could snapshot a stale grid.
+    // The deferral costs nothing: worst case a crash loses ~1.5s of play.
+    const MOVE_SAVE_MIN_INTERVAL_MS = 1500;
+    let moveSaveTimer = null;
+    let lastAttemptSaveMs = 0;
+
+    function cancelScheduledSave() {
+        if (moveSaveTimer !== null) {
+            clearTimeout(moveSaveTimer);
+            moveSaveTimer = null;
+        }
+    }
+
+    // Called from game.js's appendMove on every committed live action
+    // (rotate / gate / lock / hint / reset / undo / board penalties).
+    // No-ops outside PotD play, so the other modes pay one cheap
+    // state check per move.
+    function scheduleAttemptSave() {
+        if (moveSaveTimer !== null) return;          // write already queued
+        if (state !== STATE.PLAYING || !currentSlot) return;
+        const wait = Math.max(
+            0, MOVE_SAVE_MIN_INTERVAL_MS - (Date.now() - lastAttemptSaveMs));
+        moveSaveTimer = setTimeout(() => {
+            moveSaveTimer = null;
+            saveCurrentAttempt();
+        }, wait);
     }
 
     function refreshMenuIndicators() {
@@ -847,6 +919,48 @@ const Potd = (() => {
         if (typeof Logger !== 'undefined') {
             Logger.warn('PotD: /potd/start failed after retries',
                 { slot: slot, status: result && result.status, reason: result && result.reason });
+        }
+        return null;
+    }
+
+    // Server-authoritative solve stamp. Fired the instant the board
+    // connects — the server measures the time itself and that is what
+    // gets ranked, so this is not an optional nicety: without it the
+    // submit falls back to trusting our own clock.
+    //
+    // Deliberately fired BEFORE the solve modal and awaited only after
+    // the win-reveal delay, so the round trip hides inside animation the
+    // player is already watching. Two retries because a dropped ping
+    // silently downgrades an honest solve to the legacy trust-the-client
+    // path; the timeouts are short since we're racing the reveal.
+    const SOLVE_PING_TIMEOUTS_MS = [3000, 6000];
+
+    async function postSolve(token) {
+        const base = apiBase();
+        if (!base || !token) return null;
+        for (let i = 0; i < SOLVE_PING_TIMEOUTS_MS.length; i++) {
+            const ctrl  = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            const timer = ctrl ? setTimeout(() => ctrl.abort(), SOLVE_PING_TIMEOUTS_MS[i]) : null;
+            try {
+                const resp = await fetch(base + '/potd/solve', Object.assign({
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ sessionToken: token }),
+                }, ctrl ? { signal: ctrl.signal } : {}));
+                if (resp.ok) {
+                    const data = await resp.json();
+                    return (data && typeof data.timeMs === 'number') ? data.timeMs : null;
+                }
+                // 4xx is terminal (expired/spent token) — retrying can't
+                // help and the submit will report the same thing.
+                if (resp.status >= 400 && resp.status < 500) return null;
+            } catch (e) { /* network error or timeout — fall through to retry */ }
+            finally {
+                if (timer) clearTimeout(timer);
+            }
+        }
+        if (typeof Logger !== 'undefined') {
+            Logger.warn('PotD: /potd/solve ping failed — falling back to client timing');
         }
         return null;
     }
@@ -1692,9 +1806,19 @@ const Potd = (() => {
             Sfx.play('applause_long');
         }
 
-        const timeMs = Date.now() - puzzleStartMs;
+        // Our own measurement — now only a fallback and a display seed.
+        // The ranked number comes from the server (see solvePing below).
+        let timeMs = Date.now() - puzzleStartMs;
         const date = puzzles.date;
         const slot = currentSlot;
+
+        // Fire the server-authoritative solve stamp IMMEDIATELY — this is
+        // the moment being measured, and everything below (reveal delay,
+        // credits, modal) is time the player spends after solving. Not
+        // awaited here: the round trip overlaps the win-reveal animation
+        // and is collected further down, so in the common case the stamp
+        // costs zero perceived latency.
+        const solvePing = sessionToken ? postSolve(sessionToken) : null;
 
         setSlotState(slot, date, 'solved');
         // The attempt is finished — its checkpoint (if any) is spent.
@@ -1778,6 +1902,17 @@ const Potd = (() => {
         if (typeof Tracking !== 'undefined' && Tracking.recordFinish) Tracking.recordFinish();
         if (typeof Share !== 'undefined' && Share.maybeShowPopup) Share.maybeShowPopup();
 
+        // Collect the server's stamp. It has had the reveal delay plus
+        // the credits/music/share work above to land, so this await is
+        // normally already-resolved. On failure (offline, timeout, spent
+        // token) it returns null and we keep our own measurement — the
+        // server then falls back to validating that claim, which is
+        // exactly the pre-2026-08-02 behaviour rather than a lost solve.
+        if (solvePing) {
+            const serverTimeMs = await solvePing;
+            if (serverTimeMs != null) timeMs = serverTimeMs;
+        }
+
         const wasOffline = !sessionToken;
         const canSubmit  = !!sessionToken && eligible;
 
@@ -1837,6 +1972,10 @@ const Potd = (() => {
         const rank           = (result && typeof result.rank === 'number') ? result.rank : null;
         const submittedOk    = !!(result && result.eligible !== false);
         const scoreId        = (result && typeof result.id === 'number') ? result.id : null;
+        // Highlight against the time the server actually STORED. Matching
+        // is by id first, but the name+time fallback needs the stored
+        // value — ours can differ from it by a round trip.
+        const storedTimeMs   = (result && typeof result.timeMs === 'number') ? result.timeMs : timeMs;
         const TOP_N          = (typeof MARATHON === 'object' && MARATHON.LEADERBOARD_TOP_N) || 20;
         const madeLeaderboard = submittedOk && rank != null && rank <= TOP_N;
 
@@ -1852,7 +1991,7 @@ const Potd = (() => {
             quitToLeaderboard(slot, {
                 id:     scoreId,
                 name:   submittedName,
-                timeMs: timeMs,
+                timeMs: storedTimeMs,
             });
         } else {
             quitToMenu();
@@ -2426,6 +2565,7 @@ const Potd = (() => {
         confirmHintUse,
         noteHintUsed,
         hintsRemaining,
+        onMoveRecorded:      scheduleAttemptSave,
         refreshMenuIndicators,
         devSeedAllSlots,
         get SLOTS() { return SLOTS.slice(); },
