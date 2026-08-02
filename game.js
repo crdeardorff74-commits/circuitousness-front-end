@@ -391,29 +391,63 @@
         // (rotate, lock, hint) are appended with millisecond offsets from
         // the recording's start.
         let recording = null;
-        function deepCloneSnapshot(s) {
-            return {
-                rows:   s.rows,
-                cols:   s.cols,
-                // _twin gets its own copy — a bare Object.assign shares it
-                // between clones, and shared _twin objects are exactly how
-                // the 2026-07-29 penalty transforms corrupted recordings'
-                // stored initial states (see Maze.snapshotState's comment).
-                grid:   s.grid.map((row) => row.map((t) => {
-                    const c = Object.assign({}, t);
-                    if (c._twin) c._twin = Object.assign({}, c._twin);
-                    return c;
+        // Deep-copy the mutable parts of a Maze snapshot. Shared by both
+        // cloners below.
+        //
+        // The base is Object.assign, NOT a hand-written field list, and that
+        // choice is load-bearing. A list has to be updated every time
+        // Maze.snapshotState grows a field, and when it isn't the field is
+        // silently DROPPED — loadSnapshot then reads it as absent and clears
+        // whatever it described. That is exactly how undo and reset wiped the
+        // mosaic layout off the board, turning every piece back into loose
+        // singular tiles: snapshotState carried `mosaic`, these cloners did
+        // not. Copying everything by default makes the failure mode for the
+        // NEXT new field "shared by reference" rather than "gone", which is
+        // both far less destructive and far more likely to be noticed.
+        // Anything mutable still needs an explicit deep copy here.
+        function cloneSnapshotCore(s) {
+            const out = Object.assign({}, s);
+            // _twin gets its own copy — a bare Object.assign shares it
+            // between clones, and shared _twin objects are exactly how
+            // the 2026-07-29 penalty transforms corrupted recordings'
+            // stored initial states (see Maze.snapshotState's comment).
+            out.grid = s.grid.map((row) => row.map((t) => {
+                const c = Object.assign({}, t);
+                if (c._twin) c._twin = Object.assign({}, c._twin);
+                return c;
+            }));
+            out.entry  = Object.assign({}, s.entry);
+            out.exit   = Object.assign({}, s.exit);
+            out.entry2 = s.entry2 ? Object.assign({}, s.entry2) : null;
+            out.exit2  = s.exit2  ? Object.assign({}, s.exit2)  : null;
+            out.entry3 = s.entry3 ? Object.assign({}, s.entry3) : null;
+            out.exit3  = s.exit3  ? Object.assign({}, s.exit3)  : null;
+            out.entry4 = s.entry4 ? Object.assign({}, s.entry4) : null;
+            out.exit4  = s.exit4  ? Object.assign({}, s.exit4)  : null;
+            out.quadScramble = s.quadScramble
+                ? s.quadScramble.map((row) => row.slice()) : null;
+            // Mosaic layout: the piece each cell belongs to, and each piece's
+            // rotation offset. Player-visible state — losing it dissolves
+            // every piece into singular tiles.
+            out.mosaic = s.mosaic ? {
+                groups: s.mosaic.groups.map((g) => Object.assign({}, g, {
+                    cells: g.cells.map((cell) => cell.slice())
                 })),
-                entry:  Object.assign({}, s.entry),
-                exit:   Object.assign({}, s.exit),
-                entry2: s.entry2 ? Object.assign({}, s.entry2) : null,
-                exit2:  s.exit2  ? Object.assign({}, s.exit2)  : null,
-                entry3: s.entry3 ? Object.assign({}, s.entry3) : null,
-                exit3:  s.exit3  ? Object.assign({}, s.exit3)  : null,
-                entry4: s.entry4 ? Object.assign({}, s.entry4) : null,
-                exit4:  s.exit4  ? Object.assign({}, s.exit4)  : null,
-                quadScramble: s.quadScramble ? s.quadScramble.map((row) => row.slice()) : null
-            };
+                idx: s.mosaic.idx.map((row) => row.slice())
+            } : null;
+            return out;
+        }
+        // Recording-side clone: the puzzle's STARTING state. Drops `locked`,
+        // which is the one field it deliberately differs from cloneMazeSnap
+        // on — loadSnapshot reads a missing `locked` as "no hint locks", so a
+        // reset (or a replay from the top) always starts un-hinted even when
+        // the board was captured mid-play, as a resumed PotD is. The drop had
+        // been implicit in a hand-written field list; now that the base copies
+        // everything it has to be said out loud.
+        function deepCloneSnapshot(s) {
+            const out = cloneSnapshotCore(s);
+            delete out.locked;
+            return out;
         }
         // ── Undo ──────────────────────────────────────────────────────────
         // Snapshot-based, unlimited (capped — see MAX_UNDO_DEPTH). Every
@@ -452,25 +486,9 @@
         // mutate it in place. Mirrors deepCloneSnapshot but also carries `locked`
         // and `quadScramble` (both part of player-visible state).
         function cloneMazeSnap(s) {
-            return {
-                rows: s.rows, cols: s.cols,
-                // Same _twin-cloning rule as deepCloneSnapshot — see there.
-                grid: s.grid.map((row) => row.map((t) => {
-                    const c = Object.assign({}, t);
-                    if (c._twin) c._twin = Object.assign({}, c._twin);
-                    return c;
-                })),
-                entry:  Object.assign({}, s.entry),
-                exit:   Object.assign({}, s.exit),
-                entry2: s.entry2 ? Object.assign({}, s.entry2) : null,
-                exit2:  s.exit2  ? Object.assign({}, s.exit2)  : null,
-                entry3: s.entry3 ? Object.assign({}, s.entry3) : null,
-                exit3:  s.exit3  ? Object.assign({}, s.exit3)  : null,
-                entry4: s.entry4 ? Object.assign({}, s.entry4) : null,
-                exit4:  s.exit4  ? Object.assign({}, s.exit4)  : null,
-                quadScramble: s.quadScramble ? s.quadScramble.map((row) => row.slice()) : null,
-                locked: Array.isArray(s.locked) ? s.locked.slice() : []
-            };
+            const out = cloneSnapshotCore(s);
+            out.locked = Array.isArray(s.locked) ? s.locked.slice() : [];
+            return out;
         }
         // Reset the undo history to the puzzle's starting state. Called from
         // startRecording so both the Marathon (newPuzzle) and PotD paths get a

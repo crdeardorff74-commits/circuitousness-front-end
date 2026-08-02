@@ -4607,15 +4607,23 @@ const Maze = (() => {
                 mosaicGroups[gi].scramble !== 0 &&
                 !mosaicGroupLocked(gi) &&
                 !mosaicGroupPortEquivalent(gi);
+            // Returns { r, c, turns } exactly like the other two modes, NOT a
+            // bare boolean: game.js reads `turns` to drive the spin animation
+            // and banks all three into the move recording, so a truthy-but-
+            // shapeless return silently costs the hint its animation and
+            // writes an undefined coordinate into the recording. Any cell of
+            // the piece identifies it — cells[0] is the deterministic pick,
+            // and the renderer pivots on the piece, not on that cell.
             const tryGroup = (gi) => {
-                if (!worthHinting(gi)) return false;
+                if (!worthHinting(gi)) return null;
                 const [r, c] = mosaicGroups[gi].cells[0];
-                applyHintAt(r, c);
-                return true;
+                const result = applyHintAt(r, c);
+                return { r: r, c: c, turns: (result && result.turns) | 0 };
             };
             for (const path of solutionPaths()) {
                 for (const cell of path) {
-                    if (tryGroup(mosaicGroupIndex(cell.r, cell.c))) return true;
+                    const hinted = tryGroup(mosaicGroupIndex(cell.r, cell.c));
+                    if (hinted) return hinted;
                 }
             }
             const candidates = [];
