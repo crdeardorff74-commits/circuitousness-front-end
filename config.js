@@ -296,6 +296,37 @@ const MARATHON = {
         return (lev - a + 1) / (b - a + 1);
     },
 
+    // ----- Onboarding staircase -----
+    // ONE new thing per puzzle, each on its own board. These four levels
+    // must stay DISTINCT and in this order, because every one of them
+    // pops a tooltip and two on the same puzzle means one lands under the
+    // other. That is exactly what kept happening while these were tuned
+    // (2026-08-02, three rounds of it).
+    //
+    //   L3  TWIN_RAMP_START_LEVEL  — first colored tiles  → twinTiles tip
+    //   L4  ZEN_GATE_START_LEVEL   — first red gate       → gates tip
+    //   L5  (literal in marathon.js onPuzzleReady)        → potdNudge tip
+    //   L6  LOCK_TIP_MIN_LEVEL     — earliest lock tip    → lockTile tip
+    //
+    // Levels are INTERNAL. On the first-visit auto-start run the two
+    // warm-up puzzles push the displayed numbers up by 2, so a
+    // first-timer meets these on puzzles 5, 6, 7 and 8.
+    //
+    // First gate on a Zen run; before this the board is gate-free. Gates
+    // are the mechanic newcomers find most confusing (they rotate in
+    // unison — the opposite of the per-tile lesson a first puzzle is
+    // teaching), and Zen is where brand-new players land. Marathon is
+    // untouched: it's chosen deliberately, and its clock makes an easier
+    // opening a scoring advantage rather than a kindness. Read by
+    // game.js's gate-placement block. History: 3 → 5 → back to 3 → 4.
+    ZEN_GATE_START_LEVEL: 4,
+    // Earliest puzzle the 30-second lock tip may be scheduled on
+    // (marathon.js scheduleLockTip). Every other tip fires at a puzzle
+    // BOUNDARY; this one is on a timer, so without a floor it drops on
+    // top of whatever the boundary just put up. Sits one puzzle past the
+    // PotD nudge so it's last in the staircase.
+    LOCK_TIP_MIN_LEVEL: 6,
+
     // Compressed tier ladder for the FIRST-VISIT auto-start Zen run only
     // (marathon.js autoStartFirstPractice → levelConfig). Entry i = how
     // many puzzles that run spends at (i+1) paths before stepping up, so

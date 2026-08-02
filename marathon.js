@@ -1725,7 +1725,10 @@ const Marathon = (() => {
         //     is most useful BEFORE the timer is ticking on real moves).
         //   • lockTile — scheduled 30s in so it appears once the player
         //     is mid-solve and has plausibly noticed they want to lock a
-        //     tile in place. Cancelled if the puzzle ends first.
+        //     tile in place. Cancelled if the puzzle ends first, and not
+        //     scheduled at all before MARATHON.LOCK_TIP_MIN_LEVEL — it's
+        //     the last step of the onboarding staircase (see
+        //     scheduleLockTip and the config.js block).
         // (A quad-tiles explainer tooltip briefly lived here — fired on
         // the first quad puzzle after the fast-track hand-off. Removed by
         // user call 2026-07-28: conceptually the player is still twisting
@@ -1785,6 +1788,16 @@ const Marathon = (() => {
     function scheduleLockTip() {
         cancelLockTip();
         if (typeof Tooltip === 'undefined' || Tooltip.isSeen('lockTile')) return;
+        // Last step of the onboarding staircase (config.js). Every other
+        // tip fires at a puzzle BOUNDARY — twins, gates, the PotD nudge —
+        // and this one rides a 30s timer, so without a floor it drops on
+        // top of whichever of them the boundary just put up. Observed in
+        // the wild 2026-08-02: it landed over the gate tip, then over the
+        // nudge. LOCK_TIP_MIN_LEVEL sits one puzzle past the nudge.
+        // Warm-up levels are negative, so they're below the floor for
+        // free. Missing constant (stale cached config) → the old
+        // schedule-from-puzzle-1 behavior.
+        if (level < (MARATHON.LOCK_TIP_MIN_LEVEL || 1)) return;
         lockTipTimerHandle = setTimeout(function () {
             lockTipTimerHandle = null;
             // Re-check the state — the player may have quit between
