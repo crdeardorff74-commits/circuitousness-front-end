@@ -563,6 +563,11 @@ const Tracking = (function () {
                     // the 0 bucket into "gave up immediately" vs "warmed
                     // up but never reached a real puzzle".
                     warmupPuzzles:     st.w || 0,
+                    // Seconds on the board they walked away from, 0 if
+                    // they last left right after a solve — see
+                    // firstRunStalled. Always sent, so the server's
+                    // last-write-wins keeps pace with the live state.
+                    abandonSecs:       st.stall || 0,
                     howtoClicked:      !!st.howto,
                     tutorialCompleted: !!st.tut,
                     nudgeClicked:      !!st.nudge,
@@ -614,6 +619,13 @@ const Tracking = (function () {
             _frSyncNow();
         }, 400);
     }
+    // Skip the debounce and ship immediately. For pagehide: the page is
+    // going away, so a 400ms timer would simply never fire. _frSyncNow
+    // uses keepalive, so the request survives the page dying.
+    function _frFlushSync() {
+        if (frSyncTimer) { clearTimeout(frSyncTimer); frSyncTimer = null; }
+        _frSyncNow();
+    }
     // Shared mutate-persist-sync path. `mutator` returns false for
     // "already recorded" so settled booleans cost no storage writes and
     // no network.
@@ -643,7 +655,7 @@ const Tracking = (function () {
         if (_frRead()) return;
         // `eng: 0` + no sync scheduled: recording starts now, DELIVERY
         // waits for firstRunEngaged (see the engagement-gate note above).
-        _frWrite({ p: 0, w: 0, howto: 0, tut: 0, nudge: 0, daily: 0,
+        _frWrite({ p: 0, w: 0, stall: 0, howto: 0, tut: 0, nudge: 0, daily: 0,
                    oStart: 0, oSolve: 0, eng: 0,
                    v: forcedVariant || null, vLocked: forcedVariant ? 1 : 0,
                    rev: 1, dirty: 1 });
@@ -687,7 +699,42 @@ const Tracking = (function () {
         });
     }
     function firstRunPuzzleSolved() {
-        _frUpdate(function (st) { st.p = (st.p || 0) + 1; return true; });
+        _frUpdate(function (st) {
+            st.p = (st.p || 0) + 1;
+            st.stall = 0;   // they finished this board — see firstRunStalled
+            return true;
+        });
+    }
+    // ---- Stuck-or-bored ------------------------------------------------
+    // THE question the funnel could not answer (2026-08-05): when a first
+    // session ends, had the player just SOLVED something and shrugged, or
+    // were they stuck on a board they never finished? Both look identical
+    // in `p` — a player who rage-quits four minutes into puzzle 3 and one
+    // who solves puzzle 2 and closes the tab are both "2 puzzles".
+    //
+    // `stall` = seconds spent on the board they walked away from, or 0 if
+    // the last thing they did was solve one. Set on pagehide while a
+    // puzzle is live (marathon.js), cleared by every solve. So it always
+    // describes the player's CURRENT standing, which is what makes it
+    // "how did this session end" once they stop coming back.
+    //
+    // Unlike every other field here it is LAST-WRITE-WINS server-side, not
+    // max-merged: max would preserve a stall from a board they later
+    // solved, which is the opposite of what we're asking. The idempotency
+    // cost is bounded — a reordered pair of syncs within the 400ms debounce
+    // — and this is a diagnostic, not a funnel counter.
+    //
+    // Deliberately NOT part of the server's no-content guard: standing in
+    // an unsolved puzzle without touching a tile is exactly the visitor
+    // that guard exists to exclude.
+    function firstRunStalled(secs) {
+        const s = Math.max(0, Math.min(Math.round(secs || 0), 600));
+        _frUpdate(function (st) {
+            if ((st.stall || 0) === s) return false;
+            st.stall = s;
+            return true;
+        });
+        _frFlushSync();   // pagehide: the debounced send would never fire
     }
     // A WARM-UP solve (the 3x3 or the 4x3 that open the auto-start run —
     // marathon.js FIRST_RUN_WARMUP_LEVELS). Counted separately from `p`
@@ -697,8 +744,10 @@ const Tracking = (function () {
     // duplicated event can't inflate it past 2.
     function firstRunWarmupSolved() {
         _frUpdate(function (st) {
-            if ((st.w || 0) >= 2) return false;
-            st.w = (st.w || 0) + 1;
+            const stalled = (st.stall || 0) !== 0;
+            if ((st.w || 0) >= 2 && !stalled) return false;
+            if ((st.w || 0) < 2) st.w = (st.w || 0) + 1;
+            st.stall = 0;   // they finished this board — see firstRunStalled
             return true;
         });
     }
@@ -767,6 +816,7 @@ const Tracking = (function () {
         firstRunLockVariant:        firstRunLockVariant,
         firstRunPuzzleSolved:       firstRunPuzzleSolved,
         firstRunWarmupSolved:       firstRunWarmupSolved,
+        firstRunStalled:            firstRunStalled,
         firstRunHowToClicked:       firstRunHowToClicked,
         firstRunTutorialCompleted:  firstRunTutorialCompleted,
         firstRunNudgeClicked:       firstRunNudgeClicked,

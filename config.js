@@ -392,7 +392,18 @@ const MARATHON = {
     // set to one of the four names to lock every new player to it (the
     // client then forces it locally AND asserts it to the server, so the
     // lock-in works without a back-end deploy).
-    FIRST_RUN_VARIANT_FORCE: null,
+    //
+    // LOCKED to 'standard' 2026-08-05, when the CrazyGames trial ended and
+    // the traffic that made the experiment measurable stopped with it. NOT
+    // because standard won — at 53 engaged players per arm nothing could
+    // win, and every behavioural column in the ladder table came down to
+    // 1-7 players. Locking is about cleaning up FUTURE measurement: on
+    // organic traffic a four-way split will never reach significance, and
+    // leaving it running dilutes every other thing we try to measure.
+    // 'standard' is the neutral baseline, and since all four ladders are
+    // identical through puzzle 3 — where ~70% of players are lost — the
+    // arm barely touches the population we actually need to keep.
+    FIRST_RUN_VARIANT_FORCE: 'standard',
     FIRST_RUN_VARIANTS: ['fast', 'standard', 'extended', 'single'],
     FIRST_RUN_EXTENDED_TIER_LENGTH: 6,
     FIRST_RUN_TIERS: [3, 2, 2, 2],

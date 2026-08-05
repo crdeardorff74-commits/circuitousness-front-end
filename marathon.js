@@ -332,9 +332,15 @@ const Marathon = (() => {
         // is resumable. pagehide is the reliable mobile signal; the
         // visibilitychange fallback covers browsers that skip pagehide on
         // process kill. Both are no-ops unless a run is in progress.
-        window.addEventListener('pagehide', saveRunState);
+        window.addEventListener('pagehide', function () {
+            saveRunState();
+            reportStallOnHide();
+        });
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden') saveRunState();
+            if (document.visibilityState === 'hidden') {
+                saveRunState();
+                reportStallOnHide();
+            }
         });
         // Tap the popup to advance to the next puzzle. The canvas does NOT
         // route here — see comment on the inTransition declaration above.
@@ -1514,6 +1520,26 @@ const Marathon = (() => {
     //      which only exists during an auto-start run. One-shot: clears
     //      the slot BEFORE the PATCH so a re-entrant call can't
     //      double-record.
+    // Stuck-or-bored instrumentation (2026-08-05). Fired when the page is
+    // backgrounded or closed: if a first-run puzzle is LIVE and unsolved at
+    // that moment, the player is walking away from a board they didn't
+    // finish, and how long they'd been on it separates "stuck" from
+    // "bored". Cleared by the next solve (tracking.js firstRunStalled), so
+    // whatever is stored when they stop returning describes how their
+    // session actually ended.
+    //
+    // Auto-start run only — that's the cohort the first-run funnel covers,
+    // and a menu-chosen run means the player already decided to play.
+    // inTransition excludes the solve card: the puzzle under it IS solved.
+    function reportStallOnHide() {
+        if (!isFirstRunAutoStart) return;
+        if (state !== STATE.PLAYING || !puzzleLive || inTransition) return;
+        if (typeof Tracking === 'undefined' || !Tracking.firstRunStalled) return;
+        try {
+            Tracking.firstRunStalled((Date.now() - puzzleStartMs) / 1000);
+        } catch (e) { /* diagnostics must never break a teardown path */ }
+    }
+
     function notifyPuzzleInteraction() {
         if (typeof Tracking !== 'undefined' && Tracking.firstRunEngaged) {
             Tracking.firstRunEngaged();
