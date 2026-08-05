@@ -573,6 +573,14 @@
                  message text alone conveys the content for assistive
                  tech. -->
             <span id="tooltipIcon" aria-hidden="true">ℹ</span>
+            <!-- Mechanic demo. Tips that carry a "beat" (twins, gates)
+                 unhide this and Tutorial.playBeat animates the matching
+                 walkthrough step on it — showing the mechanic instead of
+                 describing it. Stays hidden for text-only tips. The
+                 renderer is borrowed onto this canvas for ~3s and the
+                 final frame is left as a still. aria-hidden: the sentence
+                 below carries the same content for assistive tech. -->
+            <canvas id="tooltipDemoCanvas" aria-hidden="true" hidden></canvas>
             <p id="tooltipText"></p>
             <!-- Button row: the optional action button (label + handler set
                  per-tip by tooltip.js — e.g. the first-run PotD nudge's
@@ -1276,7 +1284,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '1.48';</script>
+    <script>var PAGE_VERSION = '1.50';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

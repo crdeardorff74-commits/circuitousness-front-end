@@ -1867,6 +1867,16 @@
         // CCW, right/down = CW.
         function handlePointer(x, y, ccw) {
             if (isBuilding || isReplaying || boardRotating) return;
+            // A tooltip mechanic demo is playing: the DEMO board is
+            // currently installed in the live Maze (Tutorial.playBeat
+            // borrows it for ~3s) and the tooltip card deliberately does
+            // NOT cover the play area. Rotating now would land on a board
+            // that's about to be thrown away — the player's twist would
+            // vanish when the real board comes back.
+            if (typeof Tutorial !== 'undefined' && Tutorial.isBeatPlaying
+                && Tutorial.isBeatPlaying()) {
+                return;
+            }
             // Marathon between-puzzles state: swallow canvas taps entirely.
             // Rotating now would break the gold path the player's looking at,
             // and advance is intentionally popup-only so a click-cascade from
@@ -2153,6 +2163,14 @@
         function startPress(canvasX, canvasY) {
             clearPress();
             longPressFired = false;
+            // Same borrowed-board guard as handlePointer — a long-press
+            // lock during a demo beat would toggle a cell on the demo
+            // grid. (Checked at press START rather than only in the timer
+            // so the press never arms.)
+            if (typeof Tutorial !== 'undefined' && Tutorial.isBeatPlaying
+                && Tutorial.isBeatPlaying()) {
+                return;
+            }
             // Pressing on a gate (or its buffer) never targets the underlying
             // tile — gates can't be locked, only rotated. Skip the long-press
             // timer entirely so the tile beneath the gate isn't accidentally

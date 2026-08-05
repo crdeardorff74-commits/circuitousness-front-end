@@ -564,6 +564,12 @@ const Potd = (() => {
         // do, and re-arms the throttle window from this moment.
         cancelScheduledSave();
         if (state !== STATE.PLAYING || !currentSlot) return;
+        // ⚠ Same guard marathon.js saveRunState carries: the Tutorial
+        // (modal, or an inline tooltip demo beat) installs its own board
+        // in the singleton Maze, and snapshotting mid-demo would store
+        // that as the player's attempt. Skipping is safe — the throttled
+        // per-move saves resume the moment the board comes back.
+        if (typeof Tutorial !== 'undefined' && Tutorial.isBusy && Tutorial.isBusy()) return;
         const date = (puzzles && puzzles.date) || todayUTC();
         const data = {
             v: 1,
@@ -2485,9 +2491,14 @@ const Potd = (() => {
         // Checkpoint the live attempt when the tab is closed or
         // backgrounded — mirrors marathon's listeners; saveCurrentAttempt
         // no-ops unless a PotD puzzle is actually being played.
-        window.addEventListener('pagehide', saveCurrentAttempt);
+        // stopBeat FIRST — see the same ordering note in marathon.js.
+        function onPageHidden() {
+            if (typeof Tutorial !== 'undefined' && Tutorial.stopBeat) Tutorial.stopBeat();
+            saveCurrentAttempt();
+        }
+        window.addEventListener('pagehide', onPageHidden);
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden') saveCurrentAttempt();
+            if (document.visibilityState === 'hidden') onPageHidden();
         });
         ensureServerFetch();
     }

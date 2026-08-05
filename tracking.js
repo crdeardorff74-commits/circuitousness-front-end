@@ -556,12 +556,12 @@ const Tracking = (function () {
                     // caught 2026-08-02 — a real 4-puzzle CG run left the
                     // Standard arm's 3+ count sitting at 1).
                     puzzles:           st.p || 0,
-                    // Warm-up solves (the 3x3 and 4x3 that open a new
-                    // player's run — front-end v1.45). Kept OUT of
-                    // `puzzles` on purpose; the server stores it in its
-                    // own column so the admin depth histogram can split
-                    // the 0 bucket into "gave up immediately" vs "warmed
-                    // up but never reached a real puzzle".
+                    // Warm-up solves. The warm-ups were removed in v1.49,
+                    // so this is 0 for every new player — still SENT
+                    // because a browser that started its run on v1.45-1.48
+                    // may hold a real count locally, and the server's
+                    // max() merge means a stale 0 can never regress a row
+                    // that already has one.
                     warmupPuzzles:     st.w || 0,
                     // Seconds on the board they walked away from, 0 if
                     // they last left right after a solve — see
@@ -655,7 +655,7 @@ const Tracking = (function () {
         if (_frRead()) return;
         // `eng: 0` + no sync scheduled: recording starts now, DELIVERY
         // waits for firstRunEngaged (see the engagement-gate note above).
-        _frWrite({ p: 0, w: 0, stall: 0, howto: 0, tut: 0, nudge: 0, daily: 0,
+        _frWrite({ p: 0, w: 0, stall: 0, howto: 0, tut: 0, nudge: 0, daily: 0,   // w: retired, see below
                    oStart: 0, oSolve: 0, eng: 0,
                    v: forcedVariant || null, vLocked: forcedVariant ? 1 : 0,
                    rev: 1, dirty: 1 });
@@ -736,21 +736,13 @@ const Tracking = (function () {
         });
         _frFlushSync();   // pagehide: the debounced send would never fire
     }
-    // A WARM-UP solve (the 3x3 or the 4x3 that open the auto-start run —
-    // marathon.js FIRST_RUN_WARMUP_LEVELS). Counted separately from `p`
-    // so the funnel's "3+ puzzles" figure keeps meaning three REAL
-    // puzzles; its own use is splitting the depth histogram's 0 bucket.
-    // Capped at the number of warm-ups that exist, so a replayed or
-    // duplicated event can't inflate it past 2.
-    function firstRunWarmupSolved() {
-        _frUpdate(function (st) {
-            const stalled = (st.stall || 0) !== 0;
-            if ((st.w || 0) >= 2 && !stalled) return false;
-            if ((st.w || 0) < 2) st.w = (st.w || 0) + 1;
-            st.stall = 0;   // they finished this board — see firstRunStalled
-            return true;
-        });
-    }
+    // (firstRunWarmupSolved lived here from 2026-08-02 to 2026-08-05,
+    // counting the 3x3/4x3 warm-up boards separately from `p`. The
+    // warm-ups are gone, so nothing increments it any more. The SERVER
+    // side is deliberately untouched: `warmup_puzzles` and the admin
+    // histogram's -2/-1 buckets still hold the 223 players who solved a
+    // warm-up and left — the finding that reframed this whole problem —
+    // and old cached clients are still reporting into it.)
     // Boolean setters — one tiny factory, all identical semantics.
     function _frFlag(field) {
         return function () {
@@ -815,7 +807,6 @@ const Tracking = (function () {
         firstRunVariant:            firstRunVariant,
         firstRunLockVariant:        firstRunLockVariant,
         firstRunPuzzleSolved:       firstRunPuzzleSolved,
-        firstRunWarmupSolved:       firstRunWarmupSolved,
         firstRunStalled:            firstRunStalled,
         firstRunHowToClicked:       firstRunHowToClicked,
         firstRunTutorialCompleted:  firstRunTutorialCompleted,

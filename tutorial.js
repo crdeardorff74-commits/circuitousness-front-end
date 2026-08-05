@@ -378,6 +378,152 @@ const Tutorial = (function () {
         }
     }
 
+    // ---- live-board custody ----------------------------------------------
+    // Both the modal and the inline beats below borrow the singleton Maze:
+    // they stash whatever the player had, install the hand-authored demo
+    // board, and put the original back afterwards. Shared so the two paths
+    // can't drift — a mismatch here means a player's real board is
+    // silently replaced by the demo.
+
+    function snapshotLive() {
+        return {
+            grid:  (Maze.grid ? Maze.snapshotState() : null),
+            gates: (typeof Gates !== 'undefined' && Gates.snapshot) ? Gates.snapshot() : null,
+            quad:  Maze.quadMode,
+            paths: Maze.pathCount
+        };
+    }
+    function restoreLive(s) {
+        if (!s) return;
+        if (s.grid) {
+            Maze.setQuadMode(s.quad);
+            Maze.setPathCount(s.paths);
+            Maze.loadSnapshot(s.grid);
+            if (typeof Gates !== 'undefined') {
+                if (s.gates) Gates.restore(s.gates); else Gates.clear();
+                if (Maze.recompute) Maze.recompute();
+            }
+        } else {
+            if (Maze.clear) Maze.clear();
+            if (typeof Gates !== 'undefined') Gates.clear();
+        }
+    }
+    function installDemoPuzzle() {
+        Maze.setQuadMode(false);
+        Maze.setPathCount(1);
+        Maze.setDimensions(ROWS, COLS);
+        Maze.loadSnapshot(buildPuzzle());
+        if (typeof Gates !== 'undefined') {
+            Gates.restore(gateSnapshot());
+            if (Maze.recompute) Maze.recompute();
+        }
+    }
+
+    // ---- inline beats -----------------------------------------------------
+    // A "beat" is ONE step of the walkthrough, played automatically on a
+    // small canvas inside the tooltip card, so the first board that has
+    // twins or a gate SHOWS the mechanic instead of describing it.
+    // (CrazyGames' quality guidance: "prioritize visuals and limit the use
+    // of text for onboarding". The text tooltips this replaces did not
+    // dent the drop-off at those exact puzzles.)
+    //
+    // It reuses the modal's board wholesale — that board already contains
+    // the twin pair and the gates — by replaying the earlier steps'
+    // actions instantly to reach the right state, then animating the one
+    // step that matters. No second puzzle to author or keep in sync.
+    //
+    // Plays ONCE and hands the board straight back; the tooltip canvas
+    // keeps the final frame as a still. Deliberately not looped: the live
+    // Maze is on loan for the duration, so the loan has to be short.
+    const BEATS = { twinTiles: 2, gates: 6 };   // indices into STEPS
+    const BEAT_LEAD_IN_MS = 420;   // let the player's eye land before it moves
+    const BEAT_HOLD_MS    = 700;   // sit on the finished state before handing back
+    let beat = null;
+    // Bumped by every start and stop, so an await that resumes after the
+    // beat was cancelled can tell and bail instead of writing to a board
+    // that isn't ours any more.
+    let beatToken = 0;
+
+    function isBeatPlaying() { return !!beat; }
+    // True whenever the demo board is installed in the live Maze, by
+    // either surface. Callers that persist or snapshot game state must
+    // check this — see marathon.js saveRunState.
+    function isBusy() { return isOpen || !!beat; }
+
+    function nextFrame() {
+        return new Promise(function (res) {
+            if (typeof requestAnimationFrame === 'function') requestAnimationFrame(function () { res(); });
+            else setTimeout(res, 16);
+        });
+    }
+    // Apply every action of steps [0, upto) with no animation — this is
+    // how the beat reaches its starting state without making the player
+    // watch six steps of setup.
+    function fastForward(upto) {
+        for (let i = 0; i < upto && i < STEPS.length; i++) {
+            for (const act of STEPS[i].actions) {
+                if (act.a === 'rotate') {
+                    Maze.rotate(act.r, act.c, false);
+                } else if (act.a === 'lock' || act.a === 'unlock') {
+                    Maze.togglePlayerLock(act.r, act.c);
+                } else if (act.a === 'gate' && typeof Gates !== 'undefined') {
+                    Gates.rotate(false);
+                }
+            }
+        }
+        if (Maze.recompute) Maze.recompute();
+    }
+
+    // Public — play `beatKey` on `targetCanvas`. Resolves when the board
+    // has been handed back. Safe to call when it can't run (no canvas,
+    // unknown key, modal open, another beat live): it just returns false.
+    async function playBeat(targetCanvas, beatKey) {
+        const idx = BEATS[beatKey];
+        if (idx == null || !targetCanvas) return false;
+        if (isOpen || beat) return false;
+        if (typeof Maze === 'undefined' || !Maze.snapshotState) return false;
+        if (typeof Render === 'undefined' || !Render.beginTutorial) return false;
+
+        const token = ++beatToken;
+        beat = { token: token };
+        try {
+            beat.saved = snapshotLive();
+            installDemoPuzzle();
+            fastForward(idx);
+            // One frame so the canvas has a display box for Render to measure.
+            await nextFrame();
+            if (!beat || beat.token !== token) return false;
+            Render.beginTutorial(targetCanvas);
+            Render.draw();
+            await delay(BEAT_LEAD_IN_MS);
+            for (const act of STEPS[idx].actions) {
+                if (!beat || beat.token !== token) return false;
+                performAction(act);
+                await delay(act.slow ? SLOW_DWELL_MS : ACTION_DWELL_MS);
+            }
+            await delay(BEAT_HOLD_MS);
+        } catch (e) {
+            // Never leave the player's board on loan because a demo threw.
+        }
+        if (beat && beat.token === token) stopBeat();
+        return true;
+    }
+
+    // Public — hand the board back immediately, wherever the beat got to.
+    // Idempotent, and safe to call when nothing is playing. Every exit
+    // path routes through here: tooltip dismissal, the modal opening, and
+    // the page being hidden.
+    function stopBeat() {
+        if (!beat) return;
+        const b = beat;
+        beat = null;
+        beatToken++;                 // strand any in-flight await
+        restoreLive(b.saved);        // Maze first, then the renderer —
+        if (typeof Render !== 'undefined' && Render.endTutorial) {
+            Render.endTutorial();    // ...so its repaint shows the real board
+        }
+    }
+
     // ---- step flow --------------------------------------------------------
     function bulletHtml(step) {
         // tDevice: steps 1 and 7 tell the player to tap/click, and the
@@ -487,13 +633,13 @@ const Tutorial = (function () {
             Tracking.firstRunHowToClicked();
         }
 
+        // An inline beat may be mid-play on the tooltip card; it holds the
+        // demo board in the live Maze, so it has to hand that back BEFORE
+        // we snapshot or we'd save the demo as the player's game.
+        stopBeat();
+
         // Snapshot whatever Maze/Gates state exists so we can restore it.
-        saved = {
-            grid:  (Maze.grid ? Maze.snapshotState() : null),
-            gates: (typeof Gates !== 'undefined' && Gates.snapshot) ? Gates.snapshot() : null,
-            quad:  Maze.quadMode,
-            paths: Maze.pathCount
-        };
+        saved = snapshotLive();
 
         // Reset the step UI. Bullets are built display:none and enter
         // layout one per reveal — the modal starts compact and grows
@@ -506,14 +652,7 @@ const Tutorial = (function () {
         nextBtn.classList.remove('is-busy');
 
         // Install the fixed puzzle into the live Maze + Gates.
-        Maze.setQuadMode(false);
-        Maze.setPathCount(1);
-        Maze.setDimensions(ROWS, COLS);
-        Maze.loadSnapshot(buildPuzzle());
-        if (typeof Gates !== 'undefined') {
-            Gates.restore(gateSnapshot());
-            if (Maze.recompute) Maze.recompute();
-        }
+        installDemoPuzzle();
 
         overlay.hidden = false;
         document.addEventListener('keydown', onKeyDown, true);
@@ -544,20 +683,7 @@ const Tutorial = (function () {
 
         // Restore the pre-tutorial Maze/Gates BEFORE handing the renderer back,
         // so endTutorial()'s repaint shows the real game state.
-        if (saved) {
-            if (saved.grid) {
-                Maze.setQuadMode(saved.quad);
-                Maze.setPathCount(saved.paths);
-                Maze.loadSnapshot(saved.grid);
-                if (typeof Gates !== 'undefined') {
-                    if (saved.gates) Gates.restore(saved.gates); else Gates.clear();
-                    if (Maze.recompute) Maze.recompute();
-                }
-            } else {
-                if (Maze.clear) Maze.clear();
-                if (typeof Gates !== 'undefined') Gates.clear();
-            }
-        }
+        restoreLive(saved);
         saved = null;
 
         Render.endTutorial();
@@ -636,6 +762,17 @@ const Tutorial = (function () {
         // input) must no-op or they'd mutate the tutorial grid and desync
         // state that close() restores (e.g. game.js's undo stack).
         isOpen: function () { return isOpen; },
+        // Inline mechanic demos on the tooltip card — see the beats block.
+        playBeat: playBeat,
+        stopBeat: stopBeat,
+        // True while a beat animation is running: the demo board is in the
+        // live Maze and the tooltip card does NOT block the play area, so
+        // game input must no-op for the (~3s) duration or the player's
+        // taps land on a board that's about to be thrown away.
+        isBeatPlaying: isBeatPlaying,
+        // True while EITHER surface holds the board. Anything that
+        // persists or snapshots game state has to check this.
+        isBusy: isBusy,
         isWatched: function () {
         try { return localStorage.getItem(WATCHED_KEY) === '1'; } catch (e) { return false; }
     } };

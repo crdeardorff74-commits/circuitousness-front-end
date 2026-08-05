@@ -56,6 +56,9 @@ const Tooltip = (function () {
     let textEl    = null;
     let gotItBtn  = null;
     let actionBtn = null;
+    // Optional demo canvas (stale cached index.html → null; every
+    // reference is guarded, and the card falls back to plain text).
+    let demoCanvas = null;
     // Queue of { key, message, action } pending display. The head is
     // whatever's currently on-screen; the tail waits its turn.
     const queue = [];
@@ -87,7 +90,7 @@ const Tooltip = (function () {
     // Public — schedule a tooltip if it hasn't been seen and isn't
     // already in the queue (dedupe by key so repeated calls during a
     // single play don't stack duplicates).
-    function showOnce(key, message, action, onAcknowledge) {
+    function showOnce(key, message, action, onAcknowledge, beat) {
         if (isSeen(key)) return;
         for (const entry of queue) {
             if (entry.key === key) return;
@@ -97,6 +100,9 @@ const Tooltip = (function () {
             message:       message,
             action:        action || null,
             onAcknowledge: onAcknowledge || null,
+            // Optional Tutorial beat name — the card shows the mechanic
+            // animating instead of only describing it. See playBeat.
+            beat:          beat || null,
         });
         processQueue();
     }
@@ -127,13 +133,20 @@ const Tooltip = (function () {
             if (I18n.tDevice) return I18n.tDevice(key);
             return I18n.t ? I18n.t(key) : fallback;   // stale cached i18n.js
         };
+        // Both carry a Tutorial BEAT: the card animates the mechanic on a
+        // small board rather than only describing it. The sentence stays
+        // as the caption — CrazyGames' guidance is to prioritize visuals
+        // and LIMIT text, not to remove it, and it keeps the fifteen
+        // existing translations doing useful work.
         if (hasTwins) {
             showOnce('twinTiles', tr('tooltip.twinTiles',
-                'Colored tiles rotate in unison with other tiles of the same color.'));
+                'Colored tiles rotate in unison with other tiles of the same color.'),
+                null, null, 'twinTiles');
         }
         if (hasGates) {
             showOnce('gates', trDev('tooltip.gates',
-                'Red gates are circuit breakers that disrupt the flow of a path.  Tap them to rotate them out of the way.'));
+                'Red gates are circuit breakers that disrupt the flow of a path.  Tap them to rotate them out of the way.'),
+                null, null, 'gates');
         }
     }
 
@@ -185,6 +198,18 @@ const Tooltip = (function () {
         // styles.css uses #tooltipCard[hidden] { display: none } so
         // toggling .hidden cleanly shows/hides without inline-style
         // overrides.
+        // Mechanic demo, if this tip carries one. Unhide FIRST — the
+        // canvas needs a laid-out display box before Render measures it,
+        // and playBeat waits a frame for exactly that. Failure is
+        // survivable: the card falls back to being the text tip it was.
+        if (demoCanvas) {
+            const wantsDemo = !!(entry.beat && typeof Tutorial !== 'undefined' && Tutorial.playBeat);
+            demoCanvas.hidden = !wantsDemo;
+            if (wantsDemo) {
+                try { Tutorial.playBeat(demoCanvas, entry.beat); }
+                catch (e) { demoCanvas.hidden = true; }
+            }
+        }
         card.hidden = false;
         showing = true;
         // Click on Got It dismisses AND marks the tip as seen — the
@@ -247,6 +272,12 @@ const Tooltip = (function () {
     // the queue — each caller decides what happens to it.
     function takeDownCard() {
         const activeEntry = showing && queue.length > 0 ? queue[0] : null;
+        // Hand the live board back before anything else. A beat has the
+        // player's Maze on loan; dismissing the card mid-animation must
+        // not strand it. Idempotent, so calling it for text-only tips is
+        // free.
+        if (typeof Tutorial !== 'undefined' && Tutorial.stopBeat) Tutorial.stopBeat();
+        if (demoCanvas) demoCanvas.hidden = true;
         if (currentGotItHandler && gotItBtn) {
             gotItBtn.removeEventListener('click', currentGotItHandler);
             currentGotItHandler = null;
@@ -279,6 +310,7 @@ const Tooltip = (function () {
         textEl    = document.getElementById('tooltipText');
         gotItBtn  = document.getElementById('tooltipGotItBtn');
         actionBtn = document.getElementById('tooltipActionBtn');
+        demoCanvas = document.getElementById('tooltipDemoCanvas');
         // Anything that called showOnce before DOMContentLoaded queued
         // but couldn't paint; drain now that we have DOM refs.
         processQueue();

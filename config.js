@@ -409,50 +409,30 @@ const MARATHON = {
     FIRST_RUN_TIERS: [3, 2, 2, 2],
     FIRST_RUN_QUAD_RESET_PATHS: 1,
 
-    // Warm-up puzzles prepended to the FIRST-VISIT auto-start run ONLY
-    // (marathon.js autoStartFirstPractice → startGame's level seed). A
-    // brand-new player now opens on a 3×3, then a 3-row × 4-col, before
-    // reaching the 4×4 that every other run (and every ladder variant)
-    // starts on. Identical across all four FIRST_RUN_VARIANTS — they
-    // sit BELOW the ladder, so nothing about the arms changes.
+    // WARM-UP PUZZLES — added 2026-08-02, REMOVED 2026-08-05.
+    // A new player's run opened on a 3×3, then a 3-row × 4-col, before
+    // the standard 4×4. The premise was that the opening was too hard.
+    // The data said otherwise: 86.5% of new players solve at least one
+    // puzzle, and of those who never reached three real ones, 81% had
+    // already solved something before leaving. Never a difficulty
+    // problem.
     //
-    // NUMBERED NEGATIVELY, ascending, with NO puzzle 0: the run's level
-    // sequence is -2 → -1 → 1 → 2 → … (marathon.js levelAfter). The
-    // negative numbers are INTERNAL ONLY — they're what makes a warm-up
-    // distinguishable from a real puzzle at every site that reads
-    // `level`: the twin ramp (twinScaleForLevel returns 0 below
-    // TWIN_RAMP_START_LEVEL), the gate-free Zen opening (game.js keys on
-    // level < 3), and the first-run funnel's puzzle count (tracking.js
-    // firstRunPuzzleSolved is skipped for them, so the admin panel's
-    // "3+ puzzles" column still means three REAL puzzles).
+    // What they actually did was add two more near-identical boards to
+    // the front of a run that loses ~20% of its players per
+    // near-identical board — measured at 19.3% / 20.2% / 21.3% on the
+    // 3×3, the 4×3 and the 4×4, three boards differing in nothing but
+    // size. They spent a newcomer's most valuable twenty seconds on
+    // puzzles with no challenge, no colour and nothing to discover,
+    // which is what CrazyGames' quality guidance warns against directly
+    // ("no overly repetitive or boring tasks", "balanced and well-paced").
     //
-    // The PLAYER never sees a negative number: the HUD and solve card
-    // run marathon.js's displayLevel, which counts the warm-ups into an
-    // ordinary 1, 2, 3, … so a first-timer's puzzle 1 shows as 3.
-    //
-    // Dims are FIXED rather than folded into the growth sequence: the
-    // ladder's growth accumulator is anchored to the 4×4 start, so a
-    // warm-up that consumed a growth step would shift every later
-    // puzzle's size. Entries must stay in ascending `level` order —
-    // marathon.js seeds the run one step below the first one.
-    FIRST_RUN_WARMUP_LEVELS: [
-        { level: -2, rows: 3, cols: 3 },
-        { level: -1, rows: 3, cols: 4 },
-    ],
-    // The warm-up entry for `lev`, or null if `lev` isn't a warm-up.
-    warmupLevelFor: function (lev) {
-        const list = this.FIRST_RUN_WARMUP_LEVELS || [];
-        for (let i = 0; i < list.length; i++) {
-            if (list[i].level === lev) return list[i];
-        }
-        return null;
-    },
-    // Level the warm-up ladder OPENS on (null when there are none, which
-    // makes the whole feature inert — a run then starts at puzzle 1).
-    firstWarmupLevel: function () {
-        const list = this.FIRST_RUN_WARMUP_LEVELS || [];
-        return list.length ? list[0].level : null;
-    },
+    // Their real contribution was diagnostic: splitting the funnel's 0
+    // bucket revealed that 223 players SUCCEED and leave anyway, which
+    // reframed the whole problem from difficulty to reward. THAT
+    // ANALYTICS SURVIVES THEM — `first_run_stats.warmup_puzzles` and the
+    // admin histogram's -2 / -1 buckets are deliberately kept for the
+    // historical rows and for old cached clients still reporting. They
+    // just stop growing. Don't clean them up.
 
     // Aspect cap on grid growth: neither logical dimension may grow to
     // MORE than this ratio × the other. Growth still favors the

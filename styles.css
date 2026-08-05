@@ -4056,7 +4056,9 @@ html.dbgHidden #resetBtn { display: none !important; }
     /* Circled gold "ℹ" — signals "informational" at a glance and ties
        the card visually to the gold border + accent color. line-height:1
        so the glyph aligns with the first line of body text. */
-    grid-row: 1 / span 2;  /* icon spans both message + button rows */
+    /* Spans every row so the icon stays anchored top-left whether or not
+       the card is showing a demo canvas above the message. */
+    grid-row: 1 / -1;
     color: rgba(255, 215, 0, 0.95);
     font-size: 1.6em;
     line-height: 1;
@@ -4064,6 +4066,22 @@ html.dbgHidden #resetBtn { display: none !important; }
     user-select: none;
     -webkit-user-select: none;
 }
+/* Mechanic demo canvas — the renderer is borrowed onto this for ~3s (see
+   Tutorial.playBeat). It needs a real CSS display box BEFORE the beat
+   starts, because Render.layoutTutorial measures getBoundingClientRect to
+   size the grid; hence a fixed height rather than anything content-driven.
+   The demo board is 6 wide × 7 tall and layoutTutorial fits-and-centres,
+   so a wider-than-tall box just letterboxes rather than distorting. */
+#tooltipDemoCanvas {
+    grid-column: 2;
+    display: block;
+    width: 100%;
+    height: clamp(8rem, 26vh, 13rem);
+    margin: 0 0 0.75rem 0;
+    border-radius: 0.35rem;
+    background: rgba(0, 0, 0, 0.35);
+}
+#tooltipDemoCanvas[hidden] { display: none; }
 #tooltipCard p {
     margin: 0 0 0.8rem 0;
     grid-column: 2;
