@@ -1410,16 +1410,33 @@ const Marathon = (() => {
     // localStorage-unavailable (private mode, quota): bail to the menu.
     // Without storage the flag can't persist, and auto-starting EVERY visit
     // would lock repeat private-mode players out of the menu flow.
+    // Is this browser brand new? "First visit" = none of: the consumed
+    // auto-start flag, a saved mode pick, or a saved leaderboard name.
+    // The extra two keys stop the first-time experience from surprising
+    // RETURNING players who predate the auto-start feature — they know
+    // the menu already.
+    //
+    // Extracted so intro.js can ask the SAME question (it skips the
+    // disclaimer for first-timers). If the two ever disagreed you'd get
+    // a player who skipped the intro but landed on the menu, or watched
+    // the gag and was then dropped mid-puzzle.
+    //
+    // localStorage unavailable (private mode, quota) → NOT a first visit.
+    // Without storage nothing can be consumed, so every load would look
+    // brand new and the player would be locked into the newcomer path
+    // forever.
+    function isFirstVisit() {
+        const slug = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness');
+        try {
+            return !(localStorage.getItem(AUTO_START_KEY)
+                  || localStorage.getItem(slug + '_mode')
+                  || localStorage.getItem(slug + '_lastPlayerName'));
+        } catch (e) { return false; }
+    }
+
     function autoStartFirstPractice() {
         if (state !== STATE.MENU) return false;
-        const slug = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness');
-        let seen;
-        try {
-            seen = localStorage.getItem(AUTO_START_KEY)
-                || localStorage.getItem(slug + '_mode')
-                || localStorage.getItem(slug + '_lastPlayerName');
-        } catch (e) { return false; }
-        if (seen) return false;
+        if (!isFirstVisit()) return false;
         // Consume BEFORE starting: if startGame throws for any reason we
         // still never re-trigger, and the player gets the normal menu on
         // their next load rather than a repeating broken auto-start.
@@ -3252,6 +3269,10 @@ const Marathon = (() => {
 
     return { init, onSolve, onHintUsed, onPuzzleReady, advance, isPlaying, isMenuVisible, isInTransition, isReplaying, upcomingDims,
              autoStartFirstPractice,
+             // Brand-new browser? intro.js asks this to decide whether to
+             // skip the disclaimer, so both surfaces agree on who counts
+             // as a first-timer. See the function's comment.
+             isFirstVisit,
              notifyPuzzleInteraction,
              showPotdLeaderboard,
              // Reusable iOS-standalone keyboard helpers — exposed so PotD's

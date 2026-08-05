@@ -541,7 +541,7 @@
             // the TUTORIAL grid and pop real-game entries off undoStack
             // whose effects then get restored anyway on tutorial close,
             // leaving the stack out of sync with the board.
-            if (typeof Tutorial !== 'undefined' && Tutorial.isOpen && Tutorial.isOpen()) return;
+            if (typeof Tutorial !== 'undefined' && Tutorial.isBusy && Tutorial.isBusy()) return;
             // Same transition guards as handlePointer/handleHintClick: don't
             // rewind a puzzle the player has already solved and is leaving.
             if (typeof Marathon !== 'undefined' && Marathon.isInTransition && Marathon.isInTransition()) return;
@@ -612,7 +612,7 @@
         function resetPuzzle() {
             // Same guard set as undo() — see the comments there.
             if (isBuilding || isReplaying || boardRotating) return;
-            if (typeof Tutorial !== 'undefined' && Tutorial.isOpen && Tutorial.isOpen()) return;
+            if (typeof Tutorial !== 'undefined' && Tutorial.isBusy && Tutorial.isBusy()) return;
             if (typeof Marathon !== 'undefined' && Marathon.isInTransition && Marathon.isInTransition()) return;
             if (typeof Potd !== 'undefined' && Potd.isInSolveTransition && Potd.isInSolveTransition()) return;
             if (!Maze.grid) return;
@@ -988,7 +988,7 @@
             if (!Maze.grid || Maze.won) return;
             // Tutorial's teaching script deliberately joins paths — the
             // fixed grid must never rotate under the overlay.
-            if (typeof Tutorial !== 'undefined' && Tutorial.isOpen && Tutorial.isOpen()) return;
+            if (typeof Tutorial !== 'undefined' && Tutorial.isBusy && Tutorial.isBusy()) return;
             runBoardPenalty();
         }
         // Variety (user call 2026-07-29): half the time the penalty is the

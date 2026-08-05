@@ -2,6 +2,14 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-08-05 — Release v1.53 (first-time players skip the intro disclaimer everywhere, not just CG)
+- **User call:** itch should give a newcomer the same landing CrazyGames does — arrive, and be playing. So the intro gag is now skipped for ANY first-time visitor on ANY host. Returning players still get it; it's a running joke, and by then it's their game rather than a stranger's toll gate.
+- **No safety/legal cost:** the intro is a comedic liability disclaimer ("please do not solve while operating heavy machinery", modelled on Ridiculousness), not a photosensitivity or terms gate. Worth re-checking that premise if its copy ever changes.
+- ⚠ **The CG skip deliberately drops the F11/PageUp/PageDown fullscreen shortcuts** (custom fullscreen controls are prohibited there; CG provides its own). A first-timer on itch must NOT lose them — so `registerFullscreenShortcut()` is hoisted out of the intro's own setup and called on the skip path for everyone EXCEPT CG. It carries a bound-once guard: exactly one of the two paths calls it today, but that's an easy invariant to break.
+- ⚠ **`Marathon.isFirstVisit()` is now the single source of truth** for "brand new browser" (the three-key test: consumed auto-start flag / saved mode pick / saved leaderboard name), extracted from `autoStartFirstPractice` and exported for intro.js. **If these two ever disagreed** you'd get a player who skipped the intro but landed on the menu, or one who watched the gag and was then dropped mid-puzzle. Keep them on the one predicate.
+- localStorage unavailable (private mode) → NOT a first visit, deliberately: nothing can be consumed there, so every load would look brand new and the player would be locked into the newcomer path forever.
+- Version bumped 1.52 → 1.53. No back-end change.
+
 ## 2026-08-05 — Release v1.52 (demo beats LOOP, and slower — plus the board freeze that made that safe)
 - **User call: the beat was over before the caption had been read.** Now ~2× slower and it loops until the tip is dismissed. New constants in tutorial.js: lead-in 700, step 900, slow step 1300, hold 1800, loop gap 900 — a twin cycle is ~9s, a gate cycle ~7s. Deliberately slower than the modal's, which is user-paced with Next and watched on purpose; this one plays in the corner of the eye.
 - ⚠ **Looping changes the safety story, which is the real content of this release.** v1.50 played ONCE precisely because the demo has the singleton Maze on loan and game input is suppressed for the duration. Looping means that loan now lasts as long as the card does. A normal-looking board that silently ignores taps reads as BROKEN — which is nearly what the v1.51 bug looked like — so the freeze had to become visible.

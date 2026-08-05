@@ -20,6 +20,13 @@
  * way. The intro is also suppressed when the URL carries ?nointro=true,
  * useful for screenshots / dev iteration.
  *
+ * It is ALSO skipped for two kinds of real player (see the skip block in
+ * init): on CrazyGames, and for any FIRST-TIME visitor on any host. A
+ * newcomer's landing should be the same everywhere — arrive, and be
+ * playing — so the gag is a returning player's reward rather than a
+ * stranger's toll gate. Only CG loses the fullscreen key shortcuts with
+ * it; everyone else keeps them.
+ *
  * The body text's {activity} placeholder is filled from warnings.txt
  * (one phrase per line). Fetch is cache-friendly; first failure falls
  * back to a small embedded list so the screen is never blank.
@@ -112,6 +119,30 @@ const Intro = (() => {
             return (ret && ret.then) ? ret : Promise.resolve();
         } catch (e) { return Promise.reject(e); }
     }
+    // ---- Keyboard shortcut: F11 / PageUp / PageDown ----
+    // Tantro's exact key set. Global so it works during the menu /
+    // gameplay too, not just the intro screen. F11 is the browser's own
+    // fullscreen shortcut in most cases — wiring our handler doesn't
+    // conflict because we call preventDefault only when the page is
+    // actually focused.
+    //
+    // Hoisted out of the intro's own setup because the intro can be
+    // SKIPPED (see the skip block in init) and a skipped disclaimer must
+    // not cost the player their fullscreen keys. Guarded against a double
+    // registration: exactly one of the skip path and the normal path
+    // calls it today, but that's an easy invariant to break later.
+    let fullscreenShortcutBound = false;
+    function registerFullscreenShortcut() {
+        if (fullscreenShortcutBound) return;
+        fullscreenShortcutBound = true;
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'F11' || e.key === 'PageUp' || e.key === 'PageDown') {
+                e.preventDefault();
+                toggleFullscreen();
+            }
+        });
+    }
+
     function toggleFullscreen() {
         if (getFullscreenElement()) {
             exitFullscreen().catch(() => {});
@@ -145,22 +176,41 @@ const Intro = (() => {
             return;
         }
 
-        // CrazyGames: auto-skip the warning gag — their QA requires players
-        // reach gameplay in ≤1 click, and CG's own loading screen is the
-        // gate there. Bailing here also (deliberately) never registers the
-        // Full Screen toggle or the F11/PageUp/PageDown shortcuts below —
-        // custom fullscreen controls are prohibited on CG, which provides
-        // its own fullscreen button. Unlike the debug bail above, this is a
-        // real player reaching the menu, so the funnel milestone still
-        // fires. dismiss()'s Music.start() can't be used directly — there's
-        // no user gesture yet and start() won't queue itself pre-gesture —
-        // so menu music kicks off on the first click/keydown instead. Those
-        // BUBBLE-phase listeners fire after music.js's capture-phase
-        // gesture-blessing listeners flip gestureReady, so start() works.
-        if (typeof IS_CRAZYGAMES !== 'undefined' && IS_CRAZYGAMES) {
+        // ---- Skip the disclaimer entirely ----
+        // Two reasons, and they want slightly different treatment:
+        //
+        //   • CrazyGames — their QA requires players reach gameplay in ≤1
+        //     click, and CG's own loading screen is the gate there.
+        //   • ANY first-time player, on any host (user call 2026-08-05):
+        //     itch should give a newcomer the same landing as CG — arrive,
+        //     and be playing. Returning players still get the gag; it's a
+        //     running joke and by then it's their game. Marathon owns the
+        //     "brand new browser" test so the two surfaces can't disagree
+        //     — see Marathon.isFirstVisit.
+        //
+        // The CG bail deliberately never registers the Full Screen toggle
+        // or the F11/PageUp/PageDown shortcuts: custom fullscreen controls
+        // are prohibited there, CG provides its own. A first-timer on itch
+        // must NOT lose them, so the shortcut is registered below for
+        // everyone except CG. (The checkbox lives on the intro panel the
+        // player never sees; Settings carries the same controls.)
+        //
+        // Unlike the debug bail above, this is a real player reaching the
+        // menu, so the funnel milestone still fires. dismiss()'s
+        // Music.start() can't be used directly — there's no user gesture
+        // yet and start() won't queue itself pre-gesture — so menu music
+        // kicks off on the first click/keydown instead. Those BUBBLE-phase
+        // listeners fire after music.js's capture-phase gesture-blessing
+        // listeners flip gestureReady, so start() works.
+        const onCrazyGames = (typeof IS_CRAZYGAMES !== 'undefined') && IS_CRAZYGAMES;
+        const firstTimer   = (typeof Marathon !== 'undefined' && Marathon.isFirstVisit)
+            ? Marathon.isFirstVisit() : false;
+        if (onCrazyGames || firstTimer) {
             overlay.style.display = 'none';
             dismissed = true;
             document.documentElement.classList.add('intro-dismissed');
+            // Everywhere but CG, keep the fullscreen keys.
+            if (!onCrazyGames) registerFullscreenShortcut();
             if (typeof Tracking !== 'undefined' && Tracking.recordAgreed) Tracking.recordAgreed();
             // First-visit auto-start: brand-new players go straight into a
             // 1-path Practice puzzle instead of the menu (zero clicks to
@@ -377,18 +427,7 @@ const Intro = (() => {
             });
         }
 
-        // ---- Keyboard shortcut: F11 / PageUp / PageDown ----
-        // Tantro's exact key set. Global so it works during the menu /
-        // gameplay too, not just the intro screen. F11 is the browser's
-        // own fullscreen shortcut in most cases — wiring our handler
-        // doesn't conflict because we call preventDefault only when the
-        // page is actually focused.
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'F11' || e.key === 'PageUp' || e.key === 'PageDown') {
-                e.preventDefault();
-                toggleFullscreen();
-            }
-        });
+        registerFullscreenShortcut();
 
         // ---- Mobile-only "Add to Home Screen" hint + hide toggles row ----
         // Touch users who aren't already in standalone/fullscreen mode
