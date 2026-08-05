@@ -2,6 +2,10 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-08-05 — Release v1.55 (version-only re-cut of v1.54)
+- **No code change.** 1.54 had already been zipped when the version needed re-issuing, so this is 1.54's contents under a fresh number to bust the PWA cache. Everything real about this release is in the v1.54 entry below.
+- Version bumped 1.54 → 1.55.
+
 ## 2026-08-05 — Release v1.54 (FIX: v1.53 still FLASHED the intro before skipping it)
 - 🐛 **v1.53 skipped the disclaimer in intro.js — which runs at DOMContentLoaded, long after the overlay has painted.** A first-timer saw the gag flash by on the way to their first puzzle.
 - ⚠ **ROOT CAUSE was load order, not logic: `config.js` was loaded LAST-ish**, first in the ordered `srcs` loader at the BOTTOM of the body, while `#introOverlay` markup sits at line ~110. So nothing that knows `PROJECT_SLUG` or `IS_CRAZYGAMES` existed before first paint, and the skip decision could not be made in time.
