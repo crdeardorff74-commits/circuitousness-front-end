@@ -1747,8 +1747,28 @@ const Marathon = (() => {
             }
             // Twin-tile / gate explainers, fired by what the BOARD holds
             // rather than by level — see Tooltip.showBoardMechanicTips.
-            // Safe here: game.js places gates before it calls us back.
-            if (Tooltip.showBoardMechanicTips) Tooltip.showBoardMechanicTips();
+            // Safe content-wise here: game.js places gates before it calls
+            // us back.
+            //
+            // ⚠ HELD until the spin-in transition has finished. These tips
+            // animate a demo board, which borrows the renderer — starting
+            // that while the board is still tumbling in means the demo
+            // lays itself out against a moving target AND overlaps the
+            // one moment the board is deliberately invisible. (The
+            // renderer no longer breaks if they collide — see
+            // render.js boardCanvas — but there's nothing to gain by
+            // racing it, and a demo competing with the tumble reads as
+            // clutter.) Level guard on the timer: the player may have
+            // solved and advanced during the wait.
+            const tipLevel = level;
+            const fireMechanicTips = function () {
+                if (state !== STATE.PLAYING || level !== tipLevel) return;
+                if (typeof Tooltip !== 'undefined' && Tooltip.showBoardMechanicTips) {
+                    Tooltip.showBoardMechanicTips();
+                }
+            };
+            if (spinDelayMs > 0) setTimeout(fireMechanicTips, spinDelayMs + 80);
+            else                 fireMechanicTips();
             scheduleLockTip();
         }
     }

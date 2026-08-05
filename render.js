@@ -3126,6 +3126,22 @@ const Render = (() => {
                 && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
         } catch (e) { return false; }
     }
+    // ⚠ The REAL game canvas — never the borrowed tutorial/demo one.
+    // beginTutorial repoints `canvas` at a small canvas elsewhere in the
+    // DOM, so every bit of code below that toggles a CSS CLASS on the
+    // board, or measures/positions a ghost against it, must go through
+    // this. Reading the bare `canvas` is a live hazard because these
+    // effects HIDE the board (`.maze-spin-hold` is opacity:0 +
+    // pointer-events:none) and then undo it on a timer: decorate the
+    // wrong element and the hide is never lifted.
+    //
+    // Found 2026-08-05 the hard way — a tooltip mechanic-demo beat starts
+    // at puzzle-ready, which is exactly when spinInBoard has a pending
+    // timer. The timer fired while the renderer was pointed at the
+    // tooltip canvas, so `.maze-spin-hold` came off THAT and stayed on
+    // the board: the puzzle simply never appeared.
+    function boardCanvas() { return tutorialMode ? tutSaved.canvas : canvas; }
+
     function cancelSpin() {
         spinOutStartedAt = 0;
         if (spinInTimer !== null) { clearTimeout(spinInTimer); spinInTimer = null; }
@@ -3141,31 +3157,35 @@ const Render = (() => {
         if (rotateGhost && rotateGhost.parentNode) rotateGhost.parentNode.removeChild(rotateGhost);
         rotateGhost = null;
         if (canvas) {
-            canvas.classList.remove('maze-spin-hold');
-            canvas.classList.remove('maze-spin-in');
+            boardCanvas().classList.remove('maze-spin-hold');
+            boardCanvas().classList.remove('maze-spin-in');
         }
     }
     function spinOutBoard() {
         if (!canvas) return;
         cancelSpin();
         if (_prefersReducedMotion()) return;
-        const rect = canvas.getBoundingClientRect();
+        // One reference for the whole function: the ghost's PIXELS and its
+        // geometry have to come from the same element, and `canvas` alone
+        // could be a borrowed tutorial canvas (see boardCanvas).
+        const board = boardCanvas();
+        const rect = board.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) return;
         const g = document.createElement('canvas');
-        g.width  = canvas.width;
-        g.height = canvas.height;
+        g.width  = board.width;
+        g.height = board.height;
         g.className = 'mazeSpinGhost';
         g.style.left   = rect.left + 'px';
         g.style.top    = rect.top + 'px';
         g.style.width  = rect.width + 'px';
         g.style.height = rect.height + 'px';
         try {
-            g.getContext('2d').drawImage(canvas, 0, 0);
+            g.getContext('2d').drawImage(board, 0, 0);
         } catch (e) { return; }   // zero-size/odd state — just skip the effect
         // Insert as the canvas's NEXT SIBLING (not body-append): the ghost
         // has z-index 0, so DOM order keeps it above the canvas but under
         // every later-in-DOM positioned element (HUD buttons, popups).
-        canvas.parentNode.insertBefore(g, canvas.nextSibling);
+        boardCanvas().parentNode.insertBefore(g, boardCanvas().nextSibling);
         spinGhost = g;
         const cleanupGhost = function () {
             if (g.parentNode) g.parentNode.removeChild(g);
@@ -3173,7 +3193,7 @@ const Render = (() => {
         };
         g.addEventListener('animationend', cleanupGhost);
         setTimeout(cleanupGhost, SPIN_OUT_MS + 300);   // event-drop fallback
-        canvas.classList.add('maze-spin-hold');
+        boardCanvas().classList.add('maze-spin-hold');
         spinOutStartedAt = Date.now();
     }
     // Run-start tumble-IN — see item 3 of the section comment above.
@@ -3181,7 +3201,7 @@ const Render = (() => {
         if (!canvas) return;
         cancelSpin();
         if (_prefersReducedMotion()) return;
-        canvas.classList.add('maze-spin-hold');
+        boardCanvas().classList.add('maze-spin-hold');
         spinOutStartedAt = Date.now() - SPIN_OUT_MS;
     }
     // ── Joined-paths penalty visuals (rotate / flip) ─────────────────
@@ -3219,9 +3239,9 @@ const Render = (() => {
         g.style.height = rect.height + 'px';
         try { g.getContext('2d').drawImage(canvas, 0, 0); }
         catch (e) { return null; }
-        canvas.parentNode.insertBefore(g, canvas.nextSibling);
+        boardCanvas().parentNode.insertBefore(g, boardCanvas().nextSibling);
         rotateGhost = g;
-        canvas.classList.add('maze-spin-hold');
+        boardCanvas().classList.add('maze-spin-hold');
         return g;
     }
     // Shake the ghost, then play `turnKeyframes` on it, then clean up and
@@ -3231,7 +3251,7 @@ const Render = (() => {
         const finish = function () {
             if (rotateGhost === g) rotateGhost = null;
             if (g.parentNode) g.parentNode.removeChild(g);
-            canvas.classList.remove('maze-spin-hold');
+            boardCanvas().classList.remove('maze-spin-hold');
         };
         // Constant, subtle vibration (user-tuned twice: the original 1.2%
         // amplitude wandered too far, and playing the cycle as two
@@ -3286,7 +3306,7 @@ const Render = (() => {
             if (applyFn) applyFn();
             return Promise.resolve();
         }
-        const oldRect = canvas.getBoundingClientRect();
+        const oldRect = boardCanvas().getBoundingClientRect();
         const g = _makePenaltyGhost(oldRect);
         // Rotate the DATA while the real canvas is hidden — dims swap,
         // refit resizes the canvas, the rotated board is drawn invisibly.
@@ -3295,7 +3315,7 @@ const Render = (() => {
         // Bridge old footprint → new: the ghost turns ±90° about its
         // center, scales so its (rotated) width matches the new canvas
         // width, and translates its center onto the new canvas center.
-        const newRect = canvas.getBoundingClientRect();
+        const newRect = boardCanvas().getBoundingClientRect();
         const dx = (newRect.left + newRect.width  / 2) - (oldRect.left + oldRect.width  / 2);
         const dy = (newRect.top  + newRect.height / 2) - (oldRect.top  + oldRect.height / 2);
         const s  = oldRect.height > 0 ? newRect.width / oldRect.height : 1;
@@ -3319,7 +3339,7 @@ const Render = (() => {
             if (applyFn) applyFn();
             return Promise.resolve();
         }
-        const rect = canvas.getBoundingClientRect();
+        const rect = boardCanvas().getBoundingClientRect();
         const g = _makePenaltyGhost(rect);
         if (applyFn) applyFn();
         if (!g) return Promise.resolve();
@@ -3342,10 +3362,10 @@ const Render = (() => {
         const wait = Math.max(0, SPIN_OUT_MS - elapsed);
         spinInTimer = setTimeout(function () {
             spinInTimer = null;
-            canvas.classList.remove('maze-spin-hold');
-            canvas.classList.add('maze-spin-in');
+            boardCanvas().classList.remove('maze-spin-hold');
+            boardCanvas().classList.add('maze-spin-in');
             const done = function () {
-                canvas.classList.remove('maze-spin-in');
+                boardCanvas().classList.remove('maze-spin-in');
                 canvas.removeEventListener('animationend', done);
             };
             canvas.addEventListener('animationend', done);
