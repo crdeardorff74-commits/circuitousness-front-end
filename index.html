@@ -84,6 +84,35 @@
     })();
     </script>
 
+    <!-- config.js is loaded HERE, not with the ordered loader at the
+         bottom of the body, because the block below needs PROJECT_SLUG
+         (via isFirstVisitBrowser) and IS_CRAZYGAMES *before first paint*.
+         Same dev cache-bust as the loader. It is still the FIRST script
+         after platform-redirect, so load order is unchanged — just
+         earlier. Do not also list it in the srcs array below: a second
+         load would re-declare its consts and throw. -->
+    <script>(function(){var dev=location.hostname==='localhost'||location.hostname==='127.0.0.1';document.write('<script src="config.js'+(dev?'?t='+Date.now():'')+'"><\/script>');})();</script>
+
+    <!-- Intro-skip decision, made BEFORE FIRST PAINT.
+         The disclaimer is skipped on CrazyGames and for any first-time
+         visitor (see intro.js). Deciding that in intro.js alone is too
+         late — the overlay has already painted, so a newcomer sees the
+         gag flash by on the way to their first puzzle. Setting a root
+         class here lets CSS keep the overlay out of the first frame
+         entirely, exactly like html.mode-debug above.
+         intro.js reads this same class rather than re-deriving the
+         answer, so the DOM and the CSS can never disagree — a mismatch
+         would mean an invisible overlay the game is stuck behind. -->
+    <script>
+    (function () {
+        try {
+            var skip = (typeof IS_CRAZYGAMES !== 'undefined' && IS_CRAZYGAMES)
+                    || (typeof isFirstVisitBrowser === 'function' && isFirstVisitBrowser());
+            if (skip) document.documentElement.classList.add('intro-skip');
+        } catch (e) { /* fall through: intro shows, which is the safe default */ }
+    })();
+    </script>
+
     <!-- Portrait orientation overlay — RETIRED 2026-07-17. Portrait is
          now a supported orientation (it was blocking the CrazyGames
          mobile funnel). The markup + rotate.* i18n keys stay so the
@@ -1284,7 +1313,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '1.53';</script>
+    <script>var PAGE_VERSION = '1.54';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +
@@ -1295,7 +1324,10 @@
     (function() {
         var dev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
         var bust = dev ? ('?t=' + Date.now()) : '';
-        var srcs = ['config.js','cg-sdk.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','mosaic.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd-streaks.js','potd-calendar.js','potd-gen2.js','potd.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
+        // config.js is deliberately ABSENT — it is loaded early, up near
+        // the intro-skip block, because that decision needs it before
+        // first paint. Re-adding it here would re-declare its consts.
+        var srcs = ['cg-sdk.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','mosaic.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd-streaks.js','potd-calendar.js','potd-gen2.js','potd.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
         for (var i = 0; i < srcs.length; i++) {
             document.write('<script src="' + srcs[i] + bust + '"><\/script>');
         }

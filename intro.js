@@ -202,10 +202,19 @@ const Intro = (() => {
         // kicks off on the first click/keydown instead. Those BUBBLE-phase
         // listeners fire after music.js's capture-phase gesture-blessing
         // listeners flip gestureReady, so start() works.
+        // Read the verdict index.html already reached before first paint
+        // (html.intro-skip, which is also what keeps the overlay out of
+        // the first frame). Reading the class rather than re-deriving it
+        // means the DOM and the CSS can never disagree — a mismatch would
+        // leave an invisible overlay the game is stuck behind. The
+        // re-derived fallback covers a stale cached index.html that
+        // predates the class.
         const onCrazyGames = (typeof IS_CRAZYGAMES !== 'undefined') && IS_CRAZYGAMES;
-        const firstTimer   = (typeof Marathon !== 'undefined' && Marathon.isFirstVisit)
-            ? Marathon.isFirstVisit() : false;
-        if (onCrazyGames || firstTimer) {
+        const skipIntro = document.documentElement.classList.contains('intro-skip')
+            || onCrazyGames
+            || ((typeof Marathon !== 'undefined' && Marathon.isFirstVisit)
+                ? Marathon.isFirstVisit() : false);
+        if (skipIntro) {
             overlay.style.display = 'none';
             dismissed = true;
             document.documentElement.classList.add('intro-dismissed');

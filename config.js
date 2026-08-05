@@ -57,6 +57,39 @@ const AppConfig = {
     AUTH_API: 'https://official-intelligence-api.onrender.com'
 };
 
+// ---- First-visit detection -------------------------------------------
+// "First visit" = this browser has never played: none of the consumed
+// auto-start flag, a saved mode pick, or a saved leaderboard name. The
+// latter two stop a RETURNING player who predates the auto-start feature
+// from being treated as a newcomer.
+//
+// It lives HERE, in the first file loaded, rather than in marathon.js
+// (which owns the auto-start) because index.html has to know the answer
+// BEFORE FIRST PAINT — it decides whether the intro disclaimer is
+// rendered at all, and a decision made at DOMContentLoaded flashes the
+// gag for a frame first. marathon.js and intro.js both defer to this so
+// there is exactly one definition of "new player".
+//
+// Worker-safe: the function only touches localStorage when CALLED, and
+// sw.js's importScripts never calls it.
+const FIRST_VISIT_AUTOSTART_KEY = PROJECT_SLUG + '_firstVisitAutoStarted_v1';
+const FIRST_VISIT_KEYS = [
+    FIRST_VISIT_AUTOSTART_KEY,
+    PROJECT_SLUG + '_mode',
+    PROJECT_SLUG + '_lastPlayerName',
+];
+// localStorage unavailable (private mode, quota) → NOT a first visit.
+// Nothing can be consumed without storage, so every load would look
+// brand new and the player would be locked into the newcomer path.
+function isFirstVisitBrowser() {
+    try {
+        for (let i = 0; i < FIRST_VISIT_KEYS.length; i++) {
+            if (localStorage.getItem(FIRST_VISIT_KEYS[i])) return false;
+        }
+        return true;
+    } catch (e) { return false; }
+}
+
 // Canonical public URL for share links. window.location is unreliable on
 // itch.io — the game runs in a CDN iframe, so location is an opaque CDN URL
 // rather than the listing page — so every share/copy-link action uses this

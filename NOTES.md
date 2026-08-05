@@ -2,6 +2,16 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-08-05 — Release v1.54 (FIX: v1.53 still FLASHED the intro before skipping it)
+- 🐛 **v1.53 skipped the disclaimer in intro.js — which runs at DOMContentLoaded, long after the overlay has painted.** A first-timer saw the gag flash by on the way to their first puzzle.
+- ⚠ **ROOT CAUSE was load order, not logic: `config.js` was loaded LAST-ish**, first in the ordered `srcs` loader at the BOTTOM of the body, while `#introOverlay` markup sits at line ~110. So nothing that knows `PROJECT_SLUG` or `IS_CRAZYGAMES` existed before first paint, and the skip decision could not be made in time.
+- **Fix: `config.js` is now loaded EARLY** via its own `document.write` tag (same dev cache-bust), immediately before a new inline block that adds `html.intro-skip`. CSS then keeps the overlay out of the first frame — `html.intro-skip #introOverlay { display: none !important }`, exactly the mechanism `html.mode-debug` already used. ⚠ **`config.js` must NOT be re-added to the `srcs` array** — a second load re-declares its consts and throws. It is still the first script after platform-redirect, so load order is otherwise unchanged.
+- **`isFirstVisitBrowser()` + `FIRST_VISIT_AUTOSTART_KEY` moved to config.js**, because the pre-paint block needs them and config is the first file loaded. marathon.js's `isFirstVisit()` and its `AUTO_START_KEY` now defer to those (with inline fallbacks for a stale cached config.js). **One definition of "new player"**, which matters: marathon WRITES the key that config READS.
+- **intro.js reads `html.intro-skip` rather than re-deriving the answer** — the DOM and the CSS then cannot disagree. A mismatch would mean a `display:none` overlay that intro.js still believes it must show, i.e. the game stuck behind an invisible screen.
+- **Verified config.js is still worker-safe** (sw.js `importScripts` it): the new function only touches localStorage when CALLED, and it evaluates cleanly in a context with no window/document/localStorage. Keep it that way.
+- **Lesson, same shape as v1.51's:** the logic was right and the *timing* was wrong. Anything that decides what the first frame looks like has to run before the first frame, which on this page means before the body's script loader.
+- Version bumped 1.53 → 1.54. No back-end change.
+
 ## 2026-08-05 — Release v1.53 (first-time players skip the intro disclaimer everywhere, not just CG)
 - **User call:** itch should give a newcomer the same landing CrazyGames does — arrive, and be playing. So the intro gag is now skipped for ANY first-time visitor on ANY host. Returning players still get it; it's a running joke, and by then it's their game rather than a stranger's toll gate.
 - **No safety/legal cost:** the intro is a comedic liability disclaimer ("please do not solve while operating heavy machinery", modelled on Ridiculousness), not a photosensitivity or terms gate. Worth re-checking that premise if its copy ever changes.

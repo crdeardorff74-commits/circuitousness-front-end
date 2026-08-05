@@ -67,8 +67,13 @@ const Marathon = (() => {
     // Consumed-flag key for the one-time auto-start. Deliberately its own
     // key (not _mode / _lastPlayerName) so the semantics stay "the intro
     // auto-start has fired once", independent of what else the player did.
-    const AUTO_START_KEY = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness')
-        + '_firstVisitAutoStarted_v1';
+    // Shared with config.js's isFirstVisitBrowser, which reads it as part
+    // of the first-visit test — this module WRITES it, so the two must
+    // name the same key. Inline fallback covers a stale cached config.js.
+    const AUTO_START_KEY = (typeof FIRST_VISIT_AUTOSTART_KEY === 'string')
+        ? FIRST_VISIT_AUTOSTART_KEY
+        : ((typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness')
+           + '_firstVisitAutoStarted_v1');
     let activeType     = null;     // 's' / 'q' (progressive); legacy 's1'..'q4' via resumed old saves
     let sessionToken   = null;     // server-issued cheat-proof timing token (from /api/game/start)
     let level          = 0;        // current puzzle index, 1-based
@@ -1410,22 +1415,16 @@ const Marathon = (() => {
     // localStorage-unavailable (private mode, quota): bail to the menu.
     // Without storage the flag can't persist, and auto-starting EVERY visit
     // would lock repeat private-mode players out of the menu flow.
-    // Is this browser brand new? "First visit" = none of: the consumed
-    // auto-start flag, a saved mode pick, or a saved leaderboard name.
-    // The extra two keys stop the first-time experience from surprising
-    // RETURNING players who predate the auto-start feature — they know
-    // the menu already.
-    //
-    // Extracted so intro.js can ask the SAME question (it skips the
-    // disclaimer for first-timers). If the two ever disagreed you'd get
-    // a player who skipped the intro but landed on the menu, or watched
-    // the gag and was then dropped mid-puzzle.
-    //
-    // localStorage unavailable (private mode, quota) → NOT a first visit.
-    // Without storage nothing can be consumed, so every load would look
-    // brand new and the player would be locked into the newcomer path
-    // forever.
+    // Is this browser brand new? THE definition lives in config.js
+    // (isFirstVisitBrowser) because index.html needs the same answer
+    // before first paint, to decide whether to render the intro at all.
+    // Everything here defers to it so there is one notion of "new
+    // player" — if the intro and the auto-start ever disagreed you'd get
+    // a player who skipped the disclaimer but landed on the menu, or one
+    // who watched the gag and was then dropped mid-puzzle.
+    // The inline fallback covers a stale cached config.js.
     function isFirstVisit() {
+        if (typeof isFirstVisitBrowser === 'function') return isFirstVisitBrowser();
         const slug = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness');
         try {
             return !(localStorage.getItem(AUTO_START_KEY)
