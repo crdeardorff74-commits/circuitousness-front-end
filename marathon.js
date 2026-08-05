@@ -1802,7 +1802,7 @@ const Marathon = (() => {
             // a slow read of the tutorial). Finishing the tutorial sets
             // the watched flag that suppresses this tip for good; an
             // early close just lets the next puzzle reschedule.
-            if (typeof Tutorial !== 'undefined' && Tutorial.isOpen && Tutorial.isOpen()) return;
+            if (typeof Tutorial !== 'undefined' && Tutorial.isBusy && Tutorial.isBusy()) return;
             Tooltip.showOnce('lockTile',
                 (typeof I18n !== 'undefined' && I18n.t)
                     ? I18n.t('tooltip.lockTile')

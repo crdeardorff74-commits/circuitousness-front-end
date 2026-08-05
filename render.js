@@ -3142,6 +3142,18 @@ const Render = (() => {
     // the board: the puzzle simply never appeared.
     function boardCanvas() { return tutorialMode ? tutSaved.canvas : canvas; }
 
+    // Freeze/unfreeze the real board while a tooltip mechanic demo loops
+    // (Tutorial.playBeat). The demo borrows the renderer AND installs its
+    // own grid in the shared Maze, so the board underneath is a stale
+    // frame — dimming it and killing its pointer events makes that state
+    // legible instead of feeling broken when a tap does nothing. Resolves
+    // through boardCanvas, so it works from inside tutorial mode.
+    function setBoardInert(on) {
+        const el = boardCanvas();
+        if (!el || !el.classList) return;
+        el.classList.toggle('maze-demo-inert', !!on);
+    }
+
     function cancelSpin() {
         spinOutStartedAt = 0;
         if (spinInTimer !== null) { clearTimeout(spinInTimer); spinInTimer = null; }
@@ -3385,7 +3397,7 @@ const Render = (() => {
              setLitGoldBase, setLitGoldLo, setLitGoldHi,
              setLockFaceColor, setCompleteCircuits, setGridSize,
              flashTwinPair, renderSnippet, paintSnippetRingMask,
-             beginTutorial, endTutorial, tutorialMetrics,
+             beginTutorial, endTutorial, tutorialMetrics, setBoardInert,
              setAnimateRotations, animateRotationAt,
              hasJoinedLanes,    // game.js polls this for the overlap-SFX state machine
              fadeLanes, clearFadingLanes,  // broken-chain fade triggered alongside the twin-break SFX

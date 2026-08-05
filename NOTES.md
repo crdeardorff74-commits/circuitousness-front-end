@@ -2,6 +2,14 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-08-05 — Release v1.52 (demo beats LOOP, and slower — plus the board freeze that made that safe)
+- **User call: the beat was over before the caption had been read.** Now ~2× slower and it loops until the tip is dismissed. New constants in tutorial.js: lead-in 700, step 900, slow step 1300, hold 1800, loop gap 900 — a twin cycle is ~9s, a gate cycle ~7s. Deliberately slower than the modal's, which is user-paced with Next and watched on purpose; this one plays in the corner of the eye.
+- ⚠ **Looping changes the safety story, which is the real content of this release.** v1.50 played ONCE precisely because the demo has the singleton Maze on loan and game input is suppressed for the duration. Looping means that loan now lasts as long as the card does. A normal-looking board that silently ignores taps reads as BROKEN — which is nearly what the v1.51 bug looked like — so the freeze had to become visible.
+- **`Render.setBoardInert(on)`** → `#maze.maze-demo-inert { opacity: .3; pointer-events: none }`. Resolves through `boardCanvas()` so it works from inside tutorial mode. ⚠ Declared BEFORE `.maze-spin-hold` in styles.css ON PURPOSE: equal specificity, so source order lets the spin's `opacity: 0` win if they ever overlap.
+- **Widened the four existing `Tutorial.isOpen()` input guards to `isBusy()`** (game.js undo / resetPuzzle / board-penalty, marathon.js lock-tip timer). They all exist to stop something poking the swapped grid, and a beat swaps it exactly like the modal does. `pointer-events: none` covers the canvas; these cover keyboard and gamepad, which never touch it.
+- **Loop mechanics:** `for(;;)` with a `beatAlive(token)` re-check after EVERY await — each one is a point where the player could have dismissed. Rewind is `installDemoPuzzle()` + `fastForward(idx)`, i.e. reload-and-replay rather than undoing actions one at a time, so it cannot drift over hundreds of cycles. There is no natural exit; every exit is `stopBeat()` flipping the token.
+- Version bumped 1.51 → 1.52. No back-end change.
+
 ## 2026-08-05 — Release v1.51 (FIX: v1.50's demo beat could leave the board invisible)
 - 🐛 **Symptom: dismiss the twin-tile tooltip and no puzzle appears.** Board gone, taps do nothing.
 - ⚠ **ROOT CAUSE — a latent render.js hazard that the beats merely exposed.** `spinInBoard` schedules a timer that reads the MODULE-LEVEL `canvas` **when it fires**, not when it was scheduled. A demo beat starts at puzzle-ready, which is exactly when that timer is pending; `Render.beginTutorial` repoints `canvas` at the tooltip canvas; the timer fires and strips `.maze-spin-hold` from THAT element. `#maze.maze-spin-hold` is `opacity: 0; pointer-events: none` — so the real board stayed hidden and unclickable, permanently. Dismissing the tip couldn't help: the class is on the element, not in any state the tooltip owns.

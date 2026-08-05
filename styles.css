@@ -123,6 +123,20 @@ body {
     pointer-events: none;
     will-change: transform;
 }
+/* Board frozen while a tooltip mechanic demo loops (Tutorial.playBeat).
+   The demo borrows the renderer and installs its own grid in the shared
+   Maze, so what's on the real board is a stale frame and a tap would
+   land on something about to be discarded. Dimming it says so.
+   pointer-events is the real guard here; game.js additionally no-ops its
+   input paths on Tutorial.isBusy(), which is what covers keyboard and
+   gamepad (they never touch the canvas).
+   DECLARED BEFORE .maze-spin-hold deliberately — equal specificity, so
+   source order lets the spin's opacity:0 win if the two ever overlap. */
+#maze.maze-demo-inert {
+    opacity: 0.3;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
 #maze.maze-spin-hold {
     /* Real canvas hidden while the ghost tumbles away and the next
        puzzle builds/draws underneath. pointer-events off so nobody

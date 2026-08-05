@@ -432,12 +432,24 @@ const Tutorial = (function () {
     // actions instantly to reach the right state, then animating the one
     // step that matters. No second puzzle to author or keep in sync.
     //
-    // Plays ONCE and hands the board straight back; the tooltip canvas
-    // keeps the final frame as a still. Deliberately not looped: the live
-    // Maze is on loan for the duration, so the loan has to be short.
+    // LOOPS until the tip is dismissed (user call 2026-08-05 — played once
+    // and slower-than-the-modal, it was over before the caption had been
+    // read). The loan on the live Maze therefore lasts as long as the card
+    // does, which is why Render.setBoardInert dims and un-clicks the real
+    // board for the duration: a frozen dimmed board reads as deliberate,
+    // where a normal-looking board that ignores taps reads as broken.
+    //
+    // Pacing is deliberately slower than the modal's. There the player
+    // drives with Next and is watching on purpose; here it plays in the
+    // corner of the eye while they read a sentence, so each beat wants to
+    // be legible at a glance and to come round again soon enough that
+    // looking up late still catches it.
     const BEATS = { twinTiles: 2, gates: 6 };   // indices into STEPS
-    const BEAT_LEAD_IN_MS = 420;   // let the player's eye land before it moves
-    const BEAT_HOLD_MS    = 700;   // sit on the finished state before handing back
+    const BEAT_LEAD_IN_MS   = 700;    // eye lands on the board before it moves
+    const BEAT_STEP_MS      = 900;    // ordinary demo action
+    const BEAT_SLOW_STEP_MS = 1300;   // an action flagged `slow` (the twin unison)
+    const BEAT_HOLD_MS      = 1800;   // sit on the finished state
+    const BEAT_LOOP_GAP_MS  = 900;    // rewound, before it goes again
     let beat = null;
     // Bumped by every start and stop, so an await that resumes after the
     // beat was cancelled can tell and bail instead of writing to a board
@@ -474,9 +486,14 @@ const Tutorial = (function () {
         if (Maze.recompute) Maze.recompute();
     }
 
-    // Public — play `beatKey` on `targetCanvas`. Resolves when the board
-    // has been handed back. Safe to call when it can't run (no canvas,
-    // unknown key, modal open, another beat live): it just returns false.
+    // Still ours to drive? False once stopBeat has run or another beat
+    // has started — every await below re-checks, because each one is a
+    // point where the player could have dismissed the card.
+    function beatAlive(token) { return !!beat && beat.token === token; }
+
+    // Public — loop `beatKey` on `targetCanvas` until stopBeat(). Safe to
+    // call when it can't run (no canvas, unknown key, modal open, another
+    // beat live): it just returns false without taking the board.
     async function playBeat(targetCanvas, beatKey) {
         const idx = BEATS[beatKey];
         if (idx == null || !targetCanvas) return false;
@@ -492,21 +509,35 @@ const Tutorial = (function () {
             fastForward(idx);
             // One frame so the canvas has a display box for Render to measure.
             await nextFrame();
-            if (!beat || beat.token !== token) return false;
+            if (!beatAlive(token)) return false;
             Render.beginTutorial(targetCanvas);
-            Render.draw();
-            await delay(BEAT_LEAD_IN_MS);
-            for (const act of STEPS[idx].actions) {
-                if (!beat || beat.token !== token) return false;
-                performAction(act);
-                await delay(act.slow ? SLOW_DWELL_MS : ACTION_DWELL_MS);
+            if (Render.setBoardInert) Render.setBoardInert(true);
+            // Runs until the card is dismissed. Every exit is via
+            // stopBeat() flipping the token — there is no natural end.
+            for (;;) {
+                Render.draw();
+                await delay(BEAT_LEAD_IN_MS);
+                if (!beatAlive(token)) return false;
+                for (const act of STEPS[idx].actions) {
+                    performAction(act);
+                    await delay(act.slow ? BEAT_SLOW_STEP_MS : BEAT_STEP_MS);
+                    if (!beatAlive(token)) return false;
+                }
+                await delay(BEAT_HOLD_MS);
+                if (!beatAlive(token)) return false;
+                // Rewind to the beat's opening state and go again. Cheap
+                // (a snapshot load plus a few silent rotations) and it
+                // can't drift, unlike undoing the actions one by one.
+                installDemoPuzzle();
+                fastForward(idx);
+                await delay(BEAT_LOOP_GAP_MS);
+                if (!beatAlive(token)) return false;
             }
-            await delay(BEAT_HOLD_MS);
         } catch (e) {
             // Never leave the player's board on loan because a demo threw.
+            if (beatAlive(token)) stopBeat();
+            return false;
         }
-        if (beat && beat.token === token) stopBeat();
-        return true;
     }
 
     // Public — hand the board back immediately, wherever the beat got to.
@@ -518,6 +549,12 @@ const Tutorial = (function () {
         const b = beat;
         beat = null;
         beatToken++;                 // strand any in-flight await
+        if (typeof Render !== 'undefined') {
+            // Un-freeze FIRST: setBoardInert resolves the real board
+            // through boardCanvas(), which is correct either side of
+            // endTutorial, but doing it here keeps the order obvious.
+            if (Render.setBoardInert) Render.setBoardInert(false);
+        }
         restoreLive(b.saved);        // Maze first, then the renderer —
         if (typeof Render !== 'undefined' && Render.endTutorial) {
             Render.endTutorial();    // ...so its repaint shows the real board
