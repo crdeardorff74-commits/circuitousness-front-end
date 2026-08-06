@@ -125,6 +125,7 @@ const Marathon = (() => {
     let gameOverScore, gameOverTime, gameOverRank, gameOverName, gameOverSave, gameOverMenu, gameOverNameRow;
     let gameOverPotdHook;
     let leaderboardTileTabsEl, leaderboardPathTabsEl, leaderboardEntries, leaderboardEmpty, leaderboardClose, menuLeaderboardBtn;
+    let leaderboardNoticeEl;   // one-time Surge board-reset explanation
     let leaderboardTabsEl;
     let menuCreditsBtn, creditsPopupEl, creditsPopupMenu;
     let replayLabel, replayStopBtn;
@@ -215,6 +216,11 @@ const Marathon = (() => {
         leaderboardEntries = $('leaderboardEntries');
         leaderboardEmpty   = $('leaderboardEmpty');
         leaderboardClose   = $('leaderboardCloseBtn');
+        leaderboardNoticeEl = $('leaderboardNotice');
+        const noticeBtn = $('leaderboardNoticeBtn');
+        if (noticeBtn) noticeBtn.addEventListener('click', dismissBoardResetNotice);
+        // Decide once, now, while the pre-era evidence still exists.
+        initBoardResetNotice();
         menuLeaderboardBtn = $('menuLeaderboardBtn');
         leaderboardTabsEl  = $('leaderboardTabs');
 
@@ -2591,6 +2597,82 @@ const Marathon = (() => {
     function sessionIdKey()  { return PROJECT_SLUG + '_session_id'; }
     function ownRecKey(type) { return PROJECT_SLUG + '_own_rec_' + era() + type; }
 
+    // ---- One-time board-reset notice -----------------------------------
+    // The 2026-08-06 time rebalance made old scores incomparable, so the
+    // Surge boards were wiped. A handful of real people were ON those
+    // boards, and having your entry vanish with no explanation is a
+    // lousy way to treat the players who engaged most.
+    //
+    // ⚠ THE DETECTION HAS TO RUN BEFORE THE EVIDENCE ROTS. Bumping
+    // LEADERBOARD_ERA doesn't delete the old keys, it just stops reading
+    // them — so they linger as proof this browser had scores. We check
+    // once, persist a flag, and never scan again. Do NOT "tidy up" the
+    // old-era keys before this has had a chance to run on a returning
+    // player's browser.
+    //
+    // Best-effort by nature: a player who cleared storage, or who ranked
+    // from a different device, can't be identified and simply won't see
+    // it. That's the right failure direction — showing the notice to
+    // someone who never had a score would be baffling.
+    const NOTICE_KEY = PROJECT_SLUG + '_lbResetNotice_' + (MARATHON.LEADERBOARD_ERA || 'v2');
+
+    // Three shapes of local evidence, because one isn't enough:
+    //   1. an own-recording under a PRE-era key — saveOwnRecording only
+    //      runs after a successful ranked server save, so this is exact;
+    //   2. a non-empty pre-era pending queue — a run submitted offline
+    //      that never got its confirmation;
+    //   3. their own name in a pre-era cached board — catches players
+    //      whose save predates recordings, or whose recording was
+    //      dropped for quota (both leave no own-recording behind).
+    function hadPreEraScores() {
+        const eraTag = MARATHON.LEADERBOARD_ERA ? (MARATHON.LEADERBOARD_ERA + '_') : '';
+        const recPrefix = PROJECT_SLUG + '_own_rec_';
+        const lbPrefix  = PROJECT_SLUG + '_lb_';
+        let name = null;
+        try { name = localStorage.getItem(PROJECT_SLUG + '_lastPlayerName'); } catch (e) {}
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (!k) continue;
+                // PotD shares neither prefix, so it can't false-positive.
+                const isPreEraRec = k.indexOf(recPrefix) === 0
+                    && (!eraTag || k.indexOf(recPrefix + eraTag) !== 0);
+                if (isPreEraRec) return true;
+                const isPreEraLb = k.indexOf(lbPrefix) === 0
+                    && k.indexOf(PROJECT_SLUG + '_potd_lb_') !== 0
+                    && (!eraTag || k.indexOf(lbPrefix + eraTag) !== 0);
+                if (!isPreEraLb) continue;
+                const raw = localStorage.getItem(k);
+                if (!raw) continue;
+                if (k === lbPrefix + 'pending') {
+                    const q = JSON.parse(raw);
+                    if (Array.isArray(q) && q.length > 0) return true;
+                    continue;
+                }
+                if (!name) continue;
+                const board = JSON.parse(raw);
+                if (Array.isArray(board)
+                    && board.some((e) => e && e.username === name)) return true;
+            }
+        } catch (e) { /* private mode / corrupt entry — just don't show it */ }
+        return false;
+    }
+    // Run once per browser: decide, persist, never scan again.
+    // '1' = owed the notice, '0' = not owed / already dismissed.
+    function initBoardResetNotice() {
+        try {
+            if (localStorage.getItem(NOTICE_KEY) !== null) return;
+            localStorage.setItem(NOTICE_KEY, hadPreEraScores() ? '1' : '0');
+        } catch (e) { /* no storage — the notice is simply never shown */ }
+    }
+    function noticeIsOwed() {
+        try { return localStorage.getItem(NOTICE_KEY) === '1'; } catch (e) { return false; }
+    }
+    function dismissBoardResetNotice() {
+        try { localStorage.setItem(NOTICE_KEY, '0'); } catch (e) {}
+        if (leaderboardNoticeEl) leaderboardNoticeEl.hidden = true;
+    }
+
     // Same UTC-date format PotD uses server-side for its date keys; kept
     // local here so this module doesn't have to reach into the Potd
     // module just to format a board cache key.
@@ -3077,6 +3159,13 @@ const Marathon = (() => {
     async function renderLeaderboard() {
         const type = getActiveBoardType();
         const mode = leaderboardMode;
+
+        // Surge boards only — PotD wasn't reset, so explaining a reset
+        // there would be nonsense. Stays up until explicitly dismissed;
+        // a player who tabs between boards shouldn't have to catch it.
+        if (leaderboardNoticeEl) {
+            leaderboardNoticeEl.hidden = !(mode !== 'potd' && noticeIsOwed());
+        }
 
         // Paint local cache immediately so the UI is never blank. Each
         // mode has its own cache namespace.

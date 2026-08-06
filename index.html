@@ -1123,6 +1123,16 @@
                 <button class="lbSubTab lbPotdOnly" type="button" data-paths="streak" data-i18n="potd.lb.streak">Streak</button>
                 <button class="lbSubTab lbPotdOnly" type="button" data-paths="career" data-i18n="potd.lb.career">Career</button>
             </div>
+            <!-- One-time explanation of the 2026-08-06 Surge board reset,
+                 shown ONLY to browsers that actually had a ranked score
+                 under the old clock (marathon.js hadPreEraScores). Nobody
+                 else ever sees it — a fresh player being told their
+                 nonexistent scores were removed would be baffling.
+                 Dismissed permanently by its own button. -->
+            <div id="leaderboardNotice" hidden>
+                <p id="leaderboardNoticeText" data-i18n="marathon.boardResetNotice"></p>
+                <button id="leaderboardNoticeBtn" type="button" data-i18n="tooltip.gotIt">Got it!</button>
+            </div>
             <ol id="leaderboardEntries"></ol>
             <p id="leaderboardEmpty" data-i18n="marathon.boardEmpty" hidden>No scores yet — be the first!</p>
             <button id="leaderboardCloseBtn" type="button" data-i18n="marathon.close">Close</button>
@@ -1313,7 +1323,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '1.56';</script>
+    <script>var PAGE_VERSION = '1.57';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

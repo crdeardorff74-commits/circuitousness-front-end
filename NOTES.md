@@ -2,6 +2,17 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-08-06 — Release v1.57 (one-time "why your score is gone" notice for the players who were ON the boards)
+- A handful of real people had Surge entries. Having your run vanish with no explanation is a lousy way to treat the players who engaged most, so they get a one-time message when they next open the leaderboard.
+- ⚠ **DETECTION HAD TO RUN BEFORE THE EVIDENCE ROTS**, which is the whole design constraint. Bumping `LEADERBOARD_ERA` doesn't DELETE the old keys, it just stops reading them — so they linger as proof this browser had scores. `initBoardResetNotice()` decides ONCE at init, persists `<slug>_lbResetNotice_v2` ('1' owed / '0' not), and never scans again. **Do not "tidy up" the pre-era keys** before returning players have had a chance to load this build.
+- **Three shapes of evidence**, because one isn't enough: a pre-era `_own_rec_<type>` (only written after a SUCCESSFUL RANKED SERVER SAVE — exact); a non-empty pre-era `_lb_pending` (submitted offline, never confirmed); or the player's own `_lastPlayerName` appearing in a pre-era cached board (catches saves that predate recordings, or whose recording was dropped for quota).
+- ⚠ **The load-bearing requirement is the NEGATIVE case.** Telling a brand-new player their nonexistent scores were deleted is worse than saying nothing. `tests/board-reset-notice-test.js` spends most of its assertions there — brand-new browser, played-but-never-ranked, cached-a-board-they-aren't-on, empty pending queue, **PotD-only player**, and new-era-only players all must NOT see it.
+- **Best-effort by nature:** cleared storage or a different device can't be identified and simply won't show it. Right failure direction.
+- **Rendered inline in the leaderboard panel**, not via the Tooltip system — tooltipCard is z-index 100 and the leaderboard overlay is 2000, so a tooltip would render BEHIND it. Shown on Surge boards only (PotD wasn't reset); persists across board tabs until explicitly dismissed.
+- New i18n key `marathon.boardResetNotice`, 15/15 languages. Copy explains the change, owns the inconvenience, and invites them to take the top spot back.
+- ⚠ **`tests/board-reset-notice-test.js` IS TEMPORARY** — retire it together with the notice markup and `hadPreEraScores` when the message is removed, rather than leaving a suite that asserts nothing.
+- Version bumped 1.56 → 1.57.
+
 ## 2026-08-06 — Release v1.56 (Surge time REBALANCE + leaderboard era; step 1 of the practice→Surge onboarding)
 - **Context:** two failed CG trials point at Zen being the wrong landing mode. ⚠ **Zen has no terminal state** — a run only ends when the player QUITS, so the game never gets a moment to make a pitch; every retention surface fires at someone already leaving (only 9.2% ever voluntarily started anything after the auto-start run). Surge ends *for* them, at tension, with a number. The plan is a 3-puzzle labelled Practice sequence → "Time to Surge" → Surge, with Try Again as the first-run ending. **This release is only the timing/leaderboard groundwork.**
 - ⚠ **The old opening was granting 30 SECONDS for the first 4×4** (`sizeCap = 1.875 × 16`), against a measured ~100s that a first-timer actually takes. Modelling it (scratchpad `check-timing.js`, walks the real constants through the real arithmetic) showed **the old tuning handed a score of ZERO to every player slower than "competent"** — which matches the funnel's 70% who never reached puzzle 3. That's the bug.
