@@ -189,7 +189,7 @@ const MARATHON = {
     //   sizeCap  = TIME_PER_TILE_SINGULAR[pathCount-1] × rows × cols
     //              (singular only — quad skips the cap)
     //   fresh_ms = max(TIME_FLOOR, min(schedule, sizeCap)) × 1000
-    //   timeRemaining = min(timeRemaining + fresh_ms, MAX_BANK_SECONDS)
+    //   carried  = min(timeRemaining, MAX_CARRY_SECONDS)
     // Arrays indexed by pathCount-1 → entries for 1, 2, 3, 4 paths.
     START_TIME_SINGULAR:     [120, 160, 200, 240],
     START_TIME_QUAD:         [180, 240, 320, 380],
@@ -211,8 +211,8 @@ const MARATHON = {
     // The old value was really solving a different problem: unlimited
     // banking let good players hoard 20 minutes within a few levels, and
     // starving the grant was an indirect fix whose collateral damage
-    // landed entirely on whoever was slowest. MAX_BANK_SECONDS below now
-    // caps hoarding DIRECTLY, so this can be generous without re-opening
+    // landed entirely on whoever was slowest. MAX_CARRY_SECONDS below now
+    // bounds hoarding DIRECTLY, so this can be generous without re-opening
     // that.
     //
     // At 5.0 the opening 4×4 grants 80s, and the cap stops binding around
@@ -244,27 +244,39 @@ const MARATHON = {
     // Accepted cost: the top-end spread compresses (expert 27 → 19), so
     // the leaderboard separates strong from expert less sharply.
     TIME_PER_TILE_SINGULAR:  [5.0, 5.5, 6.0, 6.5],
-    // Ceiling on CARRIED time (seconds). Leftover rolls forward, but the
-    // running total can never exceed this — see the formula above.
+    // Ceiling on CARRIED-OVER time (seconds) — the most a player may
+    // bring INTO a puzzle from previous ones. This puzzle's own fresh
+    // grant is then added on top:
+    //     timeRemaining = min(timeRemaining, MAX_CARRY_SECONDS) + fresh
     //
-    // Added 2026-08-06 alongside the raised size cap, and it is the half
-    // of that change that keeps Surge honest: a generous early grant is
-    // only safe if the surplus can't be stockpiled. Banking used to be
-    // explicitly unlimited, which is how runs turned into 20-minute
-    // cushions. Now a strong player simply wastes the overflow and the
-    // run keeps tightening, while a slow player gets a real buffer on the
-    // boards where everything is unfamiliar.
+    // ⚠ THIS IS A CARRY CAP, NOT A TOTAL CAP, AND THE DIFFERENCE IS THE
+    // WHOLE POINT. v1.56 capped the TOTAL at 150s, and since grants are
+    // themselves 80-120s the cap bound on literally every puzzle: the
+    // clock read exactly 2:30 at the start of every board for the rest
+    // of the run, no matter how well the player played. Banking rewarded
+    // nothing. Capping the carry instead means the starting clock always
+    // moves — solve fast and you bring more in, solve slowly and you
+    // bring less — while hoarding stays impossible BY CONSTRUCTION: you
+    // can never enter a puzzle with more than this, so the 20-minute
+    // cushions that made unlimited banking untenable simply can't form.
     //
-    // ⚠ THE CAP NEVER CLAWS BACK THE GRANT JUST AWARDED. Quad skips the
-    // size cap entirely and rides the raw START_TIME_QUAD schedule, so an
-    // early quad puzzle grants 180-380s — far above this ceiling. A plain
-    // min(total, 150) would hand a quad player 380 seconds and then
-    // immediately take 230 of them back, which reads as a bug, not a
-    // rule. The effective ceiling is therefore max(MAX_BANK_SECONDS,
-    // fresh): you always keep at least this puzzle's own allotment, and
-    // the cap only ever bites CARRIED-OVER surplus. See marathon.js
-    // bankTime, which is the single place this is applied.
-    MAX_BANK_SECONDS:        150,
+    // A carry cap also needs no claw-back guard. The old total cap did:
+    // quad skips the size cap and can be granted 380s, so min(total,150)
+    // would have handed that over and immediately taken 230 back. Adding
+    // the grant AFTER the cap can never subtract what was just awarded.
+    //
+    // Tuning: 90 gives a competent player a starting clock in the
+    // 150-210s band that rises and falls with the grant schedule instead
+    // of flatlining. Lower it to tighten the mid-game.
+    //
+    // KNOWN LIMIT: for competent-and-better players the grant exceeds
+    // what they consume, so they sit AT the carry cap most of the run and
+    // skill barely separates them. The real lever for that is making the
+    // grant taper — TIME_DECREASE_PER_SOLVE is currently cancelled out by
+    // the START_TIME bump at every tier-up — but that's a difficulty
+    // retune, not a banking fix, and it should be measured before it's
+    // changed.
+    MAX_CARRY_SECONDS:       90,
 
     // Puzzle progression. Each solve grows EITHER rows or cols by one
     // (never both), randomly BUT wider-first: cols never fall behind rows
@@ -337,7 +349,7 @@ const MARATHON = {
     // ⚠ BUMP THIS whenever a balance change makes scores incomparable —
     // a run's score is only meaningful against others played under the
     // same clock. Set to 'v2' on 2026-08-06 with the time rebalance
-    // (TIME_PER_TILE_SINGULAR raised, MAX_BANK_SECONDS added), which made
+    // (TIME_PER_TILE_SINGULAR raised, MAX_CARRY_SECONDS added), which made
     // early puzzles markedly more generous.
     //
     // This only clears the CLIENT. The server side is a separate, manual

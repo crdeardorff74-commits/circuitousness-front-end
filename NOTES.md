@@ -2,6 +2,15 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-08-06 — Release v1.61 (FIX: banking did nothing — every puzzle started at exactly 2:30)
+- 🐛 User caught it in play: the solve card said "+32s banked" and the next puzzle started at 2:30. So did the one after. And the one after that.
+- ⚠ **CAUSE: v1.56 capped the TOTAL, and grants are the same size as the cap.** `min(banked + fresh, 150s)` with grants of 80-120s binds on essentially every puzzle from the third onward, so the clock read exactly the cap forever and playing well earned nothing. **A total cap makes the starting clock a constant — it is the wrong shape for a "banking" mechanic.**
+- **Fix: `MAX_CARRY_SECONDS: 90` — cap what rolls IN, then add the grant on top.** `min(banked, cap) + fresh`. The starting clock now moves with performance (a competent player sees ~150-210s varying with the grant schedule instead of a flat 150), and hoarding becomes impossible BY CONSTRUCTION rather than merely bounded — you can never enter a puzzle with more than the cap.
+- **The claw-back guard is gone**, and good riddance: a total cap needed `max(cap, fresh)` so quad's 380s grant wasn't instantly reduced to 150. Adding the grant AFTER the cap can never subtract what was just awarded, so the special case disappears.
+- ⚠ **MY MISS, worth recording:** the model I wrote for v1.56 *printed* `clock=150s` on every line and I read past it — I was looking at puzzle counts and treated the flat column as the cap working rather than as banking dying. **When a modelled column is constant, that IS the finding.**
+- **KNOWN LIMIT, documented at the constant:** competent-and-better players still sit AT the carry cap most of the run, because grants exceed what they consume — so skill barely separates them. The real lever is making grants taper (`TIME_DECREASE_PER_SOLVE` is currently cancelled out by the `START_TIME` bump at every tier-up), but that's a difficulty retune, not a banking fix, and should be measured before it's changed.
+- Version bumped 1.60 → 1.61.
+
 ## 2026-08-06 — Release v1.60 (FIX: the first Surge run had NO VISIBLE TIMER)
 - 🐛 The pitch handed off to Surge correctly, but the run started with no clock on screen.
 - ⚠ **CAUSE: `body.mode-practice` is owned by ModePicker, not by the run.** `body.mode-practice #hudTimer { display: none }` is what hides the clock in Zen — and `ModePicker.DEFAULT_MODE` is `'practice'`, so a brand-new browser (no saved `_mode`) sits in practice chrome. The practice phase wants that; the Surge run that follows emphatically does not, and nothing was switching it. `startFirstSurge` now calls `ModePicker.setMode('marathon')`.

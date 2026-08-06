@@ -1117,20 +1117,23 @@ const Marathon = (() => {
     // once grid growth crosses the declining schedule; quad starts never
     // shrank, so quad skips the cap. Banking is unlimited; the caller
     // just adds the result to timeRemaining with no cap.
-    // Carry `banked` forward and add this puzzle's `fresh` grant, honouring
-    // MAX_BANK_SECONDS. THE ONE PLACE the ceiling is applied — the solve
-    // card projects the next puzzle's clock too, and if the two ever
-    // disagreed the popup would promise time the player doesn't get.
+    // Cap what CARRIES OVER, then add this puzzle's fresh grant on top.
+    // THE ONE PLACE this is applied — the solve card projects the next
+    // puzzle's clock too, and if the two disagreed the popup would
+    // promise time the player doesn't get.
     //
-    // The ceiling is max(cap, fresh), never a bare cap: quad skips the
-    // size cap and can be granted 380s on a board where the ceiling is
-    // 150, and taking 230 of those straight back reads as a bug. So the
-    // cap only ever bites carried-over SURPLUS. Missing constant (stale
-    // cached config) → uncapped, i.e. the pre-2026-08-06 behaviour.
+    // ⚠ Capping the carry, not the total. A total cap made the clock read
+    // the same number at the start of every board (see MAX_CARRY_SECONDS
+    // in config.js) because grants are comparable to the cap. Adding the
+    // grant after the cap keeps the starting clock responsive to how the
+    // player is actually doing, and makes hoarding structurally
+    // impossible rather than merely bounded.
+    // Missing constant (stale cached config) → uncapped, the pre-v1.56
+    // behaviour.
     function bankTime(banked, fresh) {
-        const capSec = MARATHON.MAX_BANK_SECONDS;
+        const capSec = MARATHON.MAX_CARRY_SECONDS;
         if (!(capSec > 0)) return banked + fresh;
-        return Math.min(banked + fresh, Math.max(capSec * 1000, fresh));
+        return Math.min(banked, capSec * 1000) + fresh;
     }
 
     function timeForPuzzle(quadMode, pathCount, solvedCount, logicalDims) {
@@ -1724,8 +1727,8 @@ const Marathon = (() => {
         // (incremented in onSolve before the player advances). `logical`
         // feeds the singular size cap on fresh time. Progressive runs'
         // path-indexed START_TIME arrays give a natural bump at each
-        // tier-up. bankTime applies MAX_BANK_SECONDS — banking used to be
-        // unlimited, which is what let runs turn into 20-minute cushions.
+        // tier-up. bankTime applies MAX_CARRY_SECONDS — it bounds what
+        // rolls IN from earlier puzzles, never this puzzle's own grant.
         const fresh = timeForPuzzle(quad, paths, solvedCount, logical);
         timeRemaining = bankTime(timeRemaining, fresh);
 
