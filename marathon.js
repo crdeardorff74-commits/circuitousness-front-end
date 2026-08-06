@@ -1582,6 +1582,17 @@ const Marathon = (() => {
             Tracking.firstRunSurgeStarted();
         }
         practiceStep = 0;
+        // ⚠ Switch the PICKER too, not just the run. `body.mode-practice`
+        // is driven by ModePicker, and it's what hides #hudTimer — a
+        // brand-new browser has no saved mode pick, so the Surge run
+        // inherited Practice's chrome and launched WITHOUT A VISIBLE
+        // CLOCK (v1.59). Several other HUD rules key off the same class
+        // (the undo cluster's layout, the How-to button's slot), so the
+        // body class has to describe the run that's actually being
+        // played.
+        if (typeof ModePicker !== 'undefined' && ModePicker.setMode) {
+            ModePicker.setMode('marathon');
+        }
         // practice=false → this is a REAL Surge run: timed, ranked,
         // saveable. Third arg keeps the first-session flag so the funnel
         // still attributes it, but the practice-only behaviours all key
@@ -1741,8 +1752,11 @@ const Marathon = (() => {
         // the run (saveRunState) rather than abandoning it. PotD keeps the
         // plain marathon.quit label via goToMenu's restore, since its quit
         // genuinely discards the attempt.
+        // PRACTICE only. During the Surge run that follows, the player has
+        // chosen to play and quitting checkpoints the run — so it wants
+        // the ordinary Pause/Quit label, not an advert for the menu.
         if (hudQuit) {
-            const quitKey = isFirstRunAutoStart ? 'marathon.moreModes' : 'marathon.pauseQuit';
+            const quitKey = practiceStep > 0 ? 'marathon.moreModes' : 'marathon.pauseQuit';
             hudQuit.setAttribute('data-i18n', quitKey);
             hudQuit.textContent = I18n.t(quitKey);
         }

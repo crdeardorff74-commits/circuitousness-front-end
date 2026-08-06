@@ -2,6 +2,22 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-08-06 — Release v1.60 (FIX: the first Surge run had NO VISIBLE TIMER)
+- 🐛 The pitch handed off to Surge correctly, but the run started with no clock on screen.
+- ⚠ **CAUSE: `body.mode-practice` is owned by ModePicker, not by the run.** `body.mode-practice #hudTimer { display: none }` is what hides the clock in Zen — and `ModePicker.DEFAULT_MODE` is `'practice'`, so a brand-new browser (no saved `_mode`) sits in practice chrome. The practice phase wants that; the Surge run that follows emphatically does not, and nothing was switching it. `startFirstSurge` now calls `ModePicker.setMode('marathon')`.
+- **The same class drives more than the timer** — the undo cluster's layout and the How-to button's slot both key off it — so the rule is: **the body class must describe the run actually being played**, not the mode the player last picked.
+- Harmless side effect worth knowing: `setMode` persists `<slug>_mode`, which is one of the three first-visit keys. By that point `AUTO_START_KEY` is already consumed, so `isFirstVisit()` was false anyway and nothing changes.
+- **Also fixed:** the HUD quit button still said "📅 Daily & More" during Surge. That label is for the practice phase, where it advertises a menu the player hasn't seen; a chosen Surge run checkpoints on quit and wants the ordinary "Pause/Quit". Now keyed on `practiceStep`, like every other practice-only behaviour.
+- Version bumped 1.59 → 1.60.
+
+## 2026-08-06 — Release v1.59 (FIX: v1.58's pitch screen never appeared — frozen screen after practice 3)
+- 🐛 **Symptom:** solve the third practice puzzle and everything vanishes — no pitch, no HUD, no buttons, apparently frozen.
+- ⚠ **CAUSE 1 — `showOnly()` iterates a FIXED LIST of panels.** It hides every panel it knows about and reveals the one passed in. `firstRunPitchEl` wasn't in that list, so the call hid the HUD and revealed *nothing*. **Any new top-level panel MUST be added to that array**, not just styled; a panel missing from it is hidden-by-omission and can never be shown. Comment added at the list.
+- ⚠ **CAUSE 2 — CSS specificity, and it would have bitten again on its own.** Panels are hidden by `html.mode-game #x { display: none }` (specificity **1,1,1**) and shown by `html.mode-game #x.visible` (1,2,1). The bare `#firstRunPitch.visible` I first wrote is only **1,1,0** — it LOSES to the hide rule. A panel that has its hide rule but not its *mode-gated* show rule stays invisible no matter what JS does. Both lists now carry the panel, with a warning comment.
+- 🐛 **Also fixed, self-inflicted:** a sloppy scripted edit produced `html.mode-game html.mode-game #replayHud.visible`, a selector that can never match — that would have broken the REPLAY HUD too. Caught by a check that every panel in the hide list has a matching show rule; worth re-running that check after touching this block.
+- `showFirstRunPitch` now also calls `clearTransition()` — onSolve returns early without painting a solve card but leaves `inTransition` set.
+- Version bumped 1.58 → 1.59. No back-end change beyond v1.58's (still deploy that first if you haven't).
+
 ## 2026-08-06 — Release v1.58 (FIRST SESSION REBUILT: 3 practice puzzles → pitch → Surge)
 - ⚠ **DEPLOY BACK-END FIRST** (three new `first_run_stats` columns), then this zip.
 - **The premise, and it's the whole reason for the change: ZEN HAS NO TERMINAL STATE.** A Zen run only ends when the player quits, so the game never gets a moment to ASK for anything — every retention surface fires at someone already leaving. Our own funnel: **only 9.2% ever voluntarily started anything after their first run ended.** Surge ends FOR them, at tension, with a number, and "maybe I can do better" is a reason to press a button. User's call; the data backs it harder than expected.
