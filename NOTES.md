@@ -2,6 +2,11 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-08-06 — Release v1.62 (solve card says "Practice puzzle N solved!" during practice)
+- The card read "Puzzle 2 solved!" through the practice sequence, which makes it look like a real run and undercuts the hand-off the pitch is about to make. New key `marathon.solveHeadlinePractice`, 15/15 languages.
+- Gotcha for anyone editing that branch: **`practiceStep` has already been ADVANCED by the time the headline is painted.** The test still holds because it's only ever 0 outside practice — the final practice solve returns early to show the pitch, so it never reaches the headline with a stale value. `level` tracks the practice puzzles 1:1 and is the number the player expects.
+- Version bumped 1.61 → 1.62.
+
 ## 2026-08-06 — Release v1.61 (FIX: banking did nothing — every puzzle started at exactly 2:30)
 - 🐛 User caught it in play: the solve card said "+32s banked" and the next puzzle started at 2:30. So did the one after. And the one after that.
 - ⚠ **CAUSE: v1.56 capped the TOTAL, and grants are the same size as the cap.** `min(banked + fresh, 150s)` with grants of 80-120s binds on essentially every puzzle from the third onward, so the clock read exactly the cap forever and playing well earned nothing. **A total cap makes the starting clock a constant — it is the wrong shape for a "banking" mechanic.**

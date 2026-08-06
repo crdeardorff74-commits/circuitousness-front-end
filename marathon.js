@@ -2212,8 +2212,17 @@ const Marathon = (() => {
         // was just solved; subline tells the player what they're carrying
         // into the next puzzle.
         if (solveTransitionEl && solveHeadline && solveBanked) {
-            solveHeadline.textContent =
-                I18n.t('marathon.solveHeadline', { n: level });
+            // Say PRACTICE while the first session's practice sequence is
+            // running — "Puzzle 2 solved!" reads like a real run and
+            // undercuts the hand-off the pitch is about to make.
+            // practiceStep has already been advanced by this point, but
+            // it's only ever 0 outside practice (the final practice solve
+            // returns early to show the pitch), so the test still holds.
+            // `level` tracks the practice puzzles 1:1, so it's the number
+            // the player expects to see.
+            solveHeadline.textContent = practiceStep > 0
+                ? I18n.t('marathon.solveHeadlinePractice', { n: level })
+                : I18n.t('marathon.solveHeadline', { n: level });
             // Tier-up cue: the NEXT puzzle steps the path count up (a
             // progressive-run tier boundary). Announce it on the popup so
             // the jump doesn't read as a random difficulty spike; hidden
