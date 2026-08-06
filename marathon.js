@@ -1050,6 +1050,22 @@ const Marathon = (() => {
     // once grid growth crosses the declining schedule; quad starts never
     // shrank, so quad skips the cap. Banking is unlimited; the caller
     // just adds the result to timeRemaining with no cap.
+    // Carry `banked` forward and add this puzzle's `fresh` grant, honouring
+    // MAX_BANK_SECONDS. THE ONE PLACE the ceiling is applied — the solve
+    // card projects the next puzzle's clock too, and if the two ever
+    // disagreed the popup would promise time the player doesn't get.
+    //
+    // The ceiling is max(cap, fresh), never a bare cap: quad skips the
+    // size cap and can be granted 380s on a board where the ceiling is
+    // 150, and taking 230 of those straight back reads as a bug. So the
+    // cap only ever bites carried-over SURPLUS. Missing constant (stale
+    // cached config) → uncapped, i.e. the pre-2026-08-06 behaviour.
+    function bankTime(banked, fresh) {
+        const capSec = MARATHON.MAX_BANK_SECONDS;
+        if (!(capSec > 0)) return banked + fresh;
+        return Math.min(banked + fresh, Math.max(capSec * 1000, fresh));
+    }
+
     function timeForPuzzle(quadMode, pathCount, solvedCount, logicalDims) {
         const starts = quadMode ? MARATHON.START_TIME_QUAD : MARATHON.START_TIME_SINGULAR;
         const idx    = Math.max(0, Math.min(starts.length - 1, (pathCount | 0) - 1));
@@ -1570,12 +1586,13 @@ const Marathon = (() => {
         const physCols  = cfg.quadMode ? logical.cols * 2 : logical.cols;
 
         // Carry-over + fresh allotment. solvedCount = (level - 1) here
-        // (incremented in onSolve before the player advances). No cap on
-        // banking — the running total just grows. `logical` feeds the
-        // singular size cap on fresh time. Progressive runs' path-indexed
-        // START_TIME arrays give a natural bump at each tier-up.
+        // (incremented in onSolve before the player advances). `logical`
+        // feeds the singular size cap on fresh time. Progressive runs'
+        // path-indexed START_TIME arrays give a natural bump at each
+        // tier-up. bankTime applies MAX_BANK_SECONDS — banking used to be
+        // unlimited, which is what let runs turn into 20-minute cushions.
         const fresh = timeForPuzzle(cfg.quadMode, paths, solvedCount, logical);
-        timeRemaining = timeRemaining + fresh;
+        timeRemaining = bankTime(timeRemaining, fresh);
 
         state = STATE.PLAYING;
         showOnly(hudEl);
@@ -2031,7 +2048,10 @@ const Marathon = (() => {
         const nextPaths   = nextCfg.pathCount;
         const nextLogical = dimsForLevel(nextLev, nextCfg);
         const fresh       = timeForPuzzle(nextCfg.quadMode, nextPaths, solvedCount, nextLogical);
-        const nextStart = timeRemaining + fresh;
+        // Same bankTime the real grant uses — the popup must promise
+        // exactly what startNextPuzzle will hand over, or a capped run
+        // would advertise time it then doesn't give.
+        const nextStart = bankTime(timeRemaining, fresh);
         const bankedMs  = timeRemaining;
 
         // Build + show the transition popup. Headline names the puzzle that
@@ -2552,11 +2572,24 @@ const Marathon = (() => {
             }
             return PROJECT_SLUG + '_potd_lb_' + potdTodayUTC() + '_' + type;
         }
-        return PROJECT_SLUG + '_lb_' + type;
+        return PROJECT_SLUG + '_lb_' + era() + type;
     }
-    function pendingKey()    { return PROJECT_SLUG + '_lb_pending'; }
+    // Surge leaderboard era suffix (config.js LEADERBOARD_ERA) — bumped
+    // when a balance change makes old scores incomparable, which retires
+    // every cached board, queued submission and stored recording at once.
+    // Empty string on a stale cached config, i.e. the original key shape.
+    // PotD keys deliberately DON'T carry it: the daily is unaffected by
+    // Surge rebalances and its boards are real player history.
+    function era() {
+        return (typeof MARATHON === 'object' && MARATHON.LEADERBOARD_ERA)
+            ? (MARATHON.LEADERBOARD_ERA + '_') : '';
+    }
+    // Queued offline submissions. Era-keyed too: a run earned under the
+    // OLD clock must not surface on the new board just because it was
+    // sitting in the retry queue when the rebalance shipped.
+    function pendingKey()    { return PROJECT_SLUG + '_lb_' + era() + 'pending'; }
     function sessionIdKey()  { return PROJECT_SLUG + '_session_id'; }
-    function ownRecKey(type) { return PROJECT_SLUG + '_own_rec_' + type; }
+    function ownRecKey(type) { return PROJECT_SLUG + '_own_rec_' + era() + type; }
 
     // Same UTC-date format PotD uses server-side for its date keys; kept
     // local here so this module doesn't have to reach into the Potd

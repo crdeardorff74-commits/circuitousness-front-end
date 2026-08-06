@@ -183,31 +183,88 @@ const MUSIC_CREDITS_LIST_NAME = 'credits';
 const MARATHON = {
     // Per-puzzle starting allotment (seconds). Each puzzle solved trims
     // TIME_DECREASE_PER_SOLVE seconds from the NEXT puzzle's fresh time,
-    // floored at TIME_FLOOR. Banking is UNLIMITED — leftover time rolls
-    // forward without a cap. Final formula at runtime:
+    // floored at TIME_FLOOR. Final formula at runtime:
     //   schedule = START_TIME_*[pathCount-1]
     //              - solvedCount × TIME_DECREASE_PER_SOLVE
     //   sizeCap  = TIME_PER_TILE_SINGULAR[pathCount-1] × rows × cols
     //              (singular only — quad skips the cap)
     //   fresh_ms = max(TIME_FLOOR, min(schedule, sizeCap)) × 1000
-    //   timeRemaining += fresh_ms   (no cap on the running total)
+    //   timeRemaining = min(timeRemaining + fresh_ms, MAX_BANK_SECONDS)
     // Arrays indexed by pathCount-1 → entries for 1, 2, 3, 4 paths.
     START_TIME_SINGULAR:     [120, 160, 200, 240],
     START_TIME_QUAD:         [180, 240, 320, 380],
     TIME_DECREASE_PER_SOLVE: 10,
     TIME_FLOOR:              30,
-    // Size cap on fresh time (seconds per tile, singular only). The flat
-    // START_TIME schedule was tuned when singular Marathon started at
-    // 8×8-10×10; with the 5×5 unified starts a level-1 puzzle solvable in
-    // ~20s still granted 120s+, and players banked 20 minutes within a
-    // few levels. The cap makes early fresh time proportional to the
-    // grid: rates are calibrated to the old baseline (START_TIME/64, the
-    // 8×8 tile count, with 4-path continuing the +0.625 progression), so
-    // a 5×5 grants 47/63/78/94s and the cap stops binding once growth
-    // crosses the declining schedule (~level 5-6) — mid/late game is
-    // exactly the pre-cap model. Quad starts never shrank, so quad stays
-    // on the pure schedule.
-    TIME_PER_TILE_SINGULAR:  [1.875, 2.5, 3.125, 3.75],
+    // Size cap on fresh time (seconds per tile, singular only). Keeps the
+    // early grant proportional to the grid instead of handing out the
+    // flat START_TIME schedule — which was tuned back when singular
+    // Marathon opened at 8×8-10×10, and on today's 4×4 start would grant
+    // 120s for a board solvable in twenty.
+    //
+    // ⚠ RAISED 2026-08-06 from [1.875, 2.5, 3.125, 3.75] (user call).
+    // At 1.875 the opening 4×4 granted exactly 30 SECONDS, against a
+    // measured ~100s that a first-time player actually takes on their
+    // first board. New players were being wiped out before solving
+    // anything — and 70% of them never reached puzzle 3, which says the
+    // early curve was mis-tuned for EVERYONE, not just newcomers.
+    //
+    // The old value was really solving a different problem: unlimited
+    // banking let good players hoard 20 minutes within a few levels, and
+    // starving the grant was an indirect fix whose collateral damage
+    // landed entirely on whoever was slowest. MAX_BANK_SECONDS below now
+    // caps hoarding DIRECTLY, so this can be generous without re-opening
+    // that.
+    //
+    // At 5.0 the opening 4×4 grants 80s, and the cap stops binding around
+    // puzzle 4 — from there the declining schedule governs exactly as
+    // before, so mid/late game is untouched. Quad starts never shrank, so
+    // quad still skips the cap entirely.
+    //
+    // WHY 5.0 AND NOT SOMETHING TIGHTER — modelled against real per-tile
+    // solve rates (scratchpad check-timing.js walks these constants
+    // through the actual arithmetic). Puzzles solved before the clock
+    // runs out:
+    //
+    //                       learning  competent  strong  expert
+    //   OLD 1.875/tile             0         12      20      27
+    //   NEW 5.0/tile               6         11      16      19
+    //
+    // The old tuning handed a score of ZERO to every player slower than
+    // "competent" — which is most of them, and matches the funnel's 70%
+    // who never reached puzzle 3. That is the bug being fixed.
+    //
+    // Above ~3.5 the value stops affecting skilled players at all (3.5
+    // and 5.0 both give 11/16/19): once the cap stops binding, the
+    // declining schedule governs and it is the same for everyone. So the
+    // extra generosity is FREE past that point and buys exactly one
+    // thing — a first board a genuine newcomer can finish. The failure
+    // modes are wildly asymmetric: too tight means score 0 and leave;
+    // too loose just means tension arrives on board 3 instead of board 1.
+    //
+    // Accepted cost: the top-end spread compresses (expert 27 → 19), so
+    // the leaderboard separates strong from expert less sharply.
+    TIME_PER_TILE_SINGULAR:  [5.0, 5.5, 6.0, 6.5],
+    // Ceiling on CARRIED time (seconds). Leftover rolls forward, but the
+    // running total can never exceed this — see the formula above.
+    //
+    // Added 2026-08-06 alongside the raised size cap, and it is the half
+    // of that change that keeps Surge honest: a generous early grant is
+    // only safe if the surplus can't be stockpiled. Banking used to be
+    // explicitly unlimited, which is how runs turned into 20-minute
+    // cushions. Now a strong player simply wastes the overflow and the
+    // run keeps tightening, while a slow player gets a real buffer on the
+    // boards where everything is unfamiliar.
+    //
+    // ⚠ THE CAP NEVER CLAWS BACK THE GRANT JUST AWARDED. Quad skips the
+    // size cap entirely and rides the raw START_TIME_QUAD schedule, so an
+    // early quad puzzle grants 180-380s — far above this ceiling. A plain
+    // min(total, 150) would hand a quad player 380 seconds and then
+    // immediately take 230 of them back, which reads as a bug, not a
+    // rule. The effective ceiling is therefore max(MAX_BANK_SECONDS,
+    // fresh): you always keep at least this puzzle's own allotment, and
+    // the cap only ever bites CARRIED-OVER surplus. See marathon.js
+    // bankTime, which is the single place this is applied.
+    MAX_BANK_SECONDS:        150,
 
     // Puzzle progression. Each solve grows EITHER rows or cols by one
     // (never both), randomly BUT wider-first: cols never fall behind rows
@@ -272,6 +329,23 @@ const MARATHON = {
     // Leaderboard storage. Top N entries shown per game type.
     // Per universal rule 7a: 20.
     LEADERBOARD_TOP_N: 20,
+
+    // Surge leaderboard ERA. Appended to the local board / pending-submit
+    // / own-recording localStorage keys, so bumping it retires every
+    // cached client-side score at once.
+    //
+    // ⚠ BUMP THIS whenever a balance change makes scores incomparable —
+    // a run's score is only meaningful against others played under the
+    // same clock. Set to 'v2' on 2026-08-06 with the time rebalance
+    // (TIME_PER_TILE_SINGULAR raised, MAX_BANK_SECONDS added), which made
+    // early puzzles markedly more generous.
+    //
+    // This only clears the CLIENT. The server side is a separate, manual
+    // step: POST /api/admin/wipe-leaderboards with {"scope":"marathon"}.
+    // ⚠ Do NOT call that endpoint without a scope — the default wipes
+    // PotD's boards and sessions too, which have nothing to do with a
+    // Surge rebalance and are real player history.
+    LEADERBOARD_ERA: 'v2',
 
     // After a solve, wait for the player to click before building the next
     // puzzle — gives them time to read the banked-time message instead of
