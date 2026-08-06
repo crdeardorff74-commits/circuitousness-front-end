@@ -568,6 +568,12 @@ const Tracking = (function () {
                     // firstRunStalled. Always sent, so the server's
                     // last-write-wins keeps pace with the live state.
                     abandonSecs:       st.stall || 0,
+                    // First-session ladder (2026-08-06): reached the
+                    // practice->Surge pitch, pressed Start, and how many
+                    // times they took the Try Again offer.
+                    reachedPitch:      !!st.pitch,
+                    surgeStarted:      !!st.surge,
+                    retryCount:        st.retry || 0,
                     howtoClicked:      !!st.howto,
                     tutorialCompleted: !!st.tut,
                     nudgeClicked:      !!st.nudge,
@@ -655,7 +661,8 @@ const Tracking = (function () {
         if (_frRead()) return;
         // `eng: 0` + no sync scheduled: recording starts now, DELIVERY
         // waits for firstRunEngaged (see the engagement-gate note above).
-        _frWrite({ p: 0, w: 0, stall: 0, howto: 0, tut: 0, nudge: 0, daily: 0,   // w: retired, see below
+        _frWrite({ p: 0, w: 0, stall: 0, pitch: 0, surge: 0, retry: 0,
+                   howto: 0, tut: 0, nudge: 0, daily: 0,
                    oStart: 0, oSolve: 0, eng: 0,
                    v: forcedVariant || null, vLocked: forcedVariant ? 1 : 0,
                    rev: 1, dirty: 1 });
@@ -736,6 +743,35 @@ const Tracking = (function () {
         });
         _frFlushSync();   // pagehide: the debounced send would never fire
     }
+    // ---- First session: practice → pitch → Surge -----------------------
+    // The 2026-08-06 redesign is a RETENTION HYPOTHESIS — that a run which
+    // ends, with a score, beats a Zen run that never ends. These four
+    // counters are what will confirm or kill it, and the funnel reads as
+    // a ladder: practice solves → reached the pitch → pressed Start →
+    // retried after failing.
+    //
+    // ⚠ `firstRunRetried` is the one that matters most. If players reach
+    // Surge and never press Try Again, the whole premise is wrong and we
+    // should know within a day rather than after another CG trial.
+    //
+    // Practice solves reuse the existing `w` counter (and the server's
+    // `warmup_puzzles` column) — same idea, renamed feature; the clamp
+    // moved 2 → 3 to fit three practice puzzles.
+    function firstRunPracticeSolved() {
+        _frUpdate(function (st) {
+            if ((st.w || 0) >= 3) return false;
+            st.w = (st.w || 0) + 1;
+            return true;
+        });
+    }
+    const firstRunReachedPitch  = _frFlag('pitch');
+    const firstRunSurgeStarted  = _frFlag('surge');
+    // A COUNT, not a flag — one retry is politeness, five is a hooked
+    // player, and the difference is the whole signal.
+    function firstRunRetried() {
+        _frUpdate(function (st) { st.retry = (st.retry || 0) + 1; return true; });
+    }
+
     // (firstRunWarmupSolved lived here from 2026-08-02 to 2026-08-05,
     // counting the 3x3/4x3 warm-up boards separately from `p`. The
     // warm-ups are gone, so nothing increments it any more. The SERVER
@@ -808,6 +844,10 @@ const Tracking = (function () {
         firstRunLockVariant:        firstRunLockVariant,
         firstRunPuzzleSolved:       firstRunPuzzleSolved,
         firstRunStalled:            firstRunStalled,
+        firstRunPracticeSolved:     firstRunPracticeSolved,
+        firstRunReachedPitch:       firstRunReachedPitch,
+        firstRunSurgeStarted:       firstRunSurgeStarted,
+        firstRunRetried:            firstRunRetried,
         firstRunHowToClicked:       firstRunHowToClicked,
         firstRunTutorialCompleted:  firstRunTutorialCompleted,
         firstRunNudgeClicked:       firstRunNudgeClicked,

@@ -749,6 +749,18 @@
         </div>
 
         <!-- Game over screen (game mode only) -->
+        <!-- First session, phase 2: the hand-off from PRACTICE to SURGE.
+             Shown once, when the third practice puzzle is solved. This
+             screen is the point of the whole first-session redesign —
+             Zen had no terminal state, so the game never got a moment to
+             ASK the player for anything. Here it does, once, with one
+             button. Driven by marathon.js showFirstRunPitch. -->
+        <div id="firstRunPitch" hidden>
+            <h2 data-i18n="marathon.pitchTitle">Practice over.</h2>
+            <p id="firstRunPitchBody" data-i18n="marathon.pitchBody"></p>
+            <button id="firstRunPitchBtn" type="button" data-i18n="marathon.pitchStart">Start Surge</button>
+        </div>
+
         <div id="gameOver">
             <h2 data-i18n="marathon.timesUp">Time's up!</h2>
             <p id="gameOverScore"></p>
@@ -758,6 +770,14 @@
                 <input id="gameOverName" type="text" maxlength="16" data-i18n-attr="placeholder:marathon.namePlaceholder" placeholder="Your name">
                 <button id="gameOverSaveBtn" type="button" data-i18n="marathon.save">Save</button>
             </div>
+            <!-- FIRST-SESSION ending. A first-timer will almost never
+                 place, so an ordinary "back to menu" would close the
+                 session at exactly the moment we want to offer another
+                 go — "maybe I can do better" is the whole reason the
+                 first session ends in Surge rather than Zen. Shown by
+                 renderGameOver only for the first Surge run when the
+                 score didn't rank; ordinary game-overs never see it. -->
+            <button id="gameOverTryAgainBtn" type="button" data-i18n="marathon.tryAgain" hidden>Try again</button>
             <button id="gameOverMenuBtn" type="button" data-i18n="marathon.backToMenu">Back to menu</button>
             <!-- PotD comeback hook (D1 retention): painted by
                  renderGameOver as TWO lines — "📅 Puzzle of the Day"
@@ -1323,7 +1343,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '1.57';</script>
+    <script>var PAGE_VERSION = '1.58';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

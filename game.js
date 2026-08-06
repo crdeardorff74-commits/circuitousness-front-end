@@ -108,6 +108,12 @@
         // set at L3, full at L12+); quit resets to 1 so PotD/debug builds
         // outside a run keep full coverage.
         let twinScale       = 1;
+        // Per-puzzle gate overrides from Marathon's startPuzzle opts
+        // ({ gateTarget, teachGate }) — currently only the first session's
+        // practice puzzles set them. CONSUMED by newPuzzle (read then
+        // nulled) so a direct newPuzzle() call, which debug mode makes,
+        // can never inherit a previous puzzle's script.
+        let gateOpts        = null;
         // Cache key includes pathCount AND quadMode so cross-mode collisions
         // can't return a stale wrong-mode snapshot — and the twin scale
         // (as an integer percent: floats stringify noisily), because two
@@ -1591,7 +1597,18 @@
                     || 3;   // stale cached config → the long-standing default
                 const zenOpening = (typeof Marathon !== 'undefined' && Marathon.isZenRun
                                     && Marathon.isZenRun() && runLevel < gateFrom);
-                const target = zenOpening ? 0 : 1 + Math.floor(growthUnits / 4);
+                // EXPLICIT OVERRIDE (first-session practice puzzles). Those
+                // three boards each introduce exactly one mechanic, so the
+                // gate count is scripted rather than derived — the
+                // level/size formula below is tuned for a long ladder and
+                // would put gates on the wrong board of a three-board
+                // sequence. null means "no override", which is every other
+                // puzzle in the game.
+                const gateOverride = (gateOpts && typeof gateOpts.gateTarget === 'number')
+                    ? gateOpts.gateTarget : null;
+                const target = (gateOverride !== null)
+                    ? gateOverride
+                    : (zenOpening ? 0 : 1 + Math.floor(growthUnits / 4));
                 // Quad mode: anchor gates at quad-corners only (every other
                 // sub-tile vertex). The prong is still one sub-tile long.
                 const stride = Maze.quadMode ? 2 : 1;
@@ -1613,11 +1630,18 @@
                 // Marathon gates from puzzle 1, so its first is level 1.
                 const firstGatedLevel = (typeof Marathon !== 'undefined' && Marathon.isZenRun
                                          && Marathon.isZenRun()) ? gateFrom : 1;
-                const teachingBoard = target > 0 && runLevel === firstGatedLevel;
+                // The practice sequence says outright which of its boards
+                // is the gate lesson (teachGate); everything else infers it
+                // from the level.
+                const teachingBoard = target > 0 && (
+                    (gateOpts && gateOpts.teachGate) || (gateOverride === null
+                        && runLevel === firstGatedLevel));
                 Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), target, stride,
                                   altEdges, teachingBoard);
                 if (Maze.recompute) Maze.recompute();
             }
+            // Consume the script — see the gateOpts declaration.
+            gateOpts = null;
             resetSfxBaselines();
             if (Render.clearFadingLanes) Render.clearFadingLanes();
             // Start a fresh recording for the new puzzle. Hide any leftover
@@ -1804,6 +1828,8 @@
                     // the worker path re-sets it per job. Absent (stale
                     // marathon.js) → full coverage, the pre-ramp behavior.
                     twinScale = (typeof opts.twinScale === 'number') ? opts.twinScale : 1;
+                    // Gate script for THIS puzzle, if Marathon sent one.
+                    gateOpts = opts;
                     if (Maze.setTwinCoverageScale) Maze.setTwinCoverageScale(twinScale);
                     // PreGen worker invalidation is the expensive piece — only
                     // do it when game.js's view actually changed, since PotD's

@@ -541,6 +541,42 @@ const MARATHON = {
     // historical rows and for old cached clients still reporting. They
     // just stop growing. Don't clean them up.
 
+    // ----- First session: PRACTICE → SURGE -----
+    // A brand-new player used to be dropped into Zen. Two failed
+    // CrazyGames trials say that was wrong, and the structural reason is
+    // that ⚠ ZEN HAS NO TERMINAL STATE: a Zen run only ends when the
+    // player quits, so the game never gets a moment to make a pitch —
+    // every retention surface fires at someone already leaving (only
+    // 9.2% ever voluntarily started anything after their first run).
+    // Surge ends FOR them, at tension, with a number attached, and
+    // "maybe I can do better" is a reason to press a button.
+    //
+    // So the first session is now: three clearly-labelled PRACTICE
+    // puzzles, then a pitch, then real Surge.
+    //
+    // Each practice puzzle introduces exactly ONE thing, because the
+    // funnel showed abandon rates roughly DOUBLING (20% → 32-39%) on any
+    // board that introduced a mechanic. Spreading them is the whole
+    // point; do not merge these into two.
+    //   1. the basic twist-to-connect loop, nothing else
+    //   2. + twin tiles      (fires the animated twin demo)
+    //   3. + a gate          (fires the animated gate demo)
+    //
+    // `twinScale` / `gates` are passed EXPLICITLY rather than left to the
+    // ramps (TWIN_RAMP_START_LEVEL, ZEN_GATE_START_LEVEL): those are
+    // tuned for a long ladder and would put both mechanics on the same
+    // early board. `teachGate` asks assignGates for a gate that genuinely
+    // blocks the route — a decorative one teaches nothing (only ~20% of
+    // random placements actually obstruct; see gates-test.js).
+    //
+    // Sizes stay small and grow by one step so the sequence feels like
+    // progress without ever being the difficulty.
+    FIRST_RUN_PRACTICE: [
+        { rows: 4, cols: 4, twinScale: 0,   gates: 0, teachGate: false },
+        { rows: 4, cols: 5, twinScale: 0.1, gates: 0, teachGate: false },
+        { rows: 5, cols: 5, twinScale: 0.1, gates: 1, teachGate: true  },
+    ],
+
     // Aspect cap on grid growth: neither logical dimension may grow to
     // MORE than this ratio × the other. Growth still favors the
     // viewport's long axis (landscape runs wide, portrait runs tall),

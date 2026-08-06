@@ -57,6 +57,25 @@ const Marathon = (() => {
     // every subsequent startGame (3rd arg omitted → false) and by goToMenu
     // (covers the PotD path, which starts games without startGame).
     let isFirstRunAutoStart = false;
+    // First session, phase 1. 0 = not in practice; 1..N = the practice
+    // puzzle being played (config.js FIRST_RUN_PRACTICE). Distinguishes
+    // the two phases of the first session, because isFirstRunAutoStart
+    // spans BOTH — the practice-only behaviours (no run save, the HUD
+    // How-to button, the practice ladder) all key on this instead.
+    let practiceStep = 0;
+    // True for the FIRST real Surge run, the one the pitch starts. Drives
+    // the Try Again ending: a first-timer will almost never place, so an
+    // ordinary "back to menu" game-over would end the session at exactly
+    // the moment we want to offer another go.
+    let isFirstSurgeRun = false;
+    // How many times they've taken that offer. Second failure onward also
+    // surfaces the daily as an alternative — one clear primary action on
+    // the first retry decision, more options once a retry has been tried.
+    let firstRunRetries = 0;
+    // Set the moment the last practice puzzle is solved, cleared when the
+    // pitch is on screen. Blocks advance() during the solve-reveal delay —
+    // see the comment at its only setter.
+    let pitchPending = false;
     // Deferred "started" tracking milestone for the auto-start run. The
     // player didn't choose to play — we dropped them in — so recordStart
     // is held here until their first committed puzzle action (game.js
@@ -126,6 +145,7 @@ const Marathon = (() => {
     let gameOverPotdHook;
     let leaderboardTileTabsEl, leaderboardPathTabsEl, leaderboardEntries, leaderboardEmpty, leaderboardClose, menuLeaderboardBtn;
     let leaderboardNoticeEl;   // one-time Surge board-reset explanation
+    let firstRunPitchEl, gameOverTryAgain;   // first-session practice→Surge hand-off
     let leaderboardTabsEl;
     let menuCreditsBtn, creditsPopupEl, creditsPopupMenu;
     let replayLabel, replayStopBtn;
@@ -216,6 +236,17 @@ const Marathon = (() => {
         leaderboardEntries = $('leaderboardEntries');
         leaderboardEmpty   = $('leaderboardEmpty');
         leaderboardClose   = $('leaderboardCloseBtn');
+        firstRunPitchEl = $('firstRunPitch');
+        const pitchBtn = $('firstRunPitchBtn');
+        if (pitchBtn) pitchBtn.addEventListener('click', startFirstSurge);
+        gameOverTryAgain = $('gameOverTryAgainBtn');
+        if (gameOverTryAgain) gameOverTryAgain.addEventListener('click', function () {
+            firstRunRetries++;
+            if (typeof Tracking !== 'undefined' && Tracking.firstRunRetried) {
+                Tracking.firstRunRetried();
+            }
+            startFirstSurge();
+        });
         leaderboardNoticeEl = $('leaderboardNotice');
         const noticeBtn = $('leaderboardNoticeBtn');
         if (noticeBtn) noticeBtn.addEventListener('click', dismissBoardResetNotice);
@@ -442,6 +473,9 @@ const Marathon = (() => {
     // resets the window, so the player has to actually pause before
     // advancing.
     function advance() {
+        // The practice sequence is over and the pitch is a beat away —
+        // a tap here must not build a fourth practice puzzle.
+        if (pitchPending) return;
         if (!inTransition) return;
         if (state !== STATE.PLAYING) return;
         const now = Date.now();
@@ -508,6 +542,13 @@ const Marathon = (() => {
         // startNextPuzzle, so it would never re-hide a stale button.
         // Same PotD-coverage reasoning for restoring the Quit label.
         isFirstRunAutoStart = false;
+        // Leaving for the menu ends the first session's scripted flow —
+        // practice doesn't resume and the Surge run that follows it isn't
+        // "the first" any more. Both must clear here or a later run
+        // inherits the practice ladder or the Try Again ending.
+        practiceStep    = 0;
+        isFirstSurgeRun = false;
+        pitchPending    = false;
         // Auto-start run abandoned without a single puzzle interaction —
         // the deferred "started" milestone dies here, uncounted (that's
         // the point: a no-touch bail is not a start).
@@ -749,6 +790,19 @@ const Marathon = (() => {
     // types compute it from the level; legacy 2-char types are fixed.
     function pathCountFor(decoded, lev) {
         return decoded.progressive ? pathCountForLevel(lev) : decoded.pathCount;
+    }
+
+    // The practice puzzle currently being played, or null outside the
+    // first session's practice phase. See FIRST_RUN_PRACTICE.
+    function practiceConfig() {
+        if (practiceStep < 1) return null;
+        const list = MARATHON.FIRST_RUN_PRACTICE;
+        if (!Array.isArray(list) || practiceStep > list.length) return null;
+        return list[practiceStep - 1];
+    }
+    function practiceCount() {
+        const list = MARATHON.FIRST_RUN_PRACTICE;
+        return Array.isArray(list) ? list.length : 0;
     }
 
     // (The warm-up ladder that briefly opened a first run on a 3×3 and a
@@ -1126,10 +1180,13 @@ const Marathon = (() => {
         // run. Skipping is safe — the previous checkpoint stands, and
         // every exit path stops the beat before it saves.
         if (typeof Tutorial !== 'undefined' && Tutorial.isBusy && Tutorial.isBusy()) return;
-        // The one-time auto-start run is a menu-skipping tutorial surface,
-        // not a run the player chose — a "Continue your run" card for it
-        // on a brand-new player's second visit would only confuse.
-        if (isFirstRunAutoStart) return;
+        // The PRACTICE phase is a menu-skipping tutorial surface, not a
+        // run the player chose — a "Continue your run" card for it on a
+        // brand-new player's second visit would only confuse. Keyed on
+        // practiceStep, not isFirstRunAutoStart, because that flag now
+        // spans the Surge phase too and the Surge run IS a real chosen
+        // run: timed, ranked, and worth being able to resume.
+        if (practiceStep > 0) return;
         if (!activeType) return;
         // Nothing worth resuming yet: no solves banked and no moves made.
         // (Also keeps a fresh no-touch run from writing a "Puzzle 1" card.)
@@ -1350,6 +1407,11 @@ const Marathon = (() => {
         // Only autoStartFirstPractice passes the 3rd arg — every normal
         // start (menu card click) leaves it undefined, clearing the flag.
         isFirstRunAutoStart = !!firstRunAutoStart;
+        // Cleared on EVERY start, then re-set by startFirstSurge once this
+        // returns. Without the reset a Surge run the player later picks
+        // from the menu would inherit the first-run Try Again ending —
+        // the flag has to die with the run that owned it.
+        isFirstSurgeRun = false;
         // Choosing a fresh run of this mode abandons its saved one (the
         // Continue card was right there). The OTHER mode's save survives —
         // one slot per mode.
@@ -1479,8 +1541,45 @@ const Marathon = (() => {
         if (typeof Tracking !== 'undefined' && Tracking.firstRunBegin) {
             Tracking.firstRunBegin(variant);
         }
+        // Phase 1 of the first session: three PRACTICE puzzles, then the
+        // pitch, then real Surge. Set BEFORE startGame — startNextPuzzle
+        // reads it to decide whether to build from the practice table or
+        // the ladder.
+        practiceStep = 1;
         startGame('s', true, true);
         return true;
+    }
+
+    // ----- First session, phase 2: the pitch -----
+    // Shown once, when the third practice puzzle is solved. The Start
+    // button is the whole point of the redesign: it's the first moment
+    // the game gets to ASK for something, which a Zen run never provided.
+    function showFirstRunPitch() {
+        pitchPending = false;
+        practiceStep = 0;
+        if (typeof Tracking !== 'undefined' && Tracking.firstRunReachedPitch) {
+            Tracking.firstRunReachedPitch();
+        }
+        if (!firstRunPitchEl) { startFirstSurge(); return; }   // stale cached page
+        showOnly(firstRunPitchEl);
+        state = STATE.MENU;   // parked: no puzzle live, no clock, quit is safe
+    }
+    // The pitch's Start button, and the Try Again button on a first-run
+    // game over — both land here.
+    function startFirstSurge() {
+        if (typeof Tracking !== 'undefined' && Tracking.firstRunSurgeStarted) {
+            Tracking.firstRunSurgeStarted();
+        }
+        practiceStep = 0;
+        // practice=false → this is a REAL Surge run: timed, ranked,
+        // saveable. Third arg keeps the first-session flag so the funnel
+        // still attributes it, but the practice-only behaviours all key
+        // on practiceStep now, not on that flag.
+        startGame('s', false, true);
+        // AFTER startGame — it clears this the way it clears every other
+        // per-run flag, so that a Surge run started later from the menu
+        // can't inherit the Try Again ending.
+        isFirstSurgeRun = true;
     }
 
     // Called by game.js recordMove on every committed live puzzle action
@@ -1585,11 +1684,19 @@ const Marathon = (() => {
         // played. levelConfig itself must NOT call this: pre-gen asks it
         // about FUTURE levels, which would force the fallback draw early.
         ensureFirstRunVariant(level);
+        // Practice puzzles come from an explicit table, not the ladder:
+        // each one introduces exactly one mechanic, and the ramps that
+        // normally decide twins/gates are tuned for a long run and would
+        // stack both onto the same early board. See FIRST_RUN_PRACTICE.
+        const practice  = practiceConfig();
         const cfg       = levelConfig(level);
-        const paths     = cfg.pathCount;
-        const logical   = dimsForLevel(level, cfg);
-        const physRows  = cfg.quadMode ? logical.rows * 2 : logical.rows;
-        const physCols  = cfg.quadMode ? logical.cols * 2 : logical.cols;
+        const paths     = practice ? 1 : cfg.pathCount;
+        const logical   = practice
+            ? { rows: practice.rows, cols: practice.cols }
+            : dimsForLevel(level, cfg);
+        const quad      = practice ? false : cfg.quadMode;
+        const physRows  = quad ? logical.rows * 2 : logical.rows;
+        const physCols  = quad ? logical.cols * 2 : logical.cols;
 
         // Carry-over + fresh allotment. solvedCount = (level - 1) here
         // (incremented in onSolve before the player advances). `logical`
@@ -1597,25 +1704,22 @@ const Marathon = (() => {
         // path-indexed START_TIME arrays give a natural bump at each
         // tier-up. bankTime applies MAX_BANK_SECONDS — banking used to be
         // unlimited, which is what let runs turn into 20-minute cushions.
-        const fresh = timeForPuzzle(cfg.quadMode, paths, solvedCount, logical);
+        const fresh = timeForPuzzle(quad, paths, solvedCount, logical);
         timeRemaining = bankTime(timeRemaining, fresh);
 
         state = STATE.PLAYING;
         showOnly(hudEl);
         updateHud(logical);
-        // First-visit auto-start run: surface the How-to-Solve button in the
-        // HUD (the player never saw the menu's one). It occupies the timer's
-        // center slot — always free here because the auto-start run is
-        // Practice, and Practice hides #hudTimer (body.mode-practice CSS).
-        // Held back until the firstPlay tip has been acknowledged — the tip
-        // carries its own How-to-Solve action button, and its onAcknowledge
-        // hook (see onPuzzleReady) reveals this one the moment the tip is
-        // dismissed. Without the gate, both would be on-screen at once and
-        // the HUD button would upstage the tip that's introducing it.
-        // Tooltip-less fallback (stale cached page): button shows as before.
-        const firstPlayAcked = (typeof Tooltip === 'undefined') || !Tooltip.isSeen
-            || Tooltip.isSeen('firstPlay');
-        if (hudHowTo) hudHowTo.hidden = !isFirstRunAutoStart || !firstPlayAcked;
+        // How-to-Solve in the HUD, for the PRACTICE PHASE ONLY (user call
+        // 2026-08-06). A first-timer never saw the menu's copy of it, so
+        // it needs a home; but once Surge starts the run is timed and
+        // ranked, and a tutorial button sitting in the timer's slot is
+        // both a distraction and a layout problem (Practice hides
+        // #hudTimer via body.mode-practice CSS — Surge does not).
+        // No longer gated on the firstPlay tip being acknowledged: that
+        // tip lost its own How-to action button, so there's nothing left
+        // for the HUD button to upstage.
+        if (hudHowTo) hudHowTo.hidden = practiceStep < 1;
         // Same run: "Quit" would read as "leave the game" to a player who
         // doesn't know a menu exists — relabel it to advertise that the
         // menu (PotD / Marathon / quad types) is behind it. The data-i18n
@@ -1637,10 +1741,21 @@ const Marathon = (() => {
                 rows:      physRows,
                 cols:      physCols,
                 pathCount: paths,
-                quadMode:  cfg.quadMode,
+                quadMode:  quad,
                 // Twin-coverage ramp (config.js TWIN_RAMP_*): 0 on L1-2,
-                // one twin set at L3, full coverage from L12.
-                twinScale: MARATHON.twinScaleForLevel ? MARATHON.twinScaleForLevel(level) : 1
+                // one twin set at L3, full coverage from L12. A practice
+                // puzzle overrides it — the ramp would put twins on the
+                // wrong board of a three-board sequence.
+                twinScale: practice
+                    ? practice.twinScale
+                    : (MARATHON.twinScaleForLevel ? MARATHON.twinScaleForLevel(level) : 1),
+                // Gate overrides, practice only. null lets game.js apply
+                // its usual size/level formula, which is what every other
+                // puzzle in the game wants; a number pins the count, and
+                // teachGate asks for one that genuinely blocks the route
+                // (a decorative gate teaches nothing — see gates-test.js).
+                gateTarget: practice ? practice.gates : null,
+                teachGate:  practice ? !!practice.teachGate : false
             });
         }
         // Timer starts when puzzle is actually on-screen (onPuzzleReady).
@@ -1706,21 +1821,12 @@ const Marathon = (() => {
         // surface fires first wins, the seen-flag silences the other. The
         // action jumps straight into today's 1-path daily: tear the Zen
         // run down, flip the picker, start the slot.
-        if (isFirstRunAutoStart && level === 5
-            && typeof Tooltip !== 'undefined' && Tooltip.showOnce) {
-            Tooltip.showOnce('potdNudge', I18n.t('tooltip.potdNudge'), {
-                label: I18n.t('mode.potd.name'),
-                onClick: function () {
-                    // First-time-player funnel: the nudge converted.
-                    if (typeof Tracking !== 'undefined' && Tracking.firstRunNudgeClicked) {
-                        Tracking.firstRunNudgeClicked();
-                    }
-                    quitToMenu();
-                    if (typeof ModePicker !== 'undefined' && ModePicker.setMode) ModePicker.setMode('potd');
-                    if (typeof Potd !== 'undefined' && Potd.startPuzzle) Potd.startPuzzle('s1');
-                }
-            });
-        }
+        // (The PotD nudge tooltip lived here, firing at level 5. REMOVED
+        // 2026-08-06: it interrupted play to advertise another mode and
+        // converted 17 of 404 players. The daily is now offered where a
+        // player is actually deciding what to do next — the game-over
+        // card, which already carries the PotD hook with its streak line
+        // and countdown.)
         // Background shuffle has already fired at the START of the build
         // (in game.js startPuzzle callback) so the new image is visible
         // throughout the "Building puzzle…" wait — not after it.
@@ -1749,31 +1855,18 @@ const Marathon = (() => {
         // solve-card's "New tile type" cue is announcement enough; don't
         // re-add without a rethink.)
         if (typeof Tooltip !== 'undefined') {
-            if (isFirstRunAutoStart) {
-                // Action button opens the How-to-Solve tutorial straight
-                // from the tip (label reuses the tutorial.menuButton key —
-                // same wording as the HUD button it previews). The
-                // onAcknowledge hook reveals the in-HUD How-to-Solve
-                // button the moment EITHER button dismisses the tip — the
-                // button stays hidden until then (see the hudHowTo gating
-                // in the HUD-setup block above) so the tip is the one
-                // thing introducing it.
+            if (practiceStep > 0) {
+                // Plain goal statement, no action button. It used to carry
+                // a How-to-Solve button; removed 2026-08-06 (user call)
+                // because the tutorial converts terribly — 78 opened, 8
+                // finished — and the animated twin/gate demos now do that
+                // teaching in place. The HUD's own How-to button stays
+                // available for the whole practice phase, so nothing is
+                // lost by not advertising it here.
                 Tooltip.showOnce('firstPlay',
                     (typeof I18n !== 'undefined' && I18n.t)
                         ? I18n.t('tooltip.firstPlay')
-                        : 'Twist the tiles to connect the path and complete the circuit!',
-                    {
-                        label: (typeof I18n !== 'undefined' && I18n.t)
-                            ? I18n.t('tutorial.menuButton')
-                            : '❓ How to Solve',
-                        onClick: function () {
-                            if (inTransition) return;
-                            if (typeof Tutorial !== 'undefined' && Tutorial.open) Tutorial.open();
-                        }
-                    },
-                    function () {
-                        if (hudHowTo && isFirstRunAutoStart) hudHowTo.hidden = false;
-                    });
+                        : 'Twist the tiles to connect the path and complete the circuit!');
             }
             // The marathonHint tip is all about the 25%-time penalty, which
             // doesn't exist in Practice (untimed, free hints) — skip it there.
@@ -1992,6 +2085,33 @@ const Marathon = (() => {
         totalSolveTime += elapsed;
         solvedCount++;
 
+        // ---- Practice phase: advance, or hand off to Surge ----
+        // The third practice solve is the ONE moment this whole redesign
+        // exists for: instead of silently rolling into a fourth puzzle,
+        // the game stops and asks. Returns early — the pitch replaces the
+        // ordinary solve card, and `advance` must not run.
+        if (practiceStep > 0) {
+            if (typeof Tracking !== 'undefined' && Tracking.firstRunPracticeSolved) {
+                Tracking.firstRunPracticeSolved();
+            }
+            if (practiceStep >= practiceCount()) {
+                // ⚠ Latch BEFORE the reveal delay. onSolve leaves
+                // inTransition true, and `advance` (any tap on the board
+                // or the popup) would otherwise happily build a FOURTH
+                // practice puzzle during the second before the pitch
+                // appears. Cleared when the pitch is actually shown.
+                pitchPending = true;
+                const delay = (typeof SOLVE_REVEAL_DELAY_MS === 'number') ? SOLVE_REVEAL_DELAY_MS : 0;
+                // Same beat the solve card gets: let the completed gold
+                // circuit land before anything covers it.
+                if (delay > 0) setTimeout(showFirstRunPitch, delay);
+                else           showFirstRunPitch();
+                saveRunState();
+                return;
+            }
+            practiceStep++;
+        }
+
         // First-time-player funnel: a solve inside the auto-start run
         // advances the initial-run puzzle count; any other run's solve is
         // "outside the initial run" (both calls no-op unless this browser
@@ -2196,15 +2316,6 @@ const Marathon = (() => {
     }
 
     function quitToMenu() {
-        // First-run auto-start quit (the "📅 Daily & More" button): the one
-        // graceful exit every SHALLOW first session passes through — the
-        // in-run nudge (onPuzzleReady, first 2-path solve) never fires for
-        // players who leave earlier than that. Capture the state before
-        // the teardown below mutates it; the pitch itself fires after
-        // goToMenu so it overlays the menu. SAME seen-key as the in-run
-        // nudge — whichever surface fires first wins, so no player ever
-        // sees the pitch twice.
-        const pitchOnMenu = isFirstRunAutoStart && state === STATE.PLAYING;
         // Quit no longer abandons the run — checkpoint it first so the
         // menu offers Continue. (No-op unless a run is actually in
         // progress; the auto-start run and zero-progress runs are
@@ -2222,25 +2333,8 @@ const Marathon = (() => {
         // other reason), tear the credits down before returning to menu.
         if (typeof Credits !== 'undefined' && Credits.stop) Credits.stop();
         goToMenu();
-        if (pitchOnMenu && typeof Tooltip !== 'undefined' && Tooltip.showOnce) {
-            Tooltip.showOnce('potdNudge', I18n.t('tooltip.potdNudge'), {
-                label: I18n.t('mode.potd.name'),
-                onClick: function () {
-                    // First-time-player funnel: the nudge converted (menu
-                    // pitch variant — same flag as the in-run variant,
-                    // they're mutually exclusive per player via the
-                    // shared seen-key).
-                    if (typeof Tracking !== 'undefined' && Tracking.firstRunNudgeClicked) {
-                        Tracking.firstRunNudgeClicked();
-                    }
-                    // Already at the menu — just flip the tab and start
-                    // the easiest daily slot (same landing as the in-run
-                    // nudge's action).
-                    if (typeof ModePicker !== 'undefined' && ModePicker.setMode) ModePicker.setMode('potd');
-                    if (typeof Potd !== 'undefined' && Potd.startPuzzle) Potd.startPuzzle('s1');
-                }
-            });
-        }
+        // (The menu-side PotD pitch went with the in-run one — see the
+        // note in onPuzzleReady.)
     }
 
     // ----- Rendering -----
@@ -2271,8 +2365,14 @@ const Marathon = (() => {
         // Progressive runs re-render this on every startNextPuzzle, so the
         // label's path digit tracks the current tier automatically.
         hudType.textContent  = I18n.t(typeLabelKey(activeType, level, levelConfig(level)));
-        hudLevel.textContent = I18n.t('marathon.hudLevel',
-            { n: level, r: logical.rows, c: logical.cols });
+        // Practice puzzles say so, and say how many are left — the user's
+        // call, and the funnel backs it: an unbounded-feeling ramp is what
+        // the retired warm-ups were, and ~20% left after every board. A
+        // visible finish line makes three boards a sequence with an end
+        // rather than an open-ended tutorial.
+        hudLevel.textContent = practiceStep > 0
+            ? I18n.t('marathon.hudPractice', { n: practiceStep, of: practiceCount() })
+            : I18n.t('marathon.hudLevel', { n: level, r: logical.rows, c: logical.cols });
         renderTimer();
     }
 
@@ -2479,6 +2579,14 @@ const Marathon = (() => {
         // off alongside un-hiding the name row.
         if (gameOverMenu) gameOverMenu.hidden = false;
 
+        // First-session ending. A first-timer almost never places, so
+        // "back to menu" would close the session at the exact moment
+        // we'd rather offer another go. Shown whenever this is the first
+        // Surge run and the score didn't rank — which includes the
+        // zero-solve bail below, the commonest first-run outcome of all.
+        // Cleared for every ordinary run so it can't leak.
+        if (gameOverTryAgain) gameOverTryAgain.hidden = !isFirstSurgeRun;
+
         // Zero score → never eligible to save. Hide the name row up-front
         // (per universal rule 7a) and bail without contacting the server.
         if (solvedCount === 0) {
@@ -2512,6 +2620,10 @@ const Marathon = (() => {
             gameOverRank.textContent = I18n.t('marathon.newBest', { r: rank });
             gameOverRank.hidden = false;
             if (gameOverNameRow) gameOverNameRow.hidden = false;
+            // They PLACED — let it end the way Surge normally does
+            // (name → save → leaderboard). Try Again is for the run that
+            // didn't rank; offering it here would compete with the reward.
+            if (gameOverTryAgain) gameOverTryAgain.hidden = true;
             // Hide "Back to menu" when the name-entry row is visible. The
             // Save button doubles as both "save with this name" and "save
             // anonymously without typing" — clicking Save on an empty
