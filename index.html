@@ -755,7 +755,7 @@
              Zen had no terminal state, so the game never got a moment to
              ASK the player for anything. Here it does, once, with one
              button. Driven by marathon.js showFirstRunPitch. -->
-        <div id="firstRunPitch" hidden>
+        <div id="firstRunPitch">
             <h2 data-i18n="marathon.pitchTitle">Practice over.</h2>
             <p id="firstRunPitchBody" data-i18n="marathon.pitchBody"></p>
             <button id="firstRunPitchBtn" type="button" data-i18n="marathon.pitchStart">Start Surge</button>
@@ -1343,7 +1343,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '1.58';</script>
+    <script>var PAGE_VERSION = '1.59';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

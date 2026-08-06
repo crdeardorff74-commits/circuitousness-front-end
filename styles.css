@@ -447,6 +447,7 @@ html.mode-debug #menu,
 html.mode-debug #hud,
 html.mode-debug #gameOver,
 html.mode-debug #leaderboard,
+html.mode-debug #firstRunPitch,
 html.mode-debug #replayHud { display: none !important; }
 
 /* Default-hidden Marathon panels in game mode — shown by JS via .visible */
@@ -454,11 +455,18 @@ html.mode-game #hud,
 html.mode-game #menu,
 html.mode-game #gameOver,
 html.mode-game #leaderboard,
+html.mode-game #firstRunPitch,
 html.mode-game #replayHud { display: none; }
+/* ⚠ Every panel in the display:none list above needs a matching
+   .visible rule HERE. The hide rule is `html.mode-game #x` (specificity
+   1,1,1) and a bare `#x.visible` is only (1,1,0) — so a panel that has
+   its hide rule but not its mode-gated show rule stays invisible no
+   matter what JS does, which reads as a frozen screen. */
 html.mode-game #hud.visible,
 html.mode-game #menu.visible,
 html.mode-game #gameOver.visible,
-html.mode-game #leaderboard.visible { display: flex; }
+html.mode-game #leaderboard.visible,
+html.mode-game #firstRunPitch.visible,
 html.mode-game #replayHud.visible { display: flex; }
 
 /* In game mode, hide the win banner — Marathon advances automatically */
@@ -2513,7 +2521,6 @@ html.mode-debug #settingsOverlay { display: none !important; }
     position: absolute;
     inset: 0;
     z-index: 35;
-    display: none;
     flex-direction: column;
     align-items: center;
     justify-content: center;
@@ -2524,7 +2531,6 @@ html.mode-debug #settingsOverlay { display: none !important; }
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
 }
-#firstRunPitch.visible { display: flex; }
 #firstRunPitch h2 {
     margin: 0;
     font-size: clamp(1.6rem, 5vw, 2.6rem);

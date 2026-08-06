@@ -439,7 +439,14 @@ const Marathon = (() => {
     function showOnly(...els) {
         const set = new Set(els);
         const hudWas = !!(hudEl && hudEl.classList.contains('visible'));
-        [menuEl, hudEl, gameOverEl, leaderboardEl, replayHudEl, creditsPopupEl].forEach((el) => {
+        // ⚠ EVERY top-level panel must be in this list. showOnly hides
+        // whatever it knows about and reveals the argument — a panel
+        // MISSING from it gets hidden-by-omission and can never be
+        // shown, which looks exactly like a frozen screen (the first
+        // run pitch did this on 2026-08-06: HUD gone, nothing in its
+        // place). Add new panels here, not just to the CSS.
+        [menuEl, hudEl, gameOverEl, leaderboardEl, replayHudEl, creditsPopupEl,
+         firstRunPitchEl].forEach((el) => {
             if (!el) return;
             el.classList.toggle('visible', set.has(el));
         });
@@ -1557,6 +1564,10 @@ const Marathon = (() => {
     function showFirstRunPitch() {
         pitchPending = false;
         practiceStep = 0;
+        // onSolve left inTransition set and never painted a solve card
+        // (it returned early). Clear it so nothing downstream thinks a
+        // puzzle transition is still in flight.
+        clearTransition();
         if (typeof Tracking !== 'undefined' && Tracking.firstRunReachedPitch) {
             Tracking.firstRunReachedPitch();
         }
