@@ -2,6 +2,13 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-08-07 — Where the analytics hooks live, and why there (companion to v1.63)
+- **Puzzle rows open in `marathon.js onPuzzleReady`, NOT in `startNextPuzzle`.** The board isn't playable until then, and a quad build can take seconds — charging that to the player would inflate every duration. `startNextPuzzle` only stashes `pendingPuzzleMeta` (mode/type/dims), which is the last place that information exists. Its `state === STATE.PLAYING` guard is also what keeps replays out.
+- **`game.js recordMove` is the single choke point** for the move counter AND the control-discovery tokens — every committed live action passes through it and replays never reach it. Don't add a second counting site; `Analytics.control()` short-circuits after a token's first occurrence, so the hot path costs one property lookup.
+- **`resumed` is one-shot and means exactly one board:** the puzzle a restored run resumes INTO (marathon) or a checkpointed PotD attempt. Their clocks restart at zero while the player's real elapsed time doesn't, so the back end drops them from every statistic. Everything built after is a fresh puzzle whose clock starts at zero honestly.
+- Mode labels: menu Practice and the first-run practice ladder are BOTH `'practice'` — `puzzle_index` and `first_run_stats` already separate them, and a third label would be a second source of truth. `'surge'` is specifically the run started from the pitch.
+- ⚠ **Not browser-verified** (standing rule 0 — user tests). The hooks most worth exercising: practice→Surge→PotD start/finish, quit-to-menu mid-board, and a resumed run.
+
 ## 2026-08-07 — Release v1.63 (ENGAGEMENT ANALYTICS: playtime, per-puzzle outcome, abandonment)
 - ⚠ **DEPLOY BACK-END FIRST** — two new tables (`puzzle_results`, `page_loads`), three ingest endpoints (`POST /api/load`, `/api/visit/<id>/session`, `/api/visit/<id>/puzzle`) and two admin reads (`GET /api/admin/engagement`, `/api/admin/retention`). The front-end starts POSTing to all three the moment the zip lands; ship the back-end ahead of it or the queue just accumulates 404s.
 - **Why now: the CrazyGames trials were graded on numbers we did not have.** `page_visits` never measured time, and the funnel counted solves — so every puzzle collapsed into a tally and walking away mid-board was an absence of data rather than a fact. New `analytics.js` keeps two honest clocks (`visible`, tab-hidden excluded; `play`, only with a live unpaused board) and writes a row per puzzle attempt. See `../../CRAZYGAMES.md` before the next trial.
