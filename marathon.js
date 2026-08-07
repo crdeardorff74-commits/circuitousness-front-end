@@ -116,6 +116,15 @@ const Marathon = (() => {
     let lastTickTime   = 0;        // ms epoch — for delta-based timer
     let timerHandle    = null;
     let puzzleStartMs  = 0;        // ms epoch when current puzzle finished building
+    // Engagement telemetry (analytics.js). `pendingPuzzleMeta` is filled in
+    // by startNextPuzzle — which knows the mode, type and dims — and
+    // consumed by onPuzzleReady, which is the moment the board is actually
+    // playable and therefore the moment the row's clock should start.
+    // `resumedFromSave` marks the ONE puzzle a restored run resumes into:
+    // its clock restarts at zero, so its duration isn't comparable and the
+    // back end excludes it from every statistic.
+    let pendingPuzzleMeta = null;
+    let resumedFromSave   = false;
     // Epoch of the run's /game/start — persisted with the run save so a
     // resumed marathon knows how old its sessionToken is (the server
     // rejects submits more than MAX_SESSION_MS ≈ 6h after token issue;
@@ -522,6 +531,15 @@ const Marathon = (() => {
         // REPLAYING below and skips the leaderboard return; the menu
         // music this function starts makes its handoff a no-op).
         releaseReplayHold();
+        // Engagement: leaving a live board for the menu is an abandon, and
+        // reaching the menu at all is the surface flag that Circuitousness
+        // historically had no measurement of (only 9.2% of players ever got
+        // here). Both are no-ops if there's no open puzzle / the flag is
+        // already set.
+        if (typeof Analytics !== 'undefined') {
+            if (state === STATE.PLAYING && Analytics.puzzleEnded) Analytics.puzzleEnded('abandoned', null);
+            if (Analytics.flag) Analytics.flag('menu');
+        }
         state = STATE.MENU;
         stopTimer();
         clearTransition();
@@ -1296,6 +1314,12 @@ const Marathon = (() => {
             if (stillMenu && Music.stop) Music.stop();
             if (Music.start) Music.start();
         }
+        // Engagement telemetry: the board this run resumes into carries a
+        // clock that restarts at zero, so its duration is not comparable
+        // with a puzzle played start to finish. Flagged here and consumed
+        // by the next startNextPuzzle, which one-shots it.
+        resumedFromSave = true;
+
         // The original run's start was recorded in its own visit; this
         // visit's funnel needs its own "chose to play" milestone.
         if (typeof Tracking !== 'undefined' && Tracking.recordStart) {
@@ -1764,6 +1788,29 @@ const Marathon = (() => {
             hudQuit.textContent = I18n.t(quitKey);
         }
 
+        // Stashed for onPuzzleReady, which is where the analytics row is
+        // opened (the board isn't playable until then, and the clock must
+        // not include the build). Everything the row needs to describe
+        // WHAT was played is known here and nowhere later.
+        pendingPuzzleMeta = {
+            // 'surge' is specifically the run started from the first-session
+            // pitch — the one thing the 2026-08-06 redesign is betting on.
+            // Menu-started practice and the first-run practice ladder are
+            // both 'practice'; puzzle_index and first_run_stats separate
+            // them, and inventing a label for that here would just be a
+            // second source of truth.
+            mode: (practiceStep > 0 || isPractice) ? 'practice'
+                : isFirstSurgeRun ? 'surge'
+                : 'marathon',
+            gameType: activeType || null,
+            dims: physCols + 'x' + physRows,
+            resumed: resumedFromSave
+        };
+        // One-shot: only the puzzle the run actually resumed INTO is a
+        // resumed board. Everything built after it is a fresh puzzle whose
+        // clock starts at zero honestly.
+        resumedFromSave = false;
+
         if (callbacks.startPuzzle) {
             callbacks.startPuzzle({
                 rows:      physRows,
@@ -1795,6 +1842,14 @@ const Marathon = (() => {
     function onPuzzleReady() {
         if (state !== STATE.PLAYING) return;
         puzzleLive = true;
+        // Engagement row opens HERE, not in startNextPuzzle: the board is
+        // only now on-screen and playable, and the build window (which can
+        // be seconds on a big quad board) must not land in the player's
+        // duration. The STATE.PLAYING guard above is also what keeps
+        // replays out — they run in STATE.REPLAYING and never reach this.
+        if (typeof Analytics !== 'undefined' && Analytics.puzzleStarted) {
+            Analytics.puzzleStarted(pendingPuzzleMeta || {});
+        }
         // Kick the 3D spin-IN if a spin-out (advance) or primed run-start
         // spin (startNextPuzzle) is pending (returns the ms until the
         // board is fully visible; 0 when no spin — mid-puzzle resumes,
@@ -2177,6 +2232,17 @@ const Marathon = (() => {
         // counts as "off" — a CG player is far likelier to hit the site's
         // mute button than to open our Settings, and the stat's question is
         // whether audio was AUDIBLE, not what the in-game toggle says.
+        // Engagement row closes as SOLVED, carrying the same audio and
+        // alternate-route facts the per-visit counters get — here they hang
+        // off the individual puzzle, so the panel can ask "how long did the
+        // ones they solved take" separately from "how long did they last on
+        // the ones they didn't".
+        if (typeof Analytics !== 'undefined' && Analytics.puzzleEnded) {
+            Analytics.puzzleEnded('solved', {
+                musicOn: (typeof Music !== 'undefined' && Music.isEffectivelyMuted) ? !Music.isEffectivelyMuted() : false,
+                alternate: (typeof Maze !== 'undefined' && Maze.solvedViaAlternate) ? Maze.solvedViaAlternate() : false
+            });
+        }
         if (typeof Tracking !== 'undefined' && Tracking.recordSolve) {
             Tracking.recordSolve(
                 (typeof Music !== 'undefined' && Music.isEffectivelyMuted) ? !Music.isEffectivelyMuted() : false,
@@ -2307,6 +2373,14 @@ const Marathon = (() => {
     function gameOver() {
         state = STATE.GAME_OVER;
         puzzleLive = false;
+        // Engagement row closes as FAILED: the clock ran out on the board
+        // that was open. Distinct from 'abandoned' on purpose — running out
+        // of time is the game ending a session, walking away is the player
+        // ending it, and they call for opposite fixes. A no-op when the run
+        // ended between puzzles (nothing open).
+        if (typeof Analytics !== 'undefined' && Analytics.puzzleEnded) {
+            Analytics.puzzleEnded('failed', null);
+        }
         // The run ended for real — nothing to continue.
         clearRunSave(currentRunMode());
         stopTimer();

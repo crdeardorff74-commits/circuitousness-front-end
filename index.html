@@ -1343,7 +1343,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '1.62';</script>
+    <script>var PAGE_VERSION = '1.63';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +
@@ -1357,7 +1357,11 @@
         // config.js is deliberately ABSENT — it is loaded early, up near
         // the intro-skip block, because that decision needs it before
         // first paint. Re-adding it here would re-declare its consts.
-        var srcs = ['cg-sdk.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','mosaic.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd-streaks.js','potd-calendar.js','potd-gen2.js','potd.js','game.js','dev-mode.js','tracking.js','share.js','intro.js'];
+        // analytics.js sits immediately before tracking.js: it
+        // self-initializes (its visible clock has to start at page load)
+        // and tracking.js is what decides whether it stays enabled, so
+        // tracking must load after it, not before.
+        var srcs = ['cg-sdk.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','mosaic.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd-streaks.js','potd-calendar.js','potd-gen2.js','potd.js','game.js','dev-mode.js','analytics.js','tracking.js','share.js','intro.js'];
         for (var i = 0; i < srcs.length; i++) {
             document.write('<script src="' + srcs[i] + bust + '"><\/script>');
         }

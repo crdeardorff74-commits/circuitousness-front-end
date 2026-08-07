@@ -321,7 +321,14 @@ const Tracking = (function () {
     }
 
     function recordVisit() {
-        if (isSuppressed()) return Promise.resolve(0);
+        // Suppression is decided HERE for the whole tracking stack —
+        // analytics.js self-initializes before DevMode exists and can't
+        // evaluate these rules itself, so it starts enabled and is switched
+        // off from the one place that knows.
+        if (isSuppressed()) {
+            if (typeof Analytics !== 'undefined' && Analytics.disable) Analytics.disable();
+            return Promise.resolve(0);
+        }
         if (visitId !== 0) return Promise.resolve(visitId);
         if (visitPromise) return visitPromise;
         const base = apiBase();
@@ -342,6 +349,21 @@ const Tracking = (function () {
             embedded:     ctx.embedded,
             redirected:   ctx.redirected,
         };
+        // Impression record, fired now and NOT gated on the visit POST
+        // answering: a load that never interacts is exactly what that
+        // table exists to count, and it would otherwise be the one thing
+        // never recorded. Analytics owns the prerender/hidden deferral.
+        if (typeof Analytics !== 'undefined' && Analytics.recordPageLoad) {
+            Analytics.recordPageLoad({
+                referrer:   payload.referrer,
+                userAgent:  payload.userAgent,
+                language:   payload.language,
+                deviceType: payload.deviceType,
+                os:         payload.os,
+                sessionId:  payload.sessionId,
+                embedded:   payload.embedded,
+            });
+        }
         // keepalive so the row is created (and stamped with clientUuid)
         // even when the page dies mid-request — the whole point of the
         // late-milestone flush is that the row exists to attach to.
@@ -354,6 +376,12 @@ const Tracking = (function () {
             return r.ok ? r.json() : null;
         }).then(function (data) {
             visitId = (data && typeof data.visit_id === 'number') ? data.visit_id : -1;
+            // Hand the row id to analytics.js so anything it queued before
+            // now (a practice solve on a cold dyno) gets stamped and
+            // flushed instead of being dropped as an orphan.
+            if (visitId > 0 && typeof Analytics !== 'undefined' && Analytics.setVisitId) {
+                Analytics.setVisitId(visitId);
+            }
             return visitId;
         }).catch(function () {
             visitId = -1;

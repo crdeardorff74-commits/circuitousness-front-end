@@ -763,6 +763,26 @@
             if (typeof Marathon !== 'undefined' && Marathon.notifyPuzzleInteraction) {
                 Marathon.notifyPuzzleInteraction();
             }
+            // Engagement telemetry. This is the ONE place every committed
+            // live action passes through, and replays never reach it, so
+            // it's the honest move counter and the honest
+            // control-discovery signal both. `moveMade` is a counter
+            // increment; `control` short-circuits on every call after the
+            // first for a given token, so the hot path costs one property
+            // lookup.
+            //
+            // Rotation is the whole game: a player who never rotated a
+            // tile did not find the controls, which looks identical to
+            // "too hard" in every other metric. Locking and hints are the
+            // next two things to discover.
+            if (typeof Analytics !== 'undefined' && Analytics.moveMade) {
+                Analytics.moveMade();
+                const t = move && move.type;
+                if (t === 'rotate' || t === 'rotateBoard') Analytics.control('act_rot');
+                else if (t === 'lock') Analytics.control('act_lock');
+                else if (t === 'gate') Analytics.control('act_gate');
+                else if (t === 'hint') { Analytics.control('act_hint'); Analytics.hintUsed(); }
+            }
             // Undo: bank the state as it was BEFORE this move (undoBaseState),
             // plus the move itself (so undo can play its inverse animation),
             // then advance the base to the new current state. recordMove fires
@@ -2238,6 +2258,10 @@
 
         canvas.addEventListener('click', (ev) => {
             if (longPressFired) { longPressFired = false; return; }
+            // Input-source telemetry, one-shot per visit (see recordMove).
+            // Device type says what hardware they're on; this says how they
+            // actually drove the board on it.
+            if (typeof Analytics !== 'undefined' && Analytics.control) Analytics.control('src_mouse');
             const rect = canvas.getBoundingClientRect();
             handlePointer(ev.clientX - rect.left, ev.clientY - rect.top, true);  // left-click = CCW
         });
@@ -2271,6 +2295,7 @@
         // click handler above only fires for actual mouse clicks.
         canvas.addEventListener('touchstart', (ev) => {
             if (ev.touches.length !== 1) { clearPress(); return; }
+            if (typeof Analytics !== 'undefined' && Analytics.control) Analytics.control('src_touch');
             const rect = canvas.getBoundingClientRect();
             const t = ev.touches[0];
             touchStartX = t.clientX - rect.left;

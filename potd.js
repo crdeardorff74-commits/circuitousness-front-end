@@ -1652,6 +1652,21 @@ const Potd = (() => {
         // auto-start run (no-op unless this browser was a tracked
         // first-timer — see tracking.js).
         if (typeof Tracking !== 'undefined' && Tracking.firstRunOutsideStart) Tracking.firstRunOutsideStart();
+        // Engagement row. A fresh attempt — the resume path has its own
+        // call, flagged `resumed`, because its clock restarts at zero while
+        // the player's real elapsed time keeps running (PotD is wall-clock
+        // by design).
+        if (typeof Analytics !== 'undefined' && Analytics.puzzleStarted) {
+            Analytics.puzzleStarted({
+                mode: 'potd', gameType: slot,
+                // The snapshot is loaded by now, so the live board is the
+                // authority on its own size — PotD dims are rolled per day
+                // by the generator, not fixed per slot.
+                dims: (typeof Maze !== 'undefined' && Maze.COLS && Maze.ROWS)
+                    ? (Maze.COLS + 'x' + Maze.ROWS) : null,
+                resumed: false
+            });
+        }
 
         // Hide menu first (showHud removes .visible from menuEl), THEN hide
         // the banner. Reverse order would briefly expose the menu in the
@@ -1749,6 +1764,19 @@ const Potd = (() => {
         // First-time-player funnel: same outside-the-initial-run call as
         // startPuzzle — a resumed attempt is still voluntary PotD play.
         if (typeof Tracking !== 'undefined' && Tracking.firstRunOutsideStart) Tracking.firstRunOutsideStart();
+        // Engagement row, flagged `resumed`: this attempt's analytics clock
+        // starts at zero even though the player's PotD time kept running
+        // (wall-clock scoring), so its duration isn't comparable with a
+        // puzzle played straight through. The back end drops resumed rows
+        // from every statistic for exactly that reason.
+        if (typeof Analytics !== 'undefined' && Analytics.puzzleStarted) {
+            Analytics.puzzleStarted({
+                mode: 'potd', gameType: slot,
+                dims: (typeof Maze !== 'undefined' && Maze.COLS && Maze.ROWS)
+                    ? (Maze.COLS + 'x' + Maze.ROWS) : null,
+                resumed: true
+            });
+        }
 
         showHud();
         hideBanner();
@@ -1822,6 +1850,19 @@ const Potd = (() => {
         if (typeof Sfx !== 'undefined') {
             if (Sfx.stopLoop) Sfx.stopLoop('glitch_overlap');
             Sfx.play('applause_long');
+        }
+
+        // Engagement row closes as SOLVED. Fired here, at the win flip,
+        // rather than after the submit round-trip: everything below this
+        // point is time the player spends looking at a solved board, and
+        // folding it into the duration would inflate every PotD median by
+        // the length of an animation.
+        if (typeof Analytics !== 'undefined' && Analytics.puzzleEnded) {
+            Analytics.puzzleEnded('solved', {
+                musicOn: (typeof Music !== 'undefined' && Music.isEffectivelyMuted) ? !Music.isEffectivelyMuted() : false,
+                alternate: (typeof Maze !== 'undefined' && Maze.solvedViaAlternate) ? Maze.solvedViaAlternate() : false,
+                hints: hintsUsed
+            });
         }
 
         // Our own measurement — now only a fallback and a display seed.
@@ -2281,6 +2322,14 @@ const Potd = (() => {
         // retry path. No-op unless state === PLAYING (solve-modal exits
         // arrive here as SOLVED and must not re-save a finished attempt).
         saveCurrentAttempt();
+        // Engagement: quitting a live PotD board is an abandon, even though
+        // the attempt is checkpointed and resumable — the row records the
+        // stretch they actually sat with it. A later resume opens its own
+        // row flagged `resumed`. No-op from the solve-modal exit, which
+        // arrives here as SOLVED with the row already closed.
+        if (typeof Analytics !== 'undefined' && state === STATE.PLAYING && Analytics.puzzleEnded) {
+            Analytics.puzzleEnded('abandoned', { hints: hintsUsed });
+        }
         stopTimerDisplay();
         state = STATE.MENU;
         currentSlot = null;
