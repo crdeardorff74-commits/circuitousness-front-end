@@ -837,19 +837,33 @@ const Marathon = (() => {
     // and what the player sees is just `level`.)
 
     // ----- First-visit ladder experiment -----
-    // The auto-start run walks one of FOUR ladder variants. The SERVER
-    // assigns the arm (least-used, so the split stays near-even) when it
-    // creates the player's first_run_stats row, and the client adopts it
-    // from the sync response; the admin panel then compares engagement
-    // per arm. Definitions, the FIRST_RUN_SHARED_LEVELS slack window and
-    // the FIRST_RUN_VARIANT_FORCE lock-in knob live on the MARATHON
-    // config. Everything here is inert for every other run (levelConfig
-    // only consults the variant while isFirstRunAutoStart).
+    // The auto-start run walks one of FOUR ladder variants — including
+    // the Surge run after the pitch, which startFirstSurge starts with
+    // the auto-start flag set. So this is NOT dead code: it still picks
+    // the ladder every new player's first real run walks. Everything
+    // here is inert for every OTHER run (levelConfig only consults the
+    // variant while isFirstRunAutoStart).
     //
-    // `firstRunVariant` stays NULL until the assignment lands, which is
-    // safe: an unknown arm falls through levelConfig to the standard
-    // ladder, and all four arms are identical for the first
-    // FIRST_RUN_SHARED_LEVELS puzzles anyway.
+    // ⚠ THE EXPERIMENT IS OVER (2026-08-05) AND THE ARM IS A CONSTANT.
+    // MARATHON.FIRST_RUN_VARIANT_FORCE pins 'standard', so startFirstRun
+    // resolves the arm locally via forcedFirstRunVariant() and asserts it
+    // to the server. A supplied variant wins in first_run_sync, so the
+    // server's least-used balancer is bypassed entirely and every new row
+    // reads 'standard'. Treat per-arm comparisons in the admin panel as
+    // historical only.
+    //
+    // The server-assignment path below (ensureFirstRunVariant adopting
+    // Tracking.firstRunVariant(), the local draw at the divergence point)
+    // is DORMANT, not removed — clearing FIRST_RUN_VARIANT_FORCE to null
+    // revives the whole mechanism without a back-end deploy, which is the
+    // point of keeping it. Definitions and the FIRST_RUN_SHARED_LEVELS
+    // slack window live on the MARATHON config.
+    //
+    // `firstRunVariant` stays NULL until an arm lands, which is safe: an
+    // unknown arm falls through levelConfig to the standard ladder, and
+    // all four arms are identical for the first FIRST_RUN_SHARED_LEVELS
+    // puzzles anyway. With the force in place it is set before the run
+    // even starts, so that window never opens.
     let firstRunVariant = null;
     const FIRST_RUN_VARIANT_KEY = (typeof PROJECT_SLUG === 'string' ? PROJECT_SLUG : 'circuitousness')
         + '_firstRunVariant_v1';
