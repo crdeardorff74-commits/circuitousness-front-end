@@ -27,15 +27,10 @@
  * player to fill in. The server's set converges toward 8 as players
  * cycle through; no single player has to complete the full set.
  *
- * Puzzle sizing: each axis is rolled independently in [MIN, MAX], then
- * the pair is rejection-sampled so the average (W+H)/2 lands within a
- * [AVG_MIN, AVG_MAX] window — a FLOOR (no tiny/easy puzzles) AND a
- * ceiling (stays approachable as a daily exercise). 3-4 path slots —
- * singular: axes [6,9], avg [7,9]; quad: even sub-tile axes [10,14]
- * (= 5–7 quad-tiles), avg [11,14] sub-tiles. 1-2 path slots run a ~75%
- * LOW tier of those ranges (see the SIZE_*_LOW constants). Quad rounds
- * to even because each player-facing quad-tile is a 2×2 group of
- * sub-tiles. Sizes apply at the NEXT daily seed — slots generate
+ * Puzzle shape: everything but the slot's own quadMode/pathCount —
+ * dims, twin coverage, twin group size, gate count — is rolled per
+ * puzzle by potd-gen2.js from its DEF_* ranges. This module owns none
+ * of it. Shape changes apply at the NEXT daily seed: slots generate
  * once/day server-side (a dev PotD reset re-seeds today).
  *
  * No time cap by design — PotD is the "take your time, solve it cleanly"
@@ -53,47 +48,6 @@ const Potd = (() => {
     let state = STATE.MENU;
 
     const SLOTS = ['s1', 's2', 's3', 's4', 'q1', 'q2', 'q3', 'q4'];
-
-    // Per-mode physical sub-tile dim ranges (the dims the generator
-    // actually consumes). Each axis is rolled in [MIN, MAX], then the
-    // pair is rejection-sampled so the average (W+H)/2 lands within
-    // [AVG_MIN, AVG_MAX]. The AVG_MIN floor is what keeps tiny/easy
-    // puzzles (the old 6×6) from ever being emitted; the AVG_MAX ceiling
-    // keeps them approachable as a daily exercise. Quad needs different
-    // — and even — values because each player-facing quad-tile is a 2×2
-    // group of sub-tiles.
-    //
-    // All tiers scaled ×0.75 on 2026-07-17 (user sizing pass alongside
-    // portrait support) — the full tier landed exactly on the old LOW
-    // tier's numbers, so the whole ladder shifted down one step.
-    //
-    // Singular: axes [6,9], average [7,9] → grids 6×8 / 7×7 at the
-    // small end up to 9×9. (3-4 path slots only — see the LOW tier.)
-    const SIZE_MIN          = 6;
-    const SIZE_MAX          = 9;
-    const SIZE_AVG_MIN      = 7;
-    const SIZE_AVG_MAX      = 9;
-    // Quad: even sub-tile axes [10,14] (= 5–7 quad-tiles per axis),
-    // average [11,14] sub-tiles (floor rejects only 10×10). Still above
-    // singular so quad stays the meatier of the two modes.
-    const SIZE_MIN_QUAD     = 10;
-    const SIZE_MAX_QUAD     = 14;
-    const SIZE_AVG_MIN_QUAD = 11;
-    const SIZE_AVG_MAX_QUAD = 14;
-    // LOW tier: 1-path and 2-path slots run ~75% of the ranges above —
-    // fewer paths mean less signal per cell, so full-size grids dragged.
-    // Singular: axes [5,7], avg [6,7] (floor rejects only the 5×5/5×6
-    // rolls, mirroring the full tier's no-tiny-puzzles rule). Quad: even
-    // axes [8,10], avg [9,10] (floor rejects only 8×8). The avg ceilings
-    // keep max×max legal, same as the full tier.
-    const SIZE_MIN_LOW          = 5;
-    const SIZE_MAX_LOW          = 7;
-    const SIZE_AVG_MIN_LOW      = 6;
-    const SIZE_AVG_MAX_LOW      = 7;
-    const SIZE_MIN_QUAD_LOW     = 8;
-    const SIZE_MAX_QUAD_LOW     = 10;
-    const SIZE_AVG_MIN_QUAD_LOW = 9;
-    const SIZE_AVG_MAX_QUAD_LOW = 10;
 
     // ── DOM refs (populated in init) ──
     let menuEl, hudEl, buildBannerEl, hudType, hudLevel, hudTimerVal, hudHintBtn;
@@ -162,60 +116,15 @@ const Potd = (() => {
     // Roll one slot's full parameter set: dims, twin coverage, twin group
     // size range, and gate count. Everything but quadMode/pathCount (which
     // the slot fixes) is rolled per puzzle from the tuned ranges in
-    // potd-gen2.js — THE generator since 2026-08-01.
-    //
-    // Falls back to the v1 sizing below if potd-gen2.js somehow didn't
-    // load: a puzzle built to the old rules is far better than no daily
-    // puzzle, and this module must not hard-depend on a sibling script.
+    // potd-gen2.js — THE generator since 2026-08-01, and since 2026-08-07
+    // the only one: the v1 sizing that used to sit here as a fallback is
+    // gone, along with the SIZE_*/GATE_TARGET_V1 constants that fed it.
+    // index.html loads potd-gen2.js immediately before this file, so a
+    // hard dependency is no weaker than this module's existing ones on
+    // Maze and Gates — and a silent fallback to retired rules would seed
+    // a day's slot with a puzzle nobody is tuning any more.
     function rollSlotParams(quadMode, pathCount) {
-        if (typeof PotdGen2 !== 'undefined' && PotdGen2.rollParams && PotdGen2.defaultParams) {
-            return PotdGen2.rollParams(PotdGen2.defaultParams(quadMode, pathCount));
-        }
-        const d = generateDimsV1(quadMode, pathCount);
-        return {
-            rows: d.h, cols: d.w,
-            twinCoverage: null, twinGroupMin: null, twinGroupMax: null,
-            gateTarget: GATE_TARGET_V1,
-            pathCount: pathCount, quadMode: quadMode,
-        };
-    }
-
-    // v1 fallback only — see rollSlotParams. Was the whole sizing story
-    // until 2026-08-01; the SIZE_* constants above serve only this.
-    const GATE_TARGET_V1 = 3;
-    function generateDimsV1(quadMode, pathCount) {
-        // Per-mode physical dim range + average window. Quad sits above
-        // singular so it stays the meatier mode (its sub-tile dims map to
-        // half as many player-facing quad-tiles). 1-2 path slots use the
-        // ~75% LOW tier (see the constants above).
-        const low    = (pathCount | 0) <= 2;
-        const min    = quadMode ? (low ? SIZE_MIN_QUAD_LOW     : SIZE_MIN_QUAD)     : (low ? SIZE_MIN_LOW     : SIZE_MIN);
-        const max    = quadMode ? (low ? SIZE_MAX_QUAD_LOW     : SIZE_MAX_QUAD)     : (low ? SIZE_MAX_LOW     : SIZE_MAX);
-        const avgMin = quadMode ? (low ? SIZE_AVG_MIN_QUAD_LOW : SIZE_AVG_MIN_QUAD) : (low ? SIZE_AVG_MIN_LOW : SIZE_AVG_MIN);
-        const avgMax = quadMode ? (low ? SIZE_AVG_MAX_QUAD_LOW : SIZE_AVG_MAX_QUAD) : (low ? SIZE_AVG_MAX_LOW : SIZE_AVG_MAX);
-        // Rejection sample: pick W and H in [min, max], re-roll until the
-        // average (W+H)/2 falls within [avgMin, avgMax]. The floor stops
-        // a puzzle from landing small on both axes (no more easy 6×6s);
-        // the ceiling stops lopsided rolls from sprawling. Keep-rate is
-        // high in both windows, so the loop terminates quickly.
-        while (true) {
-            let w, h;
-            if (quadMode) {
-                // Even values only — quad puzzles need divisible-by-2
-                // sub-tile dims so each 2×2 quad-tile fits cleanly.
-                // (min/max are already even from the *2, so stepping by
-                // 2 covers the full range.)
-                const span = (max - min) / 2 + 1;
-                w = min + 2 * Math.floor(Math.random() * span);
-                h = min + 2 * Math.floor(Math.random() * span);
-            } else {
-                const span = max - min + 1;
-                w = min + Math.floor(Math.random() * span);
-                h = min + Math.floor(Math.random() * span);
-            }
-            const avg = (w + h) / 2;
-            if (avg >= avgMin && avg <= avgMax) return { w, h };
-        }
+        return PotdGen2.rollParams(PotdGen2.defaultParams(quadMode, pathCount));
     }
 
     // ── Banner / HUD helpers ──
@@ -1129,8 +1038,10 @@ const Potd = (() => {
                 id,
                 rows: opts.rows, cols: opts.cols,
                 pathCount: opts.pathCount, quadMode: opts.quadMode,
-                // v2 per-puzzle twin overrides. null on the v1 fallback
-                // path, which the worker reads as "no override".
+                // Per-puzzle twin overrides from potd-gen2.js. The worker
+                // still reads null as "no override" — nothing on this
+                // path sends null since the v1 fallback was removed, but
+                // resumed/legacy callers elsewhere rely on that reading.
                 twinCoverage: opts.twinCoverage,
                 twinGroupMin: opts.twinGroupMin,
                 twinGroupMax: opts.twinGroupMax,

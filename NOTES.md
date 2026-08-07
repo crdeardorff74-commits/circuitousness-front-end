@@ -2,6 +2,12 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-08-07 — Release v1.64 (the v1 PotD sizing fallback is DELETED)
+- **User's call after v2 proved itself live.** `potd.js` no longer feature-detects `PotdGen2` — `rollSlotParams` calls it directly, and `generateDimsV1`, `GATE_TARGET_V1` and all 16 `SIZE_*` constants are gone. potd-gen2.js's `DEF_*` block is now the ONLY place a daily puzzle's shape is decided.
+- **Why the "but what if gen2 doesn't load" worry is empty** (checked, don't re-litigate): both files are adjacent in index.html's `document.write` list and NEITHER is in sw.js's `CORE_ASSETS` — they're runtime-cached identically. Every failure mode loses both, and the fallback lived inside `potd.js`, so it could only have run in a world that can't occur. The bad outcome it "protected" against was worse anyway: a day's slot silently seeded to retired rules, permanent once seeded, with nothing on screen naming the generator.
+- Fixed three comments left stale when v2 went live on 2026-08-01 — index.html's debug-panel header still called v2 experimental and "not yet swapped in", and maze.js's `twinCoverageOverride` comment listed live PotD among the *no-override* callers when every v2 build sets one.
+- ⚠ **Not browser-verified** (rule 0). `tests/potd-config-test.js` passes and `node --check` is clean on potd.js/maze.js, but the suite only exercises gen2's rolled params — nobody has watched a real daily slot generate through the shortened path.
+
 ## 2026-08-07 — Where the analytics hooks live, and why there (companion to v1.63)
 - **Puzzle rows open in `marathon.js onPuzzleReady`, NOT in `startNextPuzzle`.** The board isn't playable until then, and a quad build can take seconds — charging that to the player would inflate every duration. `startNextPuzzle` only stashes `pendingPuzzleMeta` (mode/type/dims), which is the last place that information exists. Its `state === STATE.PLAYING` guard is also what keeps replays out.
 - **`game.js recordMove` is the single choke point** for the move counter AND the control-discovery tokens — every committed live action passes through it and replays never reach it. Don't add a second counting site; `Analytics.control()` short-circuits after a token's first occurrence, so the hot path costs one property lookup.

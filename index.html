@@ -1229,11 +1229,13 @@
                 <label><input type="color" id="litGoldHiPicker" value="#fefcc8"><span class="hex" id="litGoldHiVal">#fefcc8</span></label>
             </div>
         </details>
-        <!-- ── PotD GENERATOR v2 (experimental) ─────────────────────────
+        <!-- ── PotD GENERATOR v2 ────────────────────────────────────────
              Replaces the old free-form Grid width / Grid height / Paths /
-             Quad Tiles selections. The debug panel's job is now tuning
-             potd-gen2.js's ranges before v2 is swapped in for the live
-             PotD generator in potd.js.
+             Quad Tiles selections. The debug panel's job is tuning
+             potd-gen2.js's ranges — which are the LIVE daily puzzle's
+             ranges (v2 is the only generator potd.js has since the v1
+             sizing fallback was deleted on 2026-08-07), so a change here
+             is previewing what tomorrow's seed will actually build.
 
              Each row is a TWO-KNOB range: the generator rolls a fresh
              value inside it per puzzle. Nothing builds until "Generate
@@ -1343,7 +1345,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '1.63';</script>
+    <script>var PAGE_VERSION = '1.64';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

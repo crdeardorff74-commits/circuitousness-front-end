@@ -112,11 +112,11 @@ const Maze = (() => {
     }
     // ABSOLUTE coverage override (0..1) — replaces TWIN_COVERAGE × scale
     // outright rather than multiplying it. Added 2026-08-01 for the
-    // experimental PotD generator (potd-gen2.js), which rolls a
+    // PotD generator (potd-gen2.js), which rolls a
     // per-puzzle coverage anywhere in 10-80%; the scale can't express
     // that because it's clamped to 1 and so tops out at TWIN_COVERAGE
-    // (30%). null = no override, which is every normal build (the
-    // Marathon/Zen ramp, live PotD, tests). Read at assignTwins /
+    // (30%). Every live PotD build sets it. null = no override, which is
+    // the Marathon/Zen ramp and tests. Read at assignTwins /
     // assignQuadTwins time like the scale, so set it BEFORE Maze.init();
     // maze-worker.js sets it per job because the worker's Maze is
     // long-lived and would otherwise inherit the previous job's value.
