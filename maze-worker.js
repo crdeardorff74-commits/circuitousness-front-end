@@ -58,6 +58,11 @@ async function processNext() {
         // Maze outlives the job, so an absent flag has to RESET the mode,
         // not inherit the previous job's.
         if (Maze.setMosaicMode) Maze.setMosaicMode(!!req.mosaicMode);
+        // Authored mosaic layout (mosaic-library.js format), or null for the
+        // random packer. Same unconditional-per-job rule and the same reason,
+        // with more at stake: an inherited layout would ship a DESIGNED board
+        // to a job that never asked for one.
+        if (Maze.setMosaicLayout) Maze.setMosaicLayout(req.mosaicLayout);
         Maze.setPathCount(req.pathCount);
         // Twin-coverage ramp scale — set UNCONDITIONALLY per job (the
         // worker's Maze is long-lived, so a job that skipped this would
@@ -102,6 +107,10 @@ self.onmessage = function (e) {
             quadMode: !!e.data.quadMode,
             // Absent (every caller but potd-gen2.js) → false.
             mosaicMode: !!e.data.mosaicMode,
+            // Absent (everything but a library-puzzle build) → null = pack
+            // randomly. Structured-cloned by postMessage like any other
+            // plain object, so no serialisation is needed at either end.
+            mosaicLayout: e.data.mosaicLayout || null,
             // Absent (PotD bg-gen, stale main threads) → 1 = full coverage.
             twinScale: (typeof e.data.twinScale === 'number') ? e.data.twinScale : 1,
             // Absent (every caller but potd-gen2.js) → null = no override.

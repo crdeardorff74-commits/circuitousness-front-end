@@ -443,6 +443,14 @@ html.mode-debug #nowPlaying { display: none !important; }
 /* Mode gating: ?debug=true → mode-debug, else → mode-game.
    Shows the UI relevant to each mode and hides the rest. */
 html.mode-game #debugSliders { display: none !important; }
+/* The mosaic layout editor lives behind the same gate as the panel that
+   opens it. Two rules, not one: mode-game hides it outright, and inside
+   debug mode it stays hidden until MosaicEditor adds .visible. (The
+   specificity lesson from v1.59 applies — the show rule is mode-gated too,
+   so it can actually beat the hide rule.) */
+html.mode-game #mosaicEditor { display: none !important; }
+html.mode-debug #mosaicEditor { display: none; }
+html.mode-debug #mosaicEditor.visible { display: flex; }
 html.mode-debug #menu,
 html.mode-debug #hud,
 html.mode-debug #gameOver,
@@ -3938,7 +3946,11 @@ html.dbgHidden #resetBtn { display: none !important; }
     background: transparent;
     border: none;
 }
-#debugSliders #pg2GenBtn {
+/* The Mosaic Editor entry point shares the Generate button treatment —
+   they are peers in the panel, and a lone unstyled <button> next to a
+   styled one reads as unfinished. */
+#debugSliders #pg2GenBtn,
+#debugSliders #meOpenBtn {
     display: block;
     width: 100%;
     margin-top: 0.6rem;
@@ -3951,10 +3963,12 @@ html.dbgHidden #resetBtn { display: none !important; }
     font-size: 0.85rem;
     cursor: pointer;
 }
-#debugSliders #pg2GenBtn:hover {
+#debugSliders #pg2GenBtn:hover,
+#debugSliders #meOpenBtn:hover {
     background: rgba(60, 90, 140, 0.9);
 }
-#debugSliders #pg2GenBtn:disabled {
+#debugSliders #pg2GenBtn:disabled,
+#debugSliders #meOpenBtn:disabled {
     opacity: 0.5;
     cursor: default;
 }
@@ -5478,4 +5492,305 @@ body:not(.mode-potd) #potdStreakStrip { display: none; }
         text-overflow: ellipsis;
         white-space: nowrap;
     }
+}
+
+/* ============================================================
+   MOSAIC LAYOUT EDITOR — developer tooling (mosaic-editor.js)
+   ============================================================
+   Full-screen overlay, shown only in debug mode (the display rules live
+   with the other mode gating near the top of this file, beside the
+   #debugSliders rule). Same glassy dark chrome as the debug panel and the
+   game's own popups, per universal rule a.
+
+   Sizing is relative throughout (universal rule 2). The one place pixels
+   appear is inside the <canvas>, where they are drawing units rather than
+   layout units — mosaic-editor.js picks the board's cell size to fit
+   whatever box #meBoardWrap ends up with. */
+#mosaicEditor {
+    position: fixed;
+    inset: 0;
+    z-index: 60;                 /* above #debugSliders (50) */
+    flex-direction: column;
+    background: rgba(12, 15, 26, 0.97);
+    color: #fff;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 0.85rem;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+/* ESC hides the debug panel via .dbgHidden; the editor is a separate
+   surface with its own Close, so it must NOT vanish with it — a panel you
+   cannot see and cannot dismiss is the worse trap. */
+html.dbgHidden #mosaicEditor.visible { display: flex; }
+
+#mosaicEditor .meHead {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+#mosaicEditor .meHead strong {
+    font-size: 0.72rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    opacity: 0.7;
+}
+#mosaicEditor .meHead .meHint {
+    margin-left: auto;
+    font-size: 0.72rem;
+    opacity: 0.45;
+}
+#mosaicEditor .meDim {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    opacity: 0.85;
+}
+#mosaicEditor .meDim input { width: 3.4rem; }
+
+#mosaicEditor .meBody {
+    display: flex;
+    flex: 1;
+    min-height: 0;               /* lets the three columns scroll instead of
+                                    stretching the flex row past the viewport */
+}
+#mosaicEditor .meCol {
+    width: 15rem;
+    flex: none;
+    overflow-y: auto;
+    padding: 0.8rem;
+}
+#mosaicEditor .mePaletteCol { border-right: 1px solid rgba(255, 255, 255, 0.12); }
+#mosaicEditor .meSideCol    { border-left:  1px solid rgba(255, 255, 255, 0.12); width: 17rem; }
+#mosaicEditor .meSectionHead {
+    font-size: 0.66rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    margin: 0.9rem 0 0.45rem;
+}
+#mosaicEditor .meSectionHead:first-child { margin-top: 0; }
+
+/* Board. Centred in whatever space the two side columns leave; the canvas
+   itself is sized by JS, so this box only has to be a stable container to
+   measure. touch-action:none is what makes a finger drag a PIECE instead
+   of scrolling the page. */
+#meBoardWrap {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.8rem;
+    overflow: auto;
+}
+#meBoard {
+    touch-action: none;
+    cursor: grab;
+    border-radius: 0.3rem;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+#meBoard:active { cursor: grabbing; }
+
+/* Palette. One labelled row per frame size. */
+#mosaicEditor .meGroupHead {
+    font-size: 0.7rem;
+    opacity: 0.55;
+    margin: 0.6rem 0 0.3rem;
+}
+#mosaicEditor .meGroup {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+#mosaicEditor .meShape {
+    padding: 0.2rem;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 0.3rem;
+    background: rgba(255, 255, 255, 0.04);
+    cursor: grab;
+    touch-action: none;
+    line-height: 0;
+    transition: border-color 0.12s ease, background 0.12s ease;
+}
+#mosaicEditor .meShape:hover {
+    border-color: rgba(255, 215, 0, 0.6);
+    background: rgba(255, 215, 0, 0.08);
+}
+
+/* The floating piece that follows the pointer during a drag. Appended to
+   <body> rather than the panel so it is never clipped by a scrolling
+   column, and pointer-events:none so it cannot swallow the pointerup that
+   ends the drag. */
+#meGhost {
+    position: fixed;
+    display: none;
+    z-index: 70;
+    pointer-events: none;
+    opacity: 0.85;
+    line-height: 0;
+    filter: drop-shadow(0 0.2rem 0.4rem rgba(0, 0, 0, 0.6));
+}
+#meGhost.bad   { opacity: 0.45; }
+#meGhost.trash { opacity: 0.3; filter: grayscale(1); }
+
+/* Difficulty readout. The tier drives a hue on the headline — green at
+   tier 1 through red at tier 10 — so the number registers before it is
+   read. --meTier is set by renderStats(). */
+#meScore {
+    padding: 0.55rem 0.6rem;
+    border-radius: 0.35rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-left: 0.2rem solid hsl(calc(130 - (var(--meTier, 1) - 1) * 14), 70%, 55%);
+}
+#meScore .meScoreBig {
+    font-size: 1rem;
+    font-weight: 600;
+    color: hsl(calc(130 - (var(--meTier, 1) - 1) * 14), 70%, 65%);
+}
+#meScore .meScoreNum  { font-size: 0.78rem; opacity: 0.8; margin-top: 0.15rem; }
+#meScore .meScoreWork { font-size: 0.68rem; opacity: 0.5; margin-top: 0.25rem; font-family: monospace; }
+
+#mosaicEditor .meStatTable {
+    width: 100%;
+    margin-top: 0.5rem;
+    border-collapse: collapse;
+    font-size: 0.75rem;
+}
+#mosaicEditor .meStatTable th {
+    text-align: left;
+    font-weight: 400;
+    opacity: 0.5;
+    padding: 0.12rem 0.5rem 0.12rem 0;
+    white-space: nowrap;
+}
+#mosaicEditor .meStatTable td { text-align: right; font-family: monospace; }
+
+#meWarn {
+    margin-top: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.3rem;
+    font-size: 0.72rem;
+    background: rgba(255, 215, 0, 0.12);
+    color: #ffe9a0;
+}
+#meWarn.bad { background: rgba(255, 70, 70, 0.15); color: #ffb3b3; }
+#meWarn[hidden] { display: none; }
+
+/* Controls. Buttons match the debug panel's #pg2GenBtn treatment. */
+#mosaicEditor button {
+    padding: 0.35rem 0.6rem;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 0.3rem;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+#mosaicEditor button:hover:not(:disabled) {
+    background: rgba(255, 215, 0, 0.16);
+    border-color: rgba(255, 215, 0, 0.55);
+}
+#mosaicEditor button:disabled { opacity: 0.45; cursor: default; }
+#mosaicEditor button.mePrimary {
+    display: block;
+    width: 100%;
+    margin-top: 0.4rem;
+    background: rgba(255, 215, 0, 0.16);
+    border-color: rgba(255, 215, 0, 0.45);
+    color: #FFD700;
+}
+#mosaicEditor .meBtnRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+#mosaicEditor .mePathPick {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    opacity: 0.85;
+}
+#mosaicEditor input[type="text"],
+#mosaicEditor input[type="number"],
+#mosaicEditor select,
+#mosaicEditor textarea {
+    box-sizing: border-box;
+    padding: 0.3rem 0.4rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.3rem;
+    background: rgba(0, 0, 0, 0.35);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.78rem;
+}
+#mosaicEditor input[type="text"],
+#mosaicEditor textarea {
+    width: 100%;
+    margin-bottom: 0.3rem;
+}
+#mosaicEditor textarea {
+    font-family: monospace;
+    font-size: 0.68rem;
+    resize: vertical;
+}
+
+/* Saved-layout list. Ordered easiest-first by MosaicLibrary.list(), which
+   is the order a run will consume them in. */
+#meList { margin-top: 0.4rem; }
+#mosaicEditor .meEmpty { font-size: 0.72rem; opacity: 0.45; padding: 0.3rem 0; }
+#mosaicEditor .meEntry {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.3rem;
+    border-radius: 0.25rem;
+    border: 1px solid transparent;
+}
+#mosaicEditor .meEntry:nth-child(odd) { background: rgba(255, 255, 255, 0.04); }
+#mosaicEditor .meEntry.editing { border-color: rgba(255, 215, 0, 0.5); }
+#mosaicEditor .meEntryMeta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+#mosaicEditor .meEntryName {
+    font-size: 0.76rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#mosaicEditor .meEntryDims { font-size: 0.65rem; opacity: 0.5; font-family: monospace; }
+#mosaicEditor .meEntry button { padding: 0.15rem 0.4rem; font-size: 0.7rem; }
+#mosaicEditor .meDel:hover:not(:disabled) {
+    background: rgba(255, 70, 70, 0.2);
+    border-color: rgba(255, 70, 70, 0.6);
+}
+
+#meMsg {
+    padding: 0.45rem 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    font-size: 0.75rem;
+    min-height: 1.6rem;
+    opacity: 0.75;
+}
+#meMsg.bad { color: #ffb3b3; opacity: 1; }
+
+/* Narrow screens: stack the palette above the board and let the whole
+   panel scroll, rather than squeezing three columns into a phone. */
+@media (max-width: 56rem) {
+    #mosaicEditor .meBody { flex-direction: column; overflow-y: auto; }
+    #mosaicEditor .meCol,
+    #mosaicEditor .meSideCol { width: auto; overflow: visible; border: none; }
+    #mosaicEditor .mePaletteCol { border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+    #mosaicEditor .meSideCol    { border-top:    1px solid rgba(255, 255, 255, 0.12); }
+    #meBoardWrap { min-height: 40vh; }
 }

@@ -1342,6 +1342,86 @@
              rather than reading this element. game.js keeps updating it, so
              dropping the `hidden` brings it straight back. -->
         <div id="preGenStatus" hidden>Next: idle</div>
+        <!-- ── MOSAIC LAYOUT LIBRARY ──────────────────────────────────
+             The generator above PACKS mosaic boards at random. This opens
+             the editor for the other kind: layouts designed by hand, ranked
+             by difficulty, and stored in a library a run can draw from in
+             increasing order. mosaic-library.js owns the format and the
+             ranking; mosaic-editor.js owns the UI. Ctrl+M does the same
+             thing from the keyboard. -->
+        <strong>Mosaic Layouts</strong>
+        <button type="button" id="meOpenBtn">Open Mosaic Editor</button>
+    </div>
+
+    <!-- MOSAIC LAYOUT EDITOR — debug mode only (see the html.mode-game rule
+         in styles.css, which hides it exactly as it hides #debugSliders).
+         Drag a shape from the palette onto the board; every cell left bare
+         becomes singular fill at build time, so the design is the PIECES and
+         nothing else. The maze itself is still generated fresh on top of the
+         layout every time it is played.
+
+         Deliberately NOT translated — developer tooling, same as the panel
+         above. See the header comment in mosaic-editor.js. -->
+    <div id="mosaicEditor">
+        <div class="meHead">
+            <strong>Mosaic Layout Editor</strong>
+            <label class="meDim">Rows <input type="number" id="meRows" min="4" max="24" step="1" value="10"></label>
+            <label class="meDim">Cols <input type="number" id="meCols" min="4" max="24" step="1" value="10"></label>
+            <span class="meHint">drag to place · drag off the board to delete · right-click removes · arrows nudge</span>
+            <button type="button" id="meCloseBtn">Close</button>
+        </div>
+        <div class="meBody">
+            <aside class="meCol mePaletteCol">
+                <div class="meSectionHead">Pieces</div>
+                <!-- Populated from Mosaic.SHAPES at boot — the palette IS the
+                     enumerated library, never a hand-listed copy of it. -->
+                <div id="mePalette"></div>
+            </aside>
+
+            <div id="meBoardWrap"><canvas id="meBoard"></canvas></div>
+
+            <aside class="meCol meSideCol">
+                <div class="meSectionHead">Difficulty</div>
+                <div id="meScore"></div>
+                <div id="meStats"></div>
+                <div id="meWarn" hidden></div>
+
+                <div class="meSectionHead">Layout</div>
+                <div class="meBtnRow">
+                    <button type="button" id="meAutoBtn" title="Fill the board using the random packer, then edit from there">Auto-fill</button>
+                    <button type="button" id="meClearBtn">Clear</button>
+                    <button type="button" id="meNewBtn" title="Clear and detach from the saved entry, so the next Save creates a new one">New</button>
+                </div>
+                <label class="mePathPick">Test paths
+                    <select id="mePaths">
+                        <option value="1" selected>1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                    </select>
+                </label>
+                <button type="button" id="meTestBtn" class="mePrimary">▶ Test play this layout</button>
+
+                <div class="meSectionHead">Library</div>
+                <input type="text" id="meName" placeholder="Layout name" maxlength="60">
+                <input type="text" id="meAuthor" placeholder="Author (optional)" maxlength="40">
+                <button type="button" id="meSaveBtn" class="mePrimary">Save to library</button>
+                <div id="meList"></div>
+
+                <!-- localStorage is the stand-in for the eventual puzzles
+                     table. Export is therefore the only backup this library
+                     has — and the hand-off to the back end when it lands. -->
+                <div class="meSectionHead">Import / export</div>
+                <textarea id="meIO" rows="4" spellcheck="false" placeholder="Library JSON, or a single layout code"></textarea>
+                <div class="meBtnRow">
+                    <button type="button" id="meExportBtn">Export all</button>
+                    <button type="button" id="meImportBtn">Import</button>
+                    <button type="button" id="meCodeBtn" title="Compact code for the layout on the board">Code</button>
+                    <button type="button" id="meLoadCodeBtn">Load code</button>
+                </div>
+            </aside>
+        </div>
+        <div id="meMsg"></div>
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
@@ -1363,7 +1443,10 @@
         // self-initializes (its visible clock has to start at page load)
         // and tracking.js is what decides whether it stays enabled, so
         // tracking must load after it, not before.
-        var srcs = ['cg-sdk.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','mosaic.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd-streaks.js','potd-calendar.js','potd-gen2.js','potd.js','game.js','dev-mode.js','analytics.js','tracking.js','share.js','intro.js'];
+        // mosaic-library.js follows mosaic.js (it calls into it) and
+        // mosaic-editor.js follows both — plus potd-gen2.js, whose
+        // loadIntoPlay it borrows to put a test build on screen.
+        var srcs = ['cg-sdk.js','i18n.js','controls-config.js','gamepad.js','touch-controls.js','audio.js','music.js','settings.js','credits.js','mosaic.js','mosaic-library.js','maze.js','gates.js','render.js','title-renderer.js','tooltip.js','tutorial.js','marathon.js','mode-picker.js','potd-streaks.js','potd-calendar.js','potd-gen2.js','potd.js','mosaic-editor.js','game.js','dev-mode.js','analytics.js','tracking.js','share.js','intro.js'];
         for (var i = 0; i < srcs.length; i++) {
             document.write('<script src="' + srcs[i] + bust + '"><\/script>');
         }

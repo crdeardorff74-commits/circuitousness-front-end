@@ -272,6 +272,126 @@ const Mosaic = (function () {
         return { groups: groups, idx: idx };
     }
 
+    // ── Authored layouts ─────────────────────────────────────────────────
+    //
+    // pack() above is the RANDOM packer, and it stays exactly as it was.
+    // What follows is the other way a board can get its pieces: a layout
+    // somebody DESIGNED, stored as a list of (shape, position) and replayed
+    // here. mosaic-library.js owns the file format, the difficulty ranking
+    // and the storage; this function owns only the geometry, so maze.js and
+    // the worker can consume an authored layout without importing anything
+    // new.
+    //
+    // A shape is identified by its frame `n` plus a row-major BITMASK over
+    // that n×n frame (bit dr*n+dc set = that cell is part of the piece).
+    // The mask is used rather than the enumeration index or the `key` string
+    // for two reasons: it survives a change to MAX_FRAME or to the sort
+    // order — neither of which a stored layout should ever notice — and it
+    // is 25 bits at most, so it stays an ordinary integer for n ≤ 5.
+
+    function cellsFromMask(n, mask) {
+        const cells = [];
+        for (let dr = 0; dr < n; dr++) {
+            for (let dc = 0; dc < n; dc++) {
+                if (mask & (1 << (dr * n + dc))) cells.push([dr, dc]);
+            }
+        }
+        return cells;
+    }
+
+    function maskFromCells(n, cells) {
+        let mask = 0;
+        for (const [dr, dc] of cells) mask |= (1 << (dr * n + dc));
+        return mask;
+    }
+
+    // n:mask → the library entry, or undefined. Built once from SHAPES, so
+    // "is this a legal piece?" is answered by the SAME enumeration that
+    // guarantees rotation-invariance — an authored layout can never smuggle
+    // in a shape the packer would have refused to place.
+    const SHAPE_BY_MASK = (function () {
+        const m = Object.create(null);
+        for (const s of SHAPES) m[s.n + ':' + maskFromCells(s.n, s.cells)] = s;
+        return m;
+    })();
+
+    function findShape(n, mask) {
+        return SHAPE_BY_MASK[n + ':' + mask] || null;
+    }
+
+    /**
+     * Build the same { groups, idx } packing pack() returns, but from an
+     * authored piece list instead of a random search.
+     *
+     * `pieces` is [{ n, mask, r, c }, …] — r/c are the piece's top-left
+     * frame corner. Anything unplaceable (unknown shape, off the board,
+     * overlapping a piece already placed) is SKIPPED rather than thrown on,
+     * and reported in the returned `skipped` array. A layout that has drifted
+     * out of sync with the board it is being replayed onto should degrade to
+     * a sparser board, never to an exception in the middle of a build.
+     *
+     * As in pack(), every cell no piece claimed becomes its own one-cell
+     * singular group, so the total-coverage contract maze.js relies on holds
+     * identically for authored and random layouts.
+     */
+    function packFromLayout(rows, cols, pieces) {
+        const idx = [];
+        for (let r = 0; r < rows; r++) idx.push(new Array(cols).fill(-1));
+        const groups = [];
+        const skipped = [];
+
+        const list = pieces || [];
+        for (let i = 0; i < list.length; i++) {
+            const p = list[i];
+            const shape = p ? findShape(p.n, p.mask) : null;
+            if (!shape) { skipped.push({ i: i, why: 'unknown-shape' }); continue; }
+            if (p.r < 0 || p.c < 0 || p.r + shape.n > rows || p.c + shape.n > cols) {
+                skipped.push({ i: i, why: 'out-of-bounds' });
+                continue;
+            }
+            let clash = false;
+            for (const [dr, dc] of shape.cells) {
+                if (idx[p.r + dr][p.c + dc] !== -1) { clash = true; break; }
+            }
+            if (clash) { skipped.push({ i: i, why: 'overlap' }); continue; }
+
+            const g = {
+                cells: shape.cells.map(([dr, dc]) => [p.r + dr, p.c + dc]),
+                r0: p.r, c0: p.c, n: shape.n, size: shape.size, single: false
+            };
+            const gi = groups.length;
+            groups.push(g);
+            for (const [r, c] of g.cells) idx[r][c] = gi;
+        }
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                if (idx[r][c] !== -1) continue;
+                idx[r][c] = groups.length;
+                groups.push({ cells: [[r, c]], r0: r, c0: c, n: 1, size: 1, single: true });
+            }
+        }
+
+        return { groups: groups, idx: idx, skipped: skipped };
+    }
+
+    // The inverse: turn a packing back into an authored piece list, so the
+    // editor's "auto-fill" button can hand the random packer's output to the
+    // designer as a starting point. Singular fill is dropped — it is the
+    // remainder, reconstructed by packFromLayout, never stored.
+    function layoutFromPacking(groups) {
+        const pieces = [];
+        for (const g of groups) {
+            if (g.single || g.n <= 1) continue;
+            pieces.push({
+                n: g.n,
+                mask: maskFromCells(g.n, g.cells.map(([r, c]) => [r - g.r0, c - g.c0])),
+                r: g.r0, c: g.c0
+            });
+        }
+        return pieces;
+    }
+
     // Where cell (r, c) of group `g` lands after one quarter turn. CW maps
     // local (dr, dc) → (dc, n-1-dr); CCW is the inverse. Because every shape
     // is rotation-invariant the image is guaranteed to be another cell of the
@@ -304,6 +424,14 @@ const Mosaic = (function () {
         pack: pack,
         rotatedCell: rotatedCell,
         describe: describe,
+        // Authored-layout geometry (see the section above). The editor and
+        // the puzzle library speak (n, mask, r, c); these convert between
+        // that and the { groups, idx } packing the rest of the game uses.
+        cellsFromMask: cellsFromMask,
+        maskFromCells: maskFromCells,
+        findShape: findShape,
+        packFromLayout: packFromLayout,
+        layoutFromPacking: layoutFromPacking,
         // Exposed for the test harness — verifying the library's invariance
         // rule from outside is worth more than trusting the construction.
         _orbitsOf: orbitsOf,

@@ -434,6 +434,21 @@ const Maze = (() => {
         mosaicMode = !!on;
         if (mosaicMode) quadMode = false;
     }
+    // An AUTHORED layout to build on instead of a random packing, or null
+    // for the random packer (which stays the default and is unchanged).
+    // `{ rows, cols, pieces: [{ n, mask, r, c }, …] }` — mosaic-library.js
+    // owns that format; buildMosaicLayout replays it through
+    // Mosaic.packFromLayout.
+    //
+    // Set it UNCONDITIONALLY per job, exactly like setTwinCoverageTarget:
+    // this Maze instance outlives any one build (the worker's especially),
+    // so a caller that skipped the setter would inherit the previous job's
+    // layout — which, unlike a stale coverage number, would silently ship
+    // somebody else's designed board.
+    let mosaicLayout = null;
+    function setMosaicLayout(layout) {
+        mosaicLayout = (layout && layout.pieces) ? layout : null;
+    }
     let highlighted = [];  // [{ row, col, inPort, outPort }, ...]
     let locked = new Set();// "r,c" of hint-locked tiles — cannot be rotated
     let won = false;
@@ -4113,7 +4128,29 @@ const Maze = (() => {
 
     // Roll a fresh packing for the CURRENT dimensions and adopt it.
     function buildMosaicLayout() {
-        const packed = Mosaic.pack(ROWS, COLS, {});
+        // An authored layout wins over the random packer, but ONLY at the
+        // dimensions it was designed for. A layout replayed onto a different
+        // board would still "work" — packFromLayout drops whatever no longer
+        // fits and fills the rest singular — and that is precisely the bad
+        // outcome: a designed board quietly delivered as a partial one, with
+        // nothing on screen saying so. Falling back to the random packer at
+        // least produces a properly packed board, and the warning names the
+        // mismatch. Callers are expected to set dimensions FROM the layout.
+        let packed;
+        if (mosaicLayout && mosaicLayout.rows === ROWS && mosaicLayout.cols === COLS) {
+            packed = Mosaic.packFromLayout(ROWS, COLS, mosaicLayout.pieces);
+            if (packed.skipped.length && typeof Logger !== 'undefined') {
+                Logger.warn('[mosaic] authored layout dropped ' + packed.skipped.length +
+                            ' piece(s): ' + packed.skipped.map((s) => s.why).join(', '));
+            }
+        } else {
+            if (mosaicLayout && typeof Logger !== 'undefined') {
+                Logger.warn('[mosaic] authored layout is ' + mosaicLayout.rows + '×' +
+                            mosaicLayout.cols + ' but the board is ' + ROWS + '×' + COLS +
+                            ' — falling back to the random packer');
+            }
+            packed = Mosaic.pack(ROWS, COLS, {});
+        }
         mosaicGroups = packed.groups.map((g) => ({
             cells: g.cells, r0: g.r0, c0: g.c0,
             n: g.n, size: g.size, single: g.single, scramble: 0
@@ -5187,6 +5224,7 @@ const Maze = (() => {
         T_STRAIGHT, T_ELBOW, T_CROSS,
         init, rotate, hint, applyHintAt, togglePlayerLock, setDimensions, setHurry, setAbort, setTwoPathMode, setPathCount, setQuadMode,
         setMosaicMode,
+        setMosaicLayout,  // AUTHORED layout to build on (null = random packer) — set per job, see its comment
         setTwinCoverageScale,  // per-run twin ramp (0..1 × TWIN_COVERAGE) — set before init; see its comment
         setTwinCoverageTarget, // ABSOLUTE coverage override (0..1, null = off) — the experimental PotD generator's knob
         setTwinGroupSizeRange, // MIXED group sizes (min, max; null/invalid = off) — same generator, see its comment
