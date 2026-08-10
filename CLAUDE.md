@@ -9,6 +9,17 @@ Read `NOTES.md` (in this folder) at the start of every session. It's the running
 `PROJECT_NAME` is defined in `config.js` (currently `'Circuitousness'`). Change it
 there to rename the project — every other file references it.
 
+## Input support — keyboard + touch, NO gamepad (deliberate)
+Recorded per universal rule b, which was softened 2026-08-07 to make gamepad
+optional. Circuitousness ships keyboard and touch only, and that is a decision,
+not an unfinished task: the game is grid-cursor navigation against a clock, so a
+d-pad walking a cursor across the board loses to both mouse and touch. It would
+be an input nobody chooses.
+
+Consequence for copy: **no store listing, marketing blurb or store-page feature
+line may claim gamepad support.** `../../STORE_LISTINGS.md` carries the same
+warning.
+
 ## Version Bumping
 Always bump both numbers together — they MUST match (mismatch causes an
 infinite refresh loop):

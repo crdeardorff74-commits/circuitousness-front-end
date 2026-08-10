@@ -2301,7 +2301,7 @@ const Marathon = (() => {
             // `level` tracks the practice puzzles 1:1, so it's the number
             // the player expects to see.
             solveHeadline.textContent = practiceStep > 0
-                ? I18n.t('marathon.solveHeadlinePractice', { n: level })
+                ? I18n.t('marathon.solveHeadlinePractice', { n: level, of: practiceCount() })
                 : I18n.t('marathon.solveHeadline', { n: level });
             // Tier-up cue: the NEXT puzzle steps the path count up (a
             // progressive-run tier boundary). Announce it on the popup so
