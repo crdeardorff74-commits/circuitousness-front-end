@@ -840,6 +840,18 @@ const Music = (function () {
         // empty, so projects without a menu_only list get the old
         // behavior unchanged.
         if (inMenuPhase && activeMenuPool().length > 0) return pickMenuSong();
+        // A song cut off early by the previous puzzle's end replays from
+        // the top before anything fresh is pulled (see captureInterrupted
+        // for the capture rules). Consumed exactly once — a findById miss
+        // (song deleted from the admin since) or an Instrumental Only
+        // conflict just falls through to a normal pick.
+        if (interruptedSongId) {
+            const id = interruptedSongId;
+            interruptedSongId = null;
+            persistInterrupted();
+            const song = findById(id);
+            if (song && (!instrumentalActive() || song.instrumental)) return song;
+        }
         if (playMode === 'credits') return pickCreditsSong();
         // Both 'game_playlist' and 'game_plus_credits' play the intro first
         // — unless Instrumental Only is in effect, which bypasses the
@@ -981,11 +993,64 @@ const Music = (function () {
     }
     function getMode() { return playMode; }
 
+    // --- Interrupted-song restart ---------------------------------------
+    // A gameplay song cut off by a puzzle ending (game over, PotD solve,
+    // quit to menu) shouldn't be lost from the player's listening
+    // session: unless it was already in its final quarter, it replays
+    // from the top on the next gameplay pick (i.e. the next puzzle).
+    // Only the last-quarter case advances to the next queued song.
+    // The queue itself already consumed the song at pick time, so the
+    // restart is handled here as a one-shot override in pickNext rather
+    // than by un-shifting bags.
+    //
+    // Excluded from capture:
+    //   menu-pool songs      — the menu↔game transitions cut them by
+    //                          design, and restarting one as gameplay
+    //                          music would surface the wrong pool;
+    //   end-credits playback — the credits roll is its own sequence
+    //                          (stopCreditsSequence stops BEFORE clearing
+    //                          forceCredits so this guard can see it);
+    //   scripted (replay) playback and muted playback — nothing the
+    //                          player was actually listening to.
+    // Persisted so the restart survives a page reload between games.
+    const INTERRUPTED_KEY = PROJECT_SLUG + '_interruptedSong_v1';
+    const RESTART_CUTOFF  = 0.75;   // played-fraction at/beyond which we skip instead
+    let interruptedSongId = null;
+    try { interruptedSongId = localStorage.getItem(INTERRUPTED_KEY) || null; } catch (e) {}
+    function persistInterrupted() {
+        try {
+            if (interruptedSongId) localStorage.setItem(INTERRUPTED_KEY, interruptedSongId);
+            else localStorage.removeItem(INTERRUPTED_KEY);
+        } catch (e) { /* private mode / quota — degrade to in-memory */ }
+    }
+    function captureInterrupted() {
+        // replayActive (not just scriptedPlayback) so the between-puzzle
+        // gaps of a marathon replay — where scriptedPlayback is briefly
+        // null but the song on the element still belongs to the replay —
+        // can't leak a recorded song into the watcher's own restart slot.
+        if (!currentSong || !audio || muted || scriptedPlayback || replayActive || forceCredits) return;
+        if (isMenuPoolSong(currentSong.id)) return;
+        let frac = 0;
+        try {
+            const dur = audio.duration;
+            // Unloaded metadata (NaN/0 duration) means the song barely
+            // started — treat as fully unheard and restart it.
+            frac = (isFinite(dur) && dur > 0) ? (audio.currentTime / dur) : 0;
+        } catch (e) {}
+        interruptedSongId = (frac < RESTART_CUTOFF) ? currentSong.id : null;
+        persistInterrupted();
+    }
+
     // Start the end-credits sequence music. Forces the credits pool for
     // the duration of the sequence, regardless of the user's mode choice.
     // Stops any in-flight song first so the credits track starts cleanly
     // rather than fading into whatever was playing.
     function startCreditsSequence() {
+        // Normally the gameplay song was already captured by the stop()
+        // both game-over paths call before Credits.start — this direct
+        // capture only matters if a future caller starts credits over a
+        // still-playing song (no-op when currentSong is already null).
+        captureInterrupted();
         forceCredits = true;
         // Note: deliberately NOT resetting the credits shuffle bag here.
         // The bag's whole purpose is to cycle through every song before
@@ -1017,10 +1082,17 @@ const Music = (function () {
     // and stop playback. Called when the player dismisses the score popup
     // or otherwise leaves the credits screen.
     function stopCreditsSequence() {
-        forceCredits = false;
+        // stop() runs FIRST so captureInterrupted (called inside stop)
+        // still sees forceCredits=true and correctly skips capturing the
+        // in-flight credits track — a dismissed credits roll must not
+        // "restart" its song at the next puzzle.
         stop();
+        forceCredits = false;
     }
     function stop() {
+        // Record the cut-off song (if any) before the teardown below
+        // wipes currentSong/audio — see the interrupted-song block above.
+        captureInterrupted();
         shouldPlay  = false;
         paused      = false;
         if (audio) {
@@ -1188,6 +1260,7 @@ const Music = (function () {
         if (i >= 0) songChangeListeners.splice(i, 1);
     }
     function notifySongChange() {
+        updateMediaSession();
         if (onSongChange) {
             try { onSongChange(currentSong, paused); }
             catch (e) { if (typeof Logger !== 'undefined') Logger.warn('Music: onSongChange threw', e); }
@@ -1197,6 +1270,69 @@ const Music = (function () {
             catch (e) { if (typeof Logger !== 'undefined') Logger.warn('Music: songChangeListener threw', e); }
         }
     }
+
+    // --- Media Session API (OS media controls) -------------------------
+    // Mirrors TANTЯO's audio.js. Without this, Android's media
+    // notification / lock screen shows a bare anonymous player (pause
+    // only, no title); registering metadata + prev/next handlers is what
+    // makes the OS surface the song name and skip buttons — and it also
+    // wires up earbud and keyboard media keys for free. Metadata and
+    // playback state refresh from notifySongChange, which every state
+    // transition (play, pause, stop, mute, skip, replay) already funnels
+    // through. Song titles are proper nouns and PROJECT_NAME is the
+    // artist line, so nothing here needs i18n.
+    function updateMediaSession() {
+        if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+        try {
+            navigator.mediaSession.metadata = currentSong
+                ? new MediaMetadata({
+                      title:  currentSong.name || '',
+                      artist: PROJECT_NAME
+                  })
+                : null;
+            navigator.mediaSession.playbackState = !currentSong ? 'none'
+                : (paused || muted || externalMuted) ? 'paused'
+                : 'playing';
+        } catch (e) { /* metadata is cosmetic — never let it break playback */ }
+    }
+    function setupMediaSession() {
+        if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+        // togglePause already guards on shouldPlay/audio, and skipNext/
+        // skipPrev short-circuit during scripted (replay) playback, so
+        // OS-initiated actions can't fire in states the in-page controls
+        // wouldn't allow. Each handler registers in its own try/catch —
+        // browsers throw on action names they don't support, and one
+        // unsupported action must not void the rest.
+        try {
+            navigator.mediaSession.setActionHandler('play', function () {
+                if (paused) togglePause();
+            });
+        } catch (e) {}
+        try {
+            navigator.mediaSession.setActionHandler('pause', function () {
+                if (!paused) togglePause();
+            });
+        } catch (e) {}
+        try {
+            navigator.mediaSession.setActionHandler('nexttrack', function () {
+                skipNext();
+            });
+        } catch (e) {}
+        try {
+            navigator.mediaSession.setActionHandler('previoustrack', function () {
+                skipPrev();
+            });
+        } catch (e) {}
+        // Seek requests from the notification / lock-screen scrubber.
+        try {
+            navigator.mediaSession.setActionHandler('seekto', function (details) {
+                if (audio && details && details.seekTime != null) {
+                    try { audio.currentTime = details.seekTime; } catch (e) {}
+                }
+            });
+        } catch (e) {}
+    }
+    setupMediaSession();
 
     // --- Scripted playback (for replay) -------------------------------
     // Plays a fixed schedule of songs at fixed times instead of pulling
