@@ -765,6 +765,20 @@
             <h2 data-i18n="marathon.pitchTitle">Practice over.</h2>
             <p id="firstRunPitchBody" data-i18n="marathon.pitchBody"></p>
             <button id="firstRunPitchBtn" type="button" data-i18n="marathon.pitchStart">Start Surge</button>
+            <!-- Secondary exits (2026-08-11). Surge stays THE suggestion —
+                 it's the only one that ends, which is what makes the first
+                 session end at a moment that asks for another go — but a
+                 player who doesn't want a clock now has somewhere to go
+                 that isn't the back button. Styled deliberately quieter
+                 than the Start button so the default reads at a glance.
+                 Labels reuse the mode-picker's own keys, already
+                 translated in all 15 languages; only the lead-in line is
+                 new. -->
+            <p id="firstRunPitchAlt" data-i18n="marathon.pitchAlt">Rather start somewhere else?</p>
+            <div id="firstRunPitchAltRow">
+                <button id="firstRunPitchZenBtn" type="button" data-i18n="mode.practice.name">🧘 Zen</button>
+                <button id="firstRunPitchPotdBtn" type="button" data-i18n="mode.potd.name">📅 Puzzle of the Day</button>
+            </div>
         </div>
 
         <div id="gameOver">

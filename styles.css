@@ -2566,6 +2566,37 @@ html.mode-debug #settingsOverlay { display: none !important; }
     letter-spacing: 0.04em;
 }
 #firstRunPitchBtn:hover { background: rgba(255, 215, 0, 0.28); }
+/* Secondary exits. Everything here is tuned to lose to #firstRunPitchBtn
+   on purpose — no gold fill, dimmer text, smaller type — so the eye still
+   lands on Start Surge first and these read as "or, if you'd rather". */
+#firstRunPitchAlt {
+    margin: 1.4rem 0 0 0;
+    color: rgba(200, 212, 235, 0.65);
+    font-size: clamp(0.8rem, 1.6vw, 0.95rem);
+}
+#firstRunPitchAltRow {
+    display: flex;
+    gap: 0.7rem;
+    /* Wrap rather than squeeze: "Puzzle of the Day" is long in several
+       languages (de "Rätsel des Tages", tr "Günün Bulmacası") and the two
+       buttons stacked read fine — a shrunken row does not. */
+    flex-wrap: wrap;
+    justify-content: center;
+}
+#firstRunPitchAltRow button {
+    padding: 0.45rem 1.2rem;
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(215, 228, 250, 0.9);
+    border: 1px solid rgba(180, 200, 235, 0.3);
+    border-radius: 0.45rem;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: clamp(0.85rem, 1.8vw, 1rem);
+}
+#firstRunPitchAltRow button:hover {
+    background: rgba(255, 255, 255, 0.13);
+    border-color: rgba(200, 220, 255, 0.5);
+}
 /* Try Again is the PRIMARY action on a first-run game over, so it reads
    louder than the Back-to-menu button beneath it. */
 #gameOverTryAgainBtn {

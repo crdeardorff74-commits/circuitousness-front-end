@@ -248,6 +248,10 @@ const Marathon = (() => {
         firstRunPitchEl = $('firstRunPitch');
         const pitchBtn = $('firstRunPitchBtn');
         if (pitchBtn) pitchBtn.addEventListener('click', startFirstSurge);
+        const pitchZenBtn = $('firstRunPitchZenBtn');
+        if (pitchZenBtn) pitchZenBtn.addEventListener('click', startFirstZen);
+        const pitchPotdBtn = $('firstRunPitchPotdBtn');
+        if (pitchPotdBtn) pitchPotdBtn.addEventListener('click', goToFirstPotd);
         gameOverTryAgain = $('gameOverTryAgainBtn');
         if (gameOverTryAgain) gameOverTryAgain.addEventListener('click', function () {
             firstRunRetries++;
@@ -1643,6 +1647,61 @@ const Marathon = (() => {
         // per-run flag, so that a Surge run started later from the menu
         // can't inherit the Try Again ending.
         isFirstSurgeRun = true;
+    }
+
+    // ----- The pitch's secondary exits (2026-08-11) -----
+    // Surge is still THE suggestion — it's the only mode with a terminal
+    // state, which is what lets the first session end on a "try again"
+    // rather than trailing off. But a player who doesn't want a clock had
+    // nowhere to go from here except the back button, so Zen and PotD are
+    // offered underneath it.
+    //
+    // ⚠ NEITHER fires Tracking.firstRunSurgeStarted — they didn't start
+    // Surge, and a funnel that claims otherwise is worse than one with a
+    // gap. Consequence to know when reading the first-session numbers:
+    // these players are currently indistinguishable from a bounce at the
+    // pitch (reached `pitch`, no `surge`). Splitting them needs a new
+    // first-run flag column server-side.
+    //
+    // ⚠ Neither passes the auto-start flag to startGame either. That flag
+    // enrols a run in the first-run A/B ladder (ensureFirstRunVariant,
+    // firstRunTiers) and routes its solves to firstRunPuzzleSolved — all
+    // of which describe the scripted Surge run specifically. Without it
+    // these correctly record as play OUTSIDE the initial run
+    // (firstRunOutsideStart / firstRunOutsideSolve).
+    function startFirstZen() {
+        practiceStep = 0;
+        // Same ⚠ as startFirstSurge: the PICKER owns body.mode-*, and
+        // several HUD rules key off it. Zen IS ModePicker's 'practice'
+        // mode, so this run wants exactly the class the practice puzzles
+        // had — but set it explicitly rather than relying on inheritance,
+        // because that's the bug startFirstSurge exists to document.
+        if (typeof ModePicker !== 'undefined' && ModePicker.setMode) {
+            ModePicker.setMode('practice');
+        }
+        // practice=true → untimed, no leaderboard. 's' because it's the
+        // tile type they just practiced on; Zen's other card (quad) is a
+        // step up and belongs to a player choosing it deliberately.
+        startGame('s', true);
+    }
+    // PotD goes to the MENU rather than launching a puzzle, and that's the
+    // right call rather than a hedge: the daily is EIGHT slots, and the
+    // menu is where their badges, the streak chips and the countdown live.
+    // Picking one for the player would be inventing a choice that the mode
+    // is built around them making.
+    function goToFirstPotd() {
+        // Mode BEFORE the menu reveal so the daily's slot cards are
+        // already in place when it appears — setMode flips the body class
+        // that swaps the Zen/Surge type cards for the 8 slots, and doing
+        // it after would show one frame of the wrong section.
+        if (typeof ModePicker !== 'undefined' && ModePicker.setMode) {
+            ModePicker.setMode('potd');
+        }
+        // goToMenu owns the rest of the teardown — it already clears
+        // practiceStep, pitchPending, isFirstSurgeRun and the auto-start
+        // flag, which is exactly the "the scripted flow is over" state
+        // this exit wants.
+        goToMenu();
     }
 
     // Called by game.js recordMove on every committed live puzzle action
