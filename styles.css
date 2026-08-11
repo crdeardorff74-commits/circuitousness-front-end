@@ -4337,13 +4337,31 @@ html.dbgHidden #resetBtn { display: none !important; }
    because the narrow-viewport rule sets all four. */
 #tooltipCard.tooltip-demo {
     top: 50%;
-    left: 50%;
-    right: auto;
+    /* ⚠ Centered with SYMMETRIC INSETS + margin auto, never `left: 50%`.
+       A fixed box with `left: 50%; right: auto` computes its automatic
+       width against only the space RIGHT of the 50% line — translate(-50%)
+       recenters it visually but the used width stays capped at HALF the
+       viewport. That squeezed this card to ~180px on a 385px phone, and
+       the starved canvas then shrank the 6x7 demo board until its grooves
+       hit render.js's `max(4, cellSize * GROOVE_FRAC)` device-pixel floor,
+       so the paths read as fat on top of everything being tiny. Exactly
+       the bug #solveTransition documents at the top of this file (user
+       screenshot 2026-07-28); reintroduced here 2026-08-11 and fixed the
+       same day. Insets + `margin-inline: auto` sidesteps it entirely: the
+       available width is the full viewport, max-width caps it, and auto
+       margins do the centering. */
+    left: 0.6rem;
+    right: 0.6rem;
     bottom: auto;
-    /* Own centering transform, so the fade-in needs its own keyframes —
-       the corner card's animates transform and would fight this. */
-    transform: translate(-50%, -50%);
+    margin-inline: auto;
+    /* Vertical only — horizontal centering is the margins' job now. The
+       fade-in still needs its own keyframes to match. */
+    transform: translateY(-50%);
     max-width: min(28rem, 92vw);
+    /* Landscape phones: the card must never grow past the viewport it's
+       centered in. Mirrors .combo-modal's own cap. */
+    max-height: 92vh;
+    overflow-y: auto;
     z-index: 2000;         /* modal tier, matching .combo-modal-overlay */
     animation: tooltipDemoFadeIn 0.3s ease-out;
     /* Backdrop as a huge box-shadow SPREAD rather than a full-viewport
@@ -4368,9 +4386,20 @@ html.dbgHidden #resetBtn { display: none !important; }
 #tooltipCard.tooltip-demo #tooltipDemoCanvas {
     height: clamp(11rem, 32vh, 17rem);
 }
+/* Portrait phone: the demo board is 6 wide x 7 TALL, so once the card is
+   full-width the fit is height-bound, not width-bound — layoutTutorial
+   takes min(availW/(COLS+2*PAD), availH/(ROWS+2*PAD)) and the second term
+   wins. Extra height is therefore the only thing that buys a bigger
+   cellSize here, which is what keeps the grooves off render.js's 4-device-
+   pixel floor. Capped by the card's own max-height above. */
+@media (max-width: 600px) and (orientation: portrait) {
+    #tooltipCard.tooltip-demo #tooltipDemoCanvas {
+        height: clamp(13rem, 40vh, 22rem);
+    }
+}
 @keyframes tooltipDemoFadeIn {
-    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.94); }
-    100% { opacity: 1; transform: translate(-50%, -50%) scale(1);    }
+    0%   { opacity: 0; transform: translateY(-50%) scale(0.94); }
+    100% { opacity: 1; transform: translateY(-50%) scale(1);    }
 }
 
 /* ============================================================
