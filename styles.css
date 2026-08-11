@@ -123,10 +123,13 @@ body {
     pointer-events: none;
     will-change: transform;
 }
-/* Board frozen while a tooltip mechanic demo loops (Tutorial.playBeat).
+/* Board frozen while a tooltip mechanic demo is PLAYING (Tutorial.playBeat).
    The demo borrows the renderer and installs its own grid in the shared
    Maze, so what's on the real board is a stale frame and a tap would
    land on something about to be discarded. Dimming it says so.
+   Lifted as soon as the demo's passes finish — NOT when the card is
+   dismissed. The card lingers with a still frame, but the board is the
+   player's again by then (see playBeat's BEAT_LOOPS).
    pointer-events is the real guard here; game.js additionally no-ops its
    input paths on Tutorial.isBusy(), which is what covers keyboard and
    gamepad (they never touch the canvas).

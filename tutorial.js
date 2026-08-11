@@ -432,12 +432,22 @@ const Tutorial = (function () {
     // actions instantly to reach the right state, then animating the one
     // step that matters. No second puzzle to author or keep in sync.
     //
-    // LOOPS until the tip is dismissed (user call 2026-08-05 — played once
-    // and slower-than-the-modal, it was over before the caption had been
-    // read). The loan on the live Maze therefore lasts as long as the card
-    // does, which is why Render.setBoardInert dims and un-clicks the real
-    // board for the duration: a frozen dimmed board reads as deliberate,
-    // where a normal-looking board that ignores taps reads as broken.
+    // Plays BEAT_LOOPS times, then hands the board back and leaves its
+    // finished frame on the canvas as a still. Two numbers were traded off
+    // to get here:
+    //   - Playing ONCE was too little (user call 2026-08-05): slower than
+    //     the modal, it was over before the caption had been read.
+    //   - Looping UNTIL DISMISSED was too much (user call 2026-08-11): the
+    //     loan on the live Maze lasted as long as the card did, so the
+    //     player's real board stayed dimmed and un-clickable until they
+    //     clicked Got It — on a timed run, with the clock still draining.
+    // Bounded looping gives the caption two passes to be read and then
+    // returns the game. The card and the still stay up until Got It, so
+    // nothing is snatched away mid-read; only the FREEZE ends.
+    //
+    // While the loan is live, Render.setBoardInert dims and un-clicks the
+    // real board: a frozen dimmed board reads as deliberate, where a
+    // normal-looking board that ignores taps reads as broken.
     //
     // Pacing is deliberately slower than the modal's. There the player
     // drives with Next and is watching on purpose; here it plays in the
@@ -450,6 +460,12 @@ const Tutorial = (function () {
     const BEAT_SLOW_STEP_MS = 1300;   // an action flagged `slow` (the twin unison)
     const BEAT_HOLD_MS      = 1800;   // sit on the finished state
     const BEAT_LOOP_GAP_MS  = 900;    // rewound, before it goes again
+    // Passes before the board is handed back. Two is ~18s for twinTiles
+    // (its three `slow` twin rotations are the long pole) and ~14s for
+    // gates — long enough to read the caption and watch the mechanic
+    // twice, short enough that a Surge player isn't watching their clock
+    // drain behind a board they can't touch.
+    const BEAT_LOOPS        = 2;
     let beat = null;
     // Bumped by every start and stop, so an await that resumes after the
     // beat was cancelled can tell and bail instead of writing to a board
@@ -512,9 +528,10 @@ const Tutorial = (function () {
             if (!beatAlive(token)) return false;
             Render.beginTutorial(targetCanvas);
             if (Render.setBoardInert) Render.setBoardInert(true);
-            // Runs until the card is dismissed. Every exit is via
-            // stopBeat() flipping the token — there is no natural end.
-            for (;;) {
+            // Runs BEAT_LOOPS passes, or until the card is dismissed —
+            // stopBeat() flipping the token strands whichever await is in
+            // flight, which is why every one of them re-checks.
+            for (let pass = 0; pass < BEAT_LOOPS; pass++) {
                 Render.draw();
                 await delay(BEAT_LEAD_IN_MS);
                 if (!beatAlive(token)) return false;
@@ -525,6 +542,7 @@ const Tutorial = (function () {
                 }
                 await delay(BEAT_HOLD_MS);
                 if (!beatAlive(token)) return false;
+                if (pass === BEAT_LOOPS - 1) break;   // stop ON the finished state
                 // Rewind to the beat's opening state and go again. Cheap
                 // (a snapshot load plus a few silent rotations) and it
                 // can't drift, unlike undoing the actions one by one.
@@ -533,6 +551,14 @@ const Tutorial = (function () {
                 await delay(BEAT_LOOP_GAP_MS);
                 if (!beatAlive(token)) return false;
             }
+            // Passes done. Give the board back NOW rather than at Got It:
+            // stopBeat restores the live Maze and repoints the renderer at
+            // the real canvas, un-dimming it and re-enabling input. The
+            // demo canvas is never cleared, so its last painted frame — the
+            // finished state of the mechanic — stays under the caption as a
+            // still until the player dismisses the card.
+            stopBeat();
+            return true;
         } catch (e) {
             // Never leave the player's board on loan because a demo threw.
             if (beatAlive(token)) stopBeat();

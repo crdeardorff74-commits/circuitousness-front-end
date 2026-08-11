@@ -274,8 +274,11 @@ const Tooltip = (function () {
         const activeEntry = showing && queue.length > 0 ? queue[0] : null;
         // Hand the live board back before anything else. A beat has the
         // player's Maze on loan; dismissing the card mid-animation must
-        // not strand it. Idempotent, so calling it for text-only tips is
-        // free.
+        // not strand it. Usually a no-op now — a beat stops itself once
+        // its passes are done, so by the time most players click Got It
+        // the board is already theirs — but the mid-animation dismissal
+        // still has to be covered. Idempotent, so calling it for
+        // text-only tips is free.
         if (typeof Tutorial !== 'undefined' && Tutorial.stopBeat) Tutorial.stopBeat();
         if (demoCanvas) demoCanvas.hidden = true;
         if (currentGotItHandler && gotItBtn) {

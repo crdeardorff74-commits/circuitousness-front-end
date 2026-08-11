@@ -606,8 +606,11 @@
                  unhide this and Tutorial.playBeat animates the matching
                  walkthrough step on it — showing the mechanic instead of
                  describing it. Stays hidden for text-only tips. The
-                 renderer is borrowed onto this canvas for ~3s and the
-                 final frame is left as a still. aria-hidden: the sentence
+                 renderer is borrowed onto this canvas for two passes of
+                 the beat, then handed back — the final frame is left here
+                 as a still while the card waits for Got It, so the player
+                 gets their board back without dismissing anything.
+                 aria-hidden: the sentence
                  below carries the same content for assistive tech. -->
             <canvas id="tooltipDemoCanvas" aria-hidden="true" hidden></canvas>
             <p id="tooltipText"></p>
