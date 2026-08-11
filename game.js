@@ -2384,6 +2384,14 @@
         async function handleHintClick(ev) {
             ev.stopPropagation();
             if (isBuilding || isReplaying || boardRotating) return;
+            // The tutorial (modal or an inline demo beat) has the live Maze
+            // swapped for its own grid — the same guard undo/resetPuzzle/
+            // board-penalty carry, and HINT was the one that never got it.
+            // Without this, hinting during a beat locks a tile on the DEMO
+            // board (thrown away seconds later) and still charges Surge's
+            // 25% time penalty for it. Only ever reachable because the beat
+            // tip leaves the HUD clickable; the modal covers it.
+            if (typeof Tutorial !== 'undefined' && Tutorial.isBusy && Tutorial.isBusy()) return;
             // Don't run hint during the between-puzzles transition; the
             // player's already won, hint would just lock a tile on a
             // puzzle they're about to leave behind. Treat it as a no-op.

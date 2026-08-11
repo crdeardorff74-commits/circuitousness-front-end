@@ -4296,6 +4296,11 @@ html.dbgHidden #resetBtn { display: none !important; }
    Text-only tips keep the corner treatment above — they block nothing and
    the player can keep solving right past them.
 
+   The backdrop is PURELY VISUAL — it doesn't swallow clicks. Input
+   protection lives in the Tutorial.isBusy() guards in game.js instead,
+   which is the right place for it: those cover the keyboard too, which no
+   backdrop ever could.
+
    Declared AFTER the max-width media query so centering wins on phones
    too; the base card's corner offsets are all explicitly unset here
    because the narrow-viewport rule sets all four. */
@@ -4310,19 +4315,20 @@ html.dbgHidden #resetBtn { display: none !important; }
     max-width: min(28rem, 92vw);
     z-index: 2000;         /* modal tier, matching .combo-modal-overlay */
     animation: tooltipDemoFadeIn 0.3s ease-out;
-}
-/* Backdrop as a pseudo-element rather than a sibling div: no extra DOM to
-   add, null-guard and keep in sync in tooltip.js. z-index -1 puts it
-   behind the card's own background but still inside the card's stacking
-   context, so it covers everything below the 2000 tier — board, HUD and
-   all. Left click-swallowing on purpose: while the demo owns the board,
-   the HUD's Reset/Undo/Hint have nothing valid to act on. */
-#tooltipCard.tooltip-demo::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.7);
-    z-index: -1;
+    /* Backdrop as a huge box-shadow SPREAD rather than a full-viewport
+       pseudo-element. A spread shadow paints strictly OUTSIDE the border
+       box and follows border-radius for free, which is the whole point:
+       the pseudo-element version was a square that clipped the card's
+       rounded gold corners. It was also painting in the wrong order — a
+       negative-z-index child paints ABOVE its parent's own background and
+       border (CSS 2.1 Appendix E, steps 1 then 2), so the black sheet was
+       going over the card's navy gradient and border instead of under it,
+       flattening the card to near-black.
+       First two shadows are the base card's, restated because box-shadow
+       replaces rather than merges. */
+    box-shadow: 0 0.4rem 1.5rem rgba(0, 0, 0, 0.55),
+                0 0 1.8rem rgba(255, 215, 0, 0.18),
+                0 0 0 100vmax rgba(0, 0, 0, 0.7);
 }
 /* Front and center earns a bigger demo — this is the thing the player is
    being asked to stop and watch. Render.layoutTutorial fits-and-centres
