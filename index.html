@@ -592,7 +592,10 @@
 
         <!-- First-play educational tooltips. Floating card in the
              top-right corner — non-blocking (no backdrop), so the player
-             can keep solving while the tip is visible. Modeled on
+             can keep solving while the tip is visible. Tips carrying a
+             mechanic demo are the exception: the demo borrows the live
+             board, so those centre themselves and draw a backdrop
+             (.tooltip-demo, added by tooltip.js). Modeled on
              TANTЯO's .hint-popup pattern but adapted for circuitousness's
              layout (no side panel). Shown once-each via the Tooltip
              module (tooltip.js); text is set per-trigger. -->
@@ -606,10 +609,10 @@
                  unhide this and Tutorial.playBeat animates the matching
                  walkthrough step on it — showing the mechanic instead of
                  describing it. Stays hidden for text-only tips. The
-                 renderer is borrowed onto this canvas for two passes of
-                 the beat, then handed back — the final frame is left here
-                 as a still while the card waits for Got It, so the player
-                 gets their board back without dismissing anything.
+                 renderer AND the live Maze are borrowed for as long as the
+                 card is up, which makes the real board unplayable — so a
+                 tip with a beat renders as a centered modal (the
+                 .tooltip-demo class) rather than a corner card.
                  aria-hidden: the sentence
                  below carries the same content for assistive tech. -->
             <canvas id="tooltipDemoCanvas" aria-hidden="true" hidden></canvas>

@@ -205,10 +205,27 @@ const Tooltip = (function () {
         if (demoCanvas) {
             const wantsDemo = !!(entry.beat && typeof Tutorial !== 'undefined' && Tutorial.playBeat);
             demoCanvas.hidden = !wantsDemo;
+            // Whether the card goes MODAL keys off the beat actually
+            // taking the board, not off the tip merely asking for one.
+            // playBeat assigns its beat synchronously before its first
+            // await, so isBeatPlaying() is already authoritative on this
+            // line — and it reads false for every early bail (tutorial
+            // modal open, no Maze, unknown beat key), which has to leave a
+            // plain corner tip rather than a centered modal wrapped around
+            // an empty canvas.
+            let playing = false;
             if (wantsDemo) {
-                try { Tutorial.playBeat(demoCanvas, entry.beat); }
-                catch (e) { demoCanvas.hidden = true; }
+                try {
+                    Tutorial.playBeat(demoCanvas, entry.beat);
+                    playing = !!(Tutorial.isBeatPlaying && Tutorial.isBeatPlaying());
+                } catch (e) { playing = false; }
+                demoCanvas.hidden = !playing;
             }
+            // A beat holds the live Maze hostage for as long as the card is
+            // up, so the card presents as a modal: centered, backdropped,
+            // clearly the only thing you can interact with. See the
+            // .tooltip-demo block in styles.css.
+            card.classList.toggle('tooltip-demo', playing);
         }
         card.hidden = false;
         showing = true;
@@ -274,13 +291,13 @@ const Tooltip = (function () {
         const activeEntry = showing && queue.length > 0 ? queue[0] : null;
         // Hand the live board back before anything else. A beat has the
         // player's Maze on loan; dismissing the card mid-animation must
-        // not strand it. Usually a no-op now — a beat stops itself once
-        // its passes are done, so by the time most players click Got It
-        // the board is already theirs — but the mid-animation dismissal
-        // still has to be covered. Idempotent, so calling it for
-        // text-only tips is free.
+        // not strand it. Idempotent, so calling it for text-only tips is
+        // free.
         if (typeof Tutorial !== 'undefined' && Tutorial.stopBeat) Tutorial.stopBeat();
         if (demoCanvas) demoCanvas.hidden = true;
+        // Back to a corner card for whatever shows next — the modal
+        // treatment belongs to the beat, not to the card.
+        card.classList.remove('tooltip-demo');
         if (currentGotItHandler && gotItBtn) {
             gotItBtn.removeEventListener('click', currentGotItHandler);
             currentGotItHandler = null;

@@ -1915,12 +1915,11 @@
             if (isBuilding || isReplaying || boardRotating) return;
             // A tooltip mechanic demo is playing: the DEMO board is
             // currently installed in the live Maze (Tutorial.playBeat
-            // borrows it for its two passes) and the tooltip card
-            // deliberately does NOT cover the play area. Rotating now would
+            // borrows it until the card is dismissed). Rotating now would
             // land on a board that's about to be thrown away — the player's
-            // twist would vanish when the real board comes back. Only the
-            // passes are guarded; once they end the beat stops itself and
-            // play resumes with the card still up.
+            // twist would vanish when the real board comes back. Since
+            // 2026-08-11 a beat tip is a centered modal, so the player is
+            // told this rather than left to discover it by tapping.
             if (typeof Tutorial !== 'undefined' && Tutorial.isBeatPlaying
                 && Tutorial.isBeatPlaying()) {
                 return;

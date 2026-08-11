@@ -123,13 +123,12 @@ body {
     pointer-events: none;
     will-change: transform;
 }
-/* Board frozen while a tooltip mechanic demo is PLAYING (Tutorial.playBeat).
+/* Board frozen while a tooltip mechanic demo loops (Tutorial.playBeat).
    The demo borrows the renderer and installs its own grid in the shared
    Maze, so what's on the real board is a stale frame and a tap would
    land on something about to be discarded. Dimming it says so.
-   Lifted as soon as the demo's passes finish — NOT when the card is
-   dismissed. The card lingers with a still frame, but the board is the
-   player's again by then (see playBeat's BEAT_LOOPS).
+   The card doing the borrowing goes MODAL for the same reason — see
+   #tooltipCard.tooltip-demo.
    pointer-events is the real guard here; game.js additionally no-ops its
    input paths on Tutorial.isBusy(), which is what covers keyboard and
    gamepad (they never touch the canvas).
@@ -4155,7 +4154,9 @@ html.dbgHidden #resetBtn { display: none !important; }
 
 /* First-play educational tooltip — floating card in the top-LEFT
    corner. Non-modal (no backdrop) so it doesn't block puzzle solving,
-   modeled on TANTЯO's .hint-popup. tooltip.js toggles `hidden` to
+   modeled on TANTЯO's .hint-popup. (Tips carrying a mechanic demo are
+   the exception and go modal — see .tooltip-demo below.)
+   tooltip.js toggles `hidden` to
    show/hide. On narrow viewports the card shifts to the bottom strip
    so it doesn't compete with the HUD that runs across the top.
    Left side specifically chosen to stay clear of the HUD Quit button
@@ -4277,6 +4278,62 @@ html.dbgHidden #resetBtn { display: none !important; }
         bottom: 4.75rem;
         max-width: none;
     }
+}
+
+/* ---- Mechanic-demo variant: the tip that OWNS the board ----------------
+   A tip carrying a Tutorial beat is categorically different from a text
+   tip. The beat installs its demo grid in the singleton Maze and points
+   the renderer at the little canvas, so for as long as the card is up the
+   player's real board is a stale dimmed picture that ignores every input
+   (see #maze.maze-demo-inert). That is a cost of borrowing the singletons,
+   not a knob we can turn down — decoupling would mean an instantiable Maze
+   threaded through all ~100 of render.js's Maze reads.
+
+   So if the card is going to take the game away, it has to LOOK like it
+   took the game away: centered, backdropped, obviously the only thing on
+   screen and obviously dismissible. In the corner it read as an optional
+   aside that had mysteriously broken the puzzle (user call 2026-08-11).
+   Text-only tips keep the corner treatment above — they block nothing and
+   the player can keep solving right past them.
+
+   Declared AFTER the max-width media query so centering wins on phones
+   too; the base card's corner offsets are all explicitly unset here
+   because the narrow-viewport rule sets all four. */
+#tooltipCard.tooltip-demo {
+    top: 50%;
+    left: 50%;
+    right: auto;
+    bottom: auto;
+    /* Own centering transform, so the fade-in needs its own keyframes —
+       the corner card's animates transform and would fight this. */
+    transform: translate(-50%, -50%);
+    max-width: min(28rem, 92vw);
+    z-index: 2000;         /* modal tier, matching .combo-modal-overlay */
+    animation: tooltipDemoFadeIn 0.3s ease-out;
+}
+/* Backdrop as a pseudo-element rather than a sibling div: no extra DOM to
+   add, null-guard and keep in sync in tooltip.js. z-index -1 puts it
+   behind the card's own background but still inside the card's stacking
+   context, so it covers everything below the 2000 tier — board, HUD and
+   all. Left click-swallowing on purpose: while the demo owns the board,
+   the HUD's Reset/Undo/Hint have nothing valid to act on. */
+#tooltipCard.tooltip-demo::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: -1;
+}
+/* Front and center earns a bigger demo — this is the thing the player is
+   being asked to stop and watch. Render.layoutTutorial fits-and-centres
+   into whatever box this gives it, so a taller box just means a bigger
+   board, never a distorted one. */
+#tooltipCard.tooltip-demo #tooltipDemoCanvas {
+    height: clamp(11rem, 32vh, 17rem);
+}
+@keyframes tooltipDemoFadeIn {
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.94); }
+    100% { opacity: 1; transform: translate(-50%, -50%) scale(1);    }
 }
 
 /* ============================================================
