@@ -2,6 +2,15 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-08-11 — Release v1.67: landing-URL campaign capture (Brave Ads groundwork)
+- **Why:** the user is weighing a **Brave Ads self-serve** campaign (the "$500/month minimum" option from the 2026-07-08 Advertising session — re-verify that figure, it's a year old). A Brave notification click arrives with an EMPTY referrer, and `tracking.js` had no other source signal, so paid arrivals would have been indistinguishable from bookmarks and PWA launches inside the admin's "(direct)" bucket. Capture had to exist before any money was spent.
+- `tracking.js` reads `utm_source/medium/campaign/content` at module init and sends them on the visit POST **and** the impression record (a click that bounces before touching a tile never becomes a `page_visits` row — for a paid buy that bounce is the number).
+- ⚠ **The tags are STRIPPED from the address bar afterwards (`replaceState`), and that half matters as much as the capture.** A tag left in the URL outlives its campaign: TANTЯO still receives `?rdt_cid=` referrers a month after those ads stopped, because a bookmarked landing URL re-attributes every later visit. Only `utm_*` is removed — `?track`, `?dev`, `?nointro` are other modules' flags and must survive. The strip is deliberately NOT gated on suppression: an opted-out browser posts nothing but still shouldn't carry a live tag around.
+- ⚠ **Ads must point at the bare origin, tagged — never at an itch/CrazyGames embed URL.** `platform-redirect.js` sends mobile embed players to a hardcoded `TARGET` with no query, so a tag wouldn't survive the hop.
+- New suite `../tests/campaign-capture-test.js` (vm sandbox over the real `tracking.js`) covers both halves. Not browser-verified per rule 0.
+- ⚠ **Deploy the BACK END first** — its `utm_*` columns must exist before a tagged client posts, or the first paid clicks land uncredited. Only `tracking.js` changed in this zip (+ the version pair).
+- Version bumped 1.66 → 1.67.
+
 ## 2026-08-11 — Release v1.66: pitch gets Zen/PotD exits, demo-beat crash fixed
 - **The practice→Surge pitch now offers Zen and Puzzle of the Day as secondary exits.** Surge stays THE suggestion (it's the only mode with a terminal state, which is what lets the first session end on a "try again" rather than trailing off); the two alternates are styled to lose to it deliberately — no gold fill, dimmer, smaller. Only ONE new i18n key (`marathon.pitchAlt`, ×15); the button labels reuse `mode.practice.name` / `mode.potd.name`, already translated.
 - ⚠ **Zen starts a run; PotD goes to the MENU, and that asymmetry is deliberate** — the daily is EIGHT slots and the menu is where their badges, streak chips and countdown live, so picking one for the player would invent the one choice the mode is built around them making.

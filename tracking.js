@@ -103,6 +103,54 @@ const Tracking = (function () {
         }
         try { return localStorage.getItem(key) === '1'; } catch (e) { return false; }
     })();
+    // Landing-URL campaign capture (added 2026-08-11 for the Brave Ads
+    // buy). `document.referrer` was the ONLY source signal this stack
+    // carried, and a Brave notification click lands with an empty
+    // referrer — so paid arrivals were indistinguishable from bookmarks,
+    // typed URLs and PWA cold launches inside the "(direct / no referrer)"
+    // bucket. The landing query is the only thing that survives that click.
+    //
+    // Captured ONCE at module init and then STRIPPED from the address bar,
+    // because a campaign tag that stays in the URL outlives its campaign:
+    // TANTЯO still receives `?rdt_cid=` referrers a month after those ads
+    // were stopped, since a bookmarked / shared landing URL re-attributes
+    // every later visit to a dead campaign. Stripping also keeps the tags
+    // out of any URL the player shares.
+    //
+    // Only the utm_* keys are removed — ?track, ?dev and ?nointro belong to
+    // other modules and are preserved. Attribution is therefore FIRST-TOUCH
+    // PER LANDING, not per browser: the ad click's own visit row carries the
+    // campaign, and the player's later organic returns correctly do not.
+    const CAMPAIGN_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign',
+                             'utm_content', 'utm_term'];
+    const campaign = (function () {
+        const none = { source: null, medium: null, name: null, content: null };
+        if (typeof location === 'undefined') return none;
+        let params;
+        try { params = new URLSearchParams(location.search || ''); } catch (e) { return none; }
+        function take(key) {
+            const v = params.get(key);
+            if (!v) return null;
+            // Sliced to the column width the API stores; a longer value is
+            // a mistake or a probe, not a campaign name.
+            return v.trim().slice(0, 100) || null;
+        }
+        const out = {
+            source:  take('utm_source'),
+            medium:  take('utm_medium'),
+            name:    take('utm_campaign'),
+            content: take('utm_content'),
+        };
+        if (!out.source && !out.medium && !out.name && !out.content) return none;
+        try {
+            CAMPAIGN_PARAMS.forEach(function (k) { params.delete(k); });
+            const q = params.toString();
+            history.replaceState(null, '',
+                location.pathname + (q ? '?' + q : '') + (location.hash || ''));
+        } catch (e) { /* no replaceState (file://, sandbox) — capture still stands */ }
+        return out;
+    })();
+
     function isSuppressed() {
         if (isLocalHost()) return true;
         if (stickyOptOut) return true;
@@ -348,6 +396,14 @@ const Tracking = (function () {
             clientUuid:   loadUuid,
             embedded:     ctx.embedded,
             redirected:   ctx.redirected,
+            // Paid-campaign attribution. All four are null for organic
+            // traffic, which is the overwhelming majority — the server
+            // stores nulls rather than empty strings so the admin's
+            // campaign tables never grow a blank row.
+            campaignSource:  campaign.source,
+            campaignMedium:  campaign.medium,
+            campaignName:    campaign.name,
+            campaignContent: campaign.content,
         };
         // Impression record, fired now and NOT gated on the visit POST
         // answering: a load that never interacts is exactly what that
@@ -362,6 +418,14 @@ const Tracking = (function () {
                 os:         payload.os,
                 sessionId:  payload.sessionId,
                 embedded:   payload.embedded,
+                // Impressions need the campaign too, not just visits: an ad
+                // click that bounces before touching a tile never becomes a
+                // page_visits row, and a bounce rate is exactly what a paid
+                // buy has to be judged on.
+                campaignSource:  payload.campaignSource,
+                campaignMedium:  payload.campaignMedium,
+                campaignName:    payload.campaignName,
+                campaignContent: payload.campaignContent,
             });
         }
         // keepalive so the row is created (and stamped with clientUuid)
