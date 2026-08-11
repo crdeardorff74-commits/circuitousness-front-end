@@ -2736,8 +2736,25 @@ const Render = (() => {
     let tutorialMode = false;
     let tutPadFrac   = 0.55;
     const tutSaved   = {};
+    // ⚠ BOTH ENDS OF THE SWAP MUST DROP THE ANIMATION QUEUES.
+    // rotationAnims/gateAnims entries bake their pivot (cx, cy) in the
+    // coordinate space that was active when they were pushed, and are
+    // keyed by "r,c" against whatever grid was loaded then. The instant
+    // the canvas is swapped, both facts are wrong — and drawAnimatedFrame
+    // walks those keys straight into Maze.grid with no bounds check, so a
+    // demo animation surviving into the player's (smaller) board reads
+    // grid[r][c] as undefined and throws out of resize() mid-repaint.
+    // That's the 2026-08-11 crash: dismissing a gate tip during one of
+    // its tile spins threw inside endTutorial, which stranded the tooltip
+    // card (its teardown never finished) and left the board half-painted.
+    // Clearing at BOTH ends is the invariant: nothing outlives the swap.
+    function dropTileAnimations() {
+        rotationAnims = [];
+        gateAnims     = [];
+    }
     function beginTutorial(targetCanvas, padFrac) {
         if (tutorialMode || !targetCanvas) return;
+        dropTileAnimations();   // the player's in-flight spins; see above
         tutSaved.canvas    = canvas;
         tutSaved.ctx       = ctx;
         tutSaved.cellSize  = cellSize;
@@ -2787,6 +2804,9 @@ const Render = (() => {
     }
     function endTutorial() {
         if (!tutorialMode) return;
+        // BEFORE the restore, so the resize() below can't take the
+        // partial-redraw path over the demo's dead keys. See above.
+        dropTileAnimations();
         tutorialMode = false;
         canvas    = tutSaved.canvas;
         ctx       = tutSaved.ctx;
@@ -2912,8 +2932,21 @@ const Render = (() => {
         // its neighbors during the spin.
         const rotatingKeys = new Set();
         const neighborKeys = new Set();
+        // Bounds-check the anim's OWN keys, not just the neighbors below.
+        // drawCore has an equivalent guard (it bails when grid dims don't
+        // match ROWS/COLS); this path had none, so any anim outliving the
+        // grid it was queued against walked off the end of it. The
+        // tutorial swap was one way in (see dropTileAnimations) and is
+        // fixed at source, but a dimension change landing while a spin is
+        // in flight is the same shape of hazard — cheap to close here for
+        // good rather than per-caller.
         for (const anim of rotationAnims) {
-            for (const key of anim.keys) rotatingKeys.add(key);
+            for (const key of anim.keys) {
+                const [r, c] = key.split(',').map(Number);
+                if (r >= 0 && r < Maze.ROWS && c >= 0 && c < Maze.COLS) {
+                    rotatingKeys.add(key);
+                }
+            }
         }
         for (const anim of rotationAnims) {
             for (const key of anim.keys) {

@@ -293,7 +293,18 @@ const Tooltip = (function () {
         // player's Maze on loan; dismissing the card mid-animation must
         // not strand it. Idempotent, so calling it for text-only tips is
         // free.
-        if (typeof Tutorial !== 'undefined' && Tutorial.stopBeat) Tutorial.stopBeat();
+        // Wrapped because a throw in there used to take the REST of this
+        // function with it — the card never hid, its handlers never
+        // detached, and the tip sat there dead until a second click (which
+        // no-op'd through stopBeat's guard and finally tore it down). That
+        // was the 2026-08-11 report. Taking the card down is this
+        // function's whole job and must not depend on a foreign module
+        // succeeding; the same convention the action/onAcknowledge calls
+        // already follow. The underlying crash is fixed in render.js
+        // dropTileAnimations — this is the seatbelt.
+        try {
+            if (typeof Tutorial !== 'undefined' && Tutorial.stopBeat) Tutorial.stopBeat();
+        } catch (e) { /* board custody is Tutorial's problem; the card still comes down */ }
         if (demoCanvas) demoCanvas.hidden = true;
         // Back to a corner card for whatever shows next — the modal
         // treatment belongs to the beat, not to the card.
