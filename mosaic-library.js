@@ -196,8 +196,14 @@ const MosaicLibrary = (function () {
         // so its true floor can sit a whisker higher — it enforces
         // itself regardless.) clamp01 keeps the bottom honest: relief
         // can't pull an empty 4×4 below 0.
+        // Each mandatory piece also brings ONE single partner into its
+        // ring (pieces weld to each other only when singles run out), so
+        // the true floor is pieces plus that many partners, not pieces
+        // alone.
         const units       = pieces + (area - covered);
-        const gangedFloor = (pieces > 0 && units > 0) ? pieces / units : 0;
+        const gangedFloor = (pieces > 0 && units > 0)
+            ? Math.min(1, (pieces + Math.min(pieces, area - covered)) / units)
+            : 0;
         const ganged          = gangedOf(l);
         const gangedEffective = Math.max(ganged, gangedFloor);
         const gangedRelief    = W_GANG * gangedEffective;

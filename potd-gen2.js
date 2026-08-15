@@ -615,6 +615,12 @@ const PotdGen2 = (() => {
     // piece packing instead of reverting to a panel roll (user report
     // 2026-08-15: "it reverts to a non-Mosaic type").
     let activeDesign = null;
+    // The most recent designed build's floor + gate count, and whether
+    // its solve has already been reported — the calibration payload
+    // (onBoardSolved) needs THIS build's numbers, since the same layout
+    // rolls a different floor every build.
+    let activeBuildStats = null;
+    let designSolveReported = false;
 
     // Gate count for a designed board, from GRID SIZE alone (user call
     // 2026-08-15: never a designer knob). Same curve live play derives —
@@ -667,6 +673,9 @@ const PotdGen2 = (() => {
             // throwing build must not leave next-puzzle clicks replaying
             // a design that never reached the screen.
             activeDesign = design;
+            activeBuildStats = { minMoves: placed.minMoves,
+                                 gatesPlaced: placed.gatesPlaced };
+            designSolveReported = false;
             loadIntoPlay({ maze: placed.maze, gates: placed.gates, roll: roll });
             return {
                 mazeMs: performance.now() - t0,
@@ -691,6 +700,62 @@ const PotdGen2 = (() => {
     function nextPuzzle() {
         if (activeDesign) { playDesign(activeDesign); return; }
         if (api.generateAndPlay) api.generateAndPlay();
+    }
+
+    // Difficulty-calibration telemetry (user call 2026-08-15): the
+    // formula in mosaic-library.js is a guess until measured, so every
+    // SOLVED test play of an authored layout posts the formula's inputs
+    // alongside what the solve actually took — moves above all (the
+    // more telling number), time second, hints/undos so assisted or
+    // thrashing solves can be filtered during analysis. game.js calls
+    // this on every live debug-mode win; everything that isn't a
+    // designed-mosaic solve no-ops here, and each build reports at most
+    // once (undoing past the win and re-winning is still one solve).
+    // Fire-and-forget: dev telemetry must never make a solve feel
+    // broken, so a missing API or failed POST is logged and dropped.
+    function onBoardSolved() {
+        if (!activeDesign || designSolveReported) return;
+        if (typeof Maze === 'undefined' || !Maze.mosaicMode || !Maze.won) return;
+        designSolveReported = true;
+        const rec = (typeof Game !== 'undefined') ? Game.recording : null;
+        const moves = (rec && Array.isArray(rec.moves)) ? rec.moves : [];
+        if (moves.length === 0) return;   // a zero-move "solve" calibrates nothing
+        const count = (t) => moves.filter((m) => m && m.type === t).length;
+        const d = (typeof MosaicLibrary !== 'undefined' && MosaicLibrary.difficulty)
+            ? MosaicLibrary.difficulty(activeDesign.layout) : null;
+        const payload = {
+            layoutCode: (typeof MosaicLibrary !== 'undefined' && MosaicLibrary.encode)
+                ? MosaicLibrary.encode(activeDesign.layout) : null,
+            pathCount: activeDesign.pathCount || 1,
+            // Headline prediction as queryable columns, full breakdown as
+            // JSON — the breakdown's shape can evolve with the formula
+            // without a migration.
+            score: d ? d.score : null,
+            tier:  d ? d.tier  : null,
+            difficulty: d,
+            minMoves:    activeBuildStats ? activeBuildStats.minMoves    : null,
+            gatesPlaced: activeBuildStats ? activeBuildStats.gatesPlaced : null,
+            moves: moves.length,
+            hintsUsed: count('hint'),
+            undos: count('undo'),
+            // First move → winning move, the recording's own anchor.
+            timeMs: moves[moves.length - 1].t | 0,
+            clientVersion: (typeof PAGE_VERSION === 'string') ? PAGE_VERSION : null,
+        };
+        const base = (typeof AppConfig === 'object' && AppConfig && AppConfig.GAME_API)
+            ? AppConfig.GAME_API : '';
+        if (!base || typeof fetch !== 'function') return;
+        try {
+            fetch(base + '/mosaic/solve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            }).catch(function (e) {
+                if (typeof Logger !== 'undefined') Logger.warn('mosaic solve telemetry failed', e);
+            });
+        } catch (e) {
+            if (typeof Logger !== 'undefined') Logger.warn('mosaic solve telemetry failed', e);
+        }
     }
 
     // Tumble the on-screen board away at the start of a dev-mode build,
@@ -924,8 +989,10 @@ const PotdGen2 = (() => {
             if (generating) return;
             generating = true;
             // An explicit roll is the player leaving the designed-mosaic
-            // loop — stop chaining the design on the next solve.
+            // loop — stop chaining the design on the next solve, and drop
+            // its build stats so a stray solve can't report stale numbers.
             activeDesign = null;
+            activeBuildStats = null;
             btn.disabled = true;
             // Drop the previous solve's win banner NOW, not when the build
             // lands — a big board can take ten seconds, and leaving "Path
@@ -1030,6 +1097,9 @@ const PotdGen2 = (() => {
         // layout. generateAndPlay breaks the loop.
         playDesign,
         nextPuzzle,
+        // Solve-calibration hook — game.js calls it on every live
+        // debug-mode win; no-ops unless a designed mosaic is active.
+        onBoardSolved,
         // Bounds + defaults, so the markup and the module can't drift
         // apart silently — index.html carries the same numbers and
         // syncDefaults() below asserts them onto the inputs at boot.

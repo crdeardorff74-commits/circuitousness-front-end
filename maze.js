@@ -5468,27 +5468,47 @@ const Maze = (() => {
         const frac = Math.max(twinCoverageFrac(),
                               mandatory.length / units);
         // Member count: the budget, floored at every mandatory piece —
-        // plus a partner pulled beyond the budget when one lone piece
-        // would otherwise have nobody to ring with (mandate outranks
-        // budget) — capped at what exists.
+        // and every piece brings at least ONE single partner with it,
+        // pulled beyond the budget when the knob sits at its floor
+        // (user call 2026-08-15, second revision — at the floor the
+        // budget used to select ONLY the pieces, which welded them to
+        // each other; see the ring-count comment below). Capped at what
+        // exists.
         let target = Math.round(units * frac);
-        target = Math.max(target, mandatory.length, Math.min(2, units));
+        target = Math.max(target,
+                          mandatory.length +
+                              Math.min(mandatory.length, singlesPool.length),
+                          Math.min(2, units));
         target = Math.min(target, units);
         const members = shuffle(mandatory)
             .concat(shuffle(singlesPool).slice(0, target - mandatory.length));
         if (members.length < 2) return;
-        // Ring count from the ladder size, bounded so every ring holds
-        // ≥2 members and colors never repeat. Members then DEAL
-        // round-robin — sizes differ by at most one, and every mandatory
-        // piece is guaranteed a ring, where the old twinGroupSizes
-        // chunking could truncate the tail on a rounding shortfall. (The
+        // ONE PIECE PER RING wherever possible: a piece's ring partners
+        // should be SINGLES, and two multi-cell pieces share a ring only
+        // when it is unavoidable — singles ran out, or 16 colors cannot
+        // give every piece its own ring. Two reasons beyond the visual:
+        //   • a ring scrambles on the INTERSECTION of its members'
+        //     allowed turn pools, and two terminal-carrying pieces can
+        //     intersect down to nearly {0} — the board arrives all but
+        //     solved (field report: a big-piece design presented as
+        //     good as won);
+        //   • two big shapes welded together collapse the board's
+        //     degrees of freedom far more than a piece plus loose
+        //     singles does.
+        // Mandatory pieces DEAL FIRST — i % ringCount lands the first M
+        // members in M distinct rings whenever ringCount ≥ M, and the
+        // inner max() forces ringCount up to M whenever the member count
+        // and palette allow. Sizes still differ by at most one, and
+        // every mandatory piece is guaranteed a ring, where the old
+        // twinGroupSizes chunking could truncate the tail. (The
         // mixed-size override — setTwinGroupSizeRange — deliberately
         // does not apply in mosaic mode: the mandate needs the dealing
         // guarantee more than that experiment needs mosaic.)
-        const ringCount = Math.max(1, Math.min(
-            TWIN_COLORS.length,
-            Math.floor(members.length / 2),
-            Math.round(members.length / mosaicTwinGroupSize(units))));
+        const maxRings = Math.min(TWIN_COLORS.length,
+                                  Math.floor(members.length / 2));
+        const ringCount = Math.max(1, Math.min(maxRings, Math.max(
+            Math.round(members.length / mosaicTwinGroupSize(units)),
+            Math.min(mandatory.length, maxRings))));
         const rings = Array.from({ length: ringCount }, () => []);
         members.forEach((gi, i) => { rings[i % ringCount].push(gi); });
         for (let i = 0; i < rings.length; i++) {

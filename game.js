@@ -892,6 +892,14 @@
                 } else {
                     banner.classList.add('visible');
                     if (replayBtn && recording && !isReplaying) replayBtn.hidden = false;
+                    // Designed-mosaic difficulty calibration: a LIVE debug
+                    // solve of an authored layout reports predicted-vs-
+                    // actual numbers. PotdGen2 guards on its own
+                    // activeDesign, so panel rolls and plain debug boards
+                    // no-op; replays are watching, not solving.
+                    if (!isReplaying && typeof PotdGen2 !== 'undefined' && PotdGen2.onBoardSolved) {
+                        PotdGen2.onBoardSolved();
+                    }
                     // Replay solve: mirror Marathon.onSolve / Potd.onSolve's
                     // celebratory cue without going through their scoring
                     // flows (which would re-submit to the server, etc.).

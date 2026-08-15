@@ -765,6 +765,12 @@ const MosaicEditor = (function () {
 
     // ── Test play ────────────────────────────────────────────────────────
 
+    // A healthy build needs at least this many twists per path
+    // (minSolveMoves prices lockstep rings as one motion, so this is
+    // deliberately conservative — the twin-free test fixtures floor at
+    // 9-47 while the degenerate boards this guards against floor at 1-3).
+    const MIN_HEALTHY_MOVES_PER_PATH = 4;
+
     // Build a real puzzle on the current layout and hand it to the game —
     // via PotdGen2.playDesign (2026-08-15), which owns the whole designed-
     // mosaic pipeline: worker build when one is available (main-thread
@@ -797,7 +803,28 @@ const MosaicEditor = (function () {
                 layout: layout,
                 pathCount: paths,
             });
-            close();
+            // NEAR-SOLVED GUARDRAIL (user call 2026-08-15): minSolveMoves
+            // is the "was this board born solved-ish" number — grouping
+            // plus size can leave a build needing only a twist or two
+            // (field report: a big-piece design presented as good as
+            // won). Below ~MIN_HEALTHY_MOVES_PER_PATH twists per path,
+            // hold the editor open with the warning instead of closing
+            // silently over a degenerate board; the board IS loaded and
+            // playable behind the panel, so Close still inspects it.
+            // One build is one sample — the same layout can build fine
+            // on the next press — which is why this warns rather than
+            // refuses, and it's the same check a submission gate would
+            // run server-side before admitting a player design.
+            const floorWarn = res && res.minMoves != null &&
+                              res.minMoves < MIN_HEALTHY_MOVES_PER_PATH * paths;
+            if (floorWarn) {
+                say('⚠ This build needs only ' + res.minMoves + ' move(s) to solve — ' +
+                    'near-solved for ' + paths + ' path(s) (healthy ≈ ' +
+                    (MIN_HEALTHY_MOVES_PER_PATH * paths) + '+). Rework the layout or ' +
+                    'Test again (each build varies); Close inspects this board.', true);
+            } else {
+                close();
+            }
             if (res && typeof Logger !== 'undefined') {
                 const stats = Maze.mosaicStats ? Maze.mosaicStats() : null;
                 Logger.info('[mosaic-editor] built in ' + Math.round(res.mazeMs) + 'ms' +
