@@ -1865,17 +1865,31 @@ const Render = (() => {
         // lattice point) and cell-centred for odd-sided ones, which is why
         // it comes from Maze rather than being derived here.
         if (Maze.mosaicMode && Maze.mosaicPivot) {
-            const pivot = Maze.mosaicPivot(r, c);
-            const cells = Maze.mosaicGroupCells(r, c);
-            if (pivot) {
-                rotationAnims.push({
-                    cx: originX + pivot.col * cellSize,
-                    cy: originY + pivot.row * cellSize,
-                    deltaRad, startTime, duration: ROTATION_ANIM_MS,
-                    keys: new Set(cells.map(([cr, cc]) => cr + ',' + cc))
-                });
-            } else {
-                pushTileAnim(r, c);
+            const pushPieceAnim = function (pr, pc) {
+                const pivot = Maze.mosaicPivot(pr, pc);
+                const cells = Maze.mosaicGroupCells(pr, pc);
+                if (pivot) {
+                    rotationAnims.push({
+                        cx: originX + pivot.col * cellSize,
+                        cy: originY + pivot.row * cellSize,
+                        deltaRad, startTime, duration: ROTATION_ANIM_MS,
+                        keys: new Set(cells.map(([cr, cc]) => cr + ',' + cc))
+                    });
+                } else {
+                    pushTileAnim(pr, pc);
+                }
+            };
+            pushPieceAnim(r, c);
+            // Every other PIECE in the gang spins in lockstep, each around
+            // its own pivot — same convention as the quad and singular
+            // branches below (user report 2026-08-15: the data moved in
+            // lockstep but only the clicked piece animated; partners
+            // snapped). twinPartnerCells is ring-aware from any cell of a
+            // piece (its anchor is the piece's cells[0] — see maze.js
+            // twinAnchorKey), so each returned cell identifies a partner
+            // piece for its own pivot lookup.
+            for (const [pr, pc] of Maze.twinPartnerCells(r, c)) {
+                pushPieceAnim(pr, pc);
             }
         } else if (Maze.quadMode) {
             const qr0 = Math.floor(r / 2) * 2;
