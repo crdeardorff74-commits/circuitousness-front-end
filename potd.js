@@ -1929,6 +1929,20 @@ const Potd = (() => {
                 // moves array (vs marathon's full-recording objects),
                 // so musicEvents rides as a separate top-level field.
                 musicEvents: recording ? recording.musicEvents : null,
+                // Orientation the moves were recorded in. Canonical PotD
+                // boards are generated LANDSCAPE (potd-gen2's rollParams
+                // orders the axes), so a portrait-taller initialState can
+                // only mean the portrait presentation rotated the board —
+                // and therefore that every recorded coordinate is in
+                // ROTATED space. Replay (marathon.js startPotdReplay)
+                // reads this to rotate its canonical snapshot the same
+                // way before applying the moves; without it a portrait
+                // player's replay twists the wrong tiles (sister-reported,
+                // 2026-08-15). Derived from the recording rather than
+                // tracked as live state so it survives quit/resume for
+                // free — restoreRecording keeps the original initialState.
+                rotated: !!(recording && recording.initialState &&
+                            recording.initialState.rows > recording.initialState.cols),
                 name: submittedName,
                 clientVersion: (typeof PAGE_VERSION === 'string') ? PAGE_VERSION : null,
             });

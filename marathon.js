@@ -3520,6 +3520,29 @@ const Marathon = (() => {
         await startReplayWithEvents(events, data.name || '');
     }
 
+    // Did a PotD recording's moves happen on a portrait-ROTATED board?
+    // Inference for legacy scores that predate the explicit `rotated`
+    // flag (2026-08-15) and only stored moves: the canonical board is
+    // landscape (rows < cols), the rotated presentation is its
+    // transpose, and a row index at or beyond the canonical row count
+    // is only addressable on the rotated board. Scanning stops at the
+    // first rotateBoard penalty move — dims swap there, so later
+    // coordinates say nothing about the STARTING orientation
+    // (flipBoard keeps dims and doesn't stop the scan). A recording
+    // that never touches the lower rows is undetectable and replays
+    // unrotated — vanishingly rare for a real solve, which sweeps most
+    // of the board. Exposed on the public object for the test suite
+    // (tests/potd-replay-rotation-test.js).
+    function potdMovesLookRotated(snap, moves) {
+        if (!snap || !(snap.rows < snap.cols) || !Array.isArray(moves)) return false;
+        for (const m of moves) {
+            if (!m) continue;
+            if (m.type === 'rotateBoard') break;
+            if (typeof m.r === 'number' && m.r >= snap.rows) return true;
+        }
+        return false;
+    }
+
     // PotD-board Watch buttons route here. Different from marathon's
     // /api/scores/<id>/recording in shape: marathon submits `events` as
     // an ARRAY OF FULL RECORDINGS (one per puzzle in the run), while
@@ -3579,11 +3602,49 @@ const Marathon = (() => {
         const pathCount = parseInt(slot[1], 10) || 1;
         const moves       = Array.isArray(rec.events)       ? rec.events       : [];
         const musicEvents = Array.isArray(rec.musicEvents)  ? rec.musicEvents  : [];
+
+        // ORIENTATION. The server's snapshot is canonical (landscape),
+        // but a portrait player's client rotated the board 90° CW
+        // before play (potd.js's portrait presentation) and recorded
+        // every move in THAT space — replaying those moves against the
+        // canonical snapshot twists the wrong tiles (sister-reported,
+        // 2026-08-15). Newer scores say so via the submitted `rotated`
+        // flag; older rows return null and fall back to the coordinate
+        // heuristic. When rotated, rebuild the board the player
+        // actually saw by running the exact presentation pipeline
+        // potd.js ran live — load canonical, apply the same CW board
+        // rotation — then snapshot THAT as the replay's initial state.
+        // Rotating the snapshot (rather than remapping move
+        // coordinates) sidesteps mid-play rotateBoard/flipBoard
+        // penalty moves, which change dims partway through a
+        // recording. The live Maze is fair game as scratch space here:
+        // playOneRecording loads its own snapshot over it immediately.
+        const rotated = (typeof rec.rotated === 'boolean')
+            ? rec.rotated
+            : potdMovesLookRotated(puzzle.snapshot.maze, moves);
+        let initialState = puzzle.snapshot.maze;
+        let gates        = puzzle.snapshot.gates || null;
+        if (rotated && typeof Game !== 'undefined' && Game.applyBoardRotation &&
+            typeof Maze !== 'undefined' && Maze.loadSnapshot && Maze.snapshotState) {
+            Maze.setQuadMode(quadMode);
+            Maze.setPathCount(pathCount);
+            Maze.loadSnapshot(JSON.parse(JSON.stringify(initialState)));
+            if (gates && typeof Gates !== 'undefined' && Gates.restore) {
+                Gates.restore(gates);
+                if (Maze.recompute) Maze.recompute();
+            } else if (typeof Gates !== 'undefined' && Gates.clear) {
+                Gates.clear();
+            }
+            Game.applyBoardRotation(false);
+            initialState = Maze.snapshotState();
+            gates = (typeof Gates !== 'undefined' && Gates.snapshot) ? Gates.snapshot() : null;
+        }
+
         const reconstructed = {
             quadMode:     quadMode,
             pathCount:    pathCount,
-            initialState: puzzle.snapshot.maze,
-            gates:        puzzle.snapshot.gates || null,
+            initialState: initialState,
+            gates:        gates,
             moves:        moves,
             // Music events ride alongside moves so the watcher hears
             // the same songs the original player heard. PotD's submit
@@ -3704,5 +3765,9 @@ const Marathon = (() => {
              getLevel: () => level,
              // Zen (untimed, no leaderboard) vs Marathon. Read by game.js
              // to hold gates back on a Zen run's opening puzzles.
-             isZenRun: () => isPractice };
+             isZenRun: () => isPractice,
+             // Legacy-recording orientation inference — exposed ONLY for
+             // tests/potd-replay-rotation-test.js; no runtime caller
+             // outside startPotdReplay.
+             potdMovesLookRotated };
 })();
