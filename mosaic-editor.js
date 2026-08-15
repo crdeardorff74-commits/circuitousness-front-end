@@ -741,13 +741,15 @@ const MosaicEditor = (function () {
         syncSliderReadouts();
     }
 
-    // The sliders' value readouts (rows / cols / ganged %). Called from
-    // every path that can move a slider — live 'input' ticks, loadLayout
-    // and setDims writing values back, and renderStats' floor bump.
+    // The sliders' value readouts (rows / cols / ganged % / test paths).
+    // Called from every path that can move a slider — live 'input' ticks,
+    // loadLayout and setDims writing values back, and renderStats' floor
+    // bump.
     function syncSliderReadouts() {
         if (els.rowsVal  && els.rows)  els.rowsVal.textContent  = els.rows.value;
         if (els.colsVal  && els.cols)  els.colsVal.textContent  = els.cols.value;
         if (els.twinsVal && els.twins) els.twinsVal.textContent = els.twins.value;
+        if (els.pathsVal && els.paths) els.pathsVal.textContent = els.paths.value;
     }
 
     function say(msg, bad) {
@@ -847,7 +849,8 @@ const MosaicEditor = (function () {
             warn: $('meWarn'), msg: $('meMsg'), list: $('meList'),
             rows: $('meRows'), cols: $('meCols'), paths: $('mePaths'),
             twins: $('meTwins'),
-            rowsVal: $('meRowsVal'), colsVal: $('meColsVal'), twinsVal: $('meTwinsVal'),
+            rowsVal: $('meRowsVal'), colsVal: $('meColsVal'),
+            twinsVal: $('meTwinsVal'), pathsVal: $('mePathsVal'),
             name: $('meName'), author: $('meAuthor'),
             io: $('meIO'), test: $('meTestBtn'), ghost: null
         };
@@ -877,6 +880,9 @@ const MosaicEditor = (function () {
         // designer drags the slider. renderStats also re-syncs the value
         // readouts, covering its own floor-bump of the slider.
         if (els.twins) els.twins.addEventListener('input', renderStats);
+        // Test paths only feeds the next build — nothing to re-rank,
+        // just the readout to keep in step with the thumb.
+        if (els.paths) els.paths.addEventListener('input', syncSliderReadouts);
 
         const bind = (id, fn) => { const b = $(id); if (b) b.addEventListener('click', fn); };
         bind('meOpenBtn',   openEditor);   // the debug panel's entry point

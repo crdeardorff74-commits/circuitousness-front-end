@@ -1413,12 +1413,8 @@
                     <button type="button" id="meNewBtn" title="Clear and detach from the saved entry, so the next Save creates a new one">New</button>
                 </div>
                 <label class="mePathPick">Test paths
-                    <select id="mePaths">
-                        <option value="1" selected>1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                    </select>
+                    <input type="range" id="mePaths" min="1" max="4" step="1" value="1">
+                    <span class="meSliderVal" id="mePathsVal">1</span>
                 </label>
                 <!-- Gang coverage: every multi-cell PIECE is a mandatory
                      gang member (the colored fill is what makes a complex
