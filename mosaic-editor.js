@@ -707,62 +707,51 @@ const MosaicEditor = (function () {
 
     // ── Test play ────────────────────────────────────────────────────────
 
-    // Build a real puzzle on the current layout and hand it to the game.
-    //
-    // On the MAIN THREAD, unlike the PotD panel's generator, which owns a
-    // worker this module has no access to. Maze.init yields to the browser
-    // between attempts so the page stays responsive; a big dense board will
-    // still take a few seconds. Acceptable for a dev tool, and the button
-    // disables itself so a second press can't queue a competing build.
+    // Build a real puzzle on the current layout and hand it to the game —
+    // via PotdGen2.playDesign (2026-08-15), which owns the whole designed-
+    // mosaic pipeline: worker build when one is available (main-thread
+    // fallback otherwise), twin rings at the requested piece coverage,
+    // gate placement, and the ACTIVE-DESIGN loop — solving the board and
+    // clicking for a new puzzle regenerates this same layout instead of
+    // reverting to a panel roll. The button disables itself so a second
+    // press can't queue a competing build.
     async function testPlay() {
         if (building) return;
         const layout = currentLayout();
         const check = MosaicLibrary.validate(layout);
         if (!check.ok) { say('Cannot build: ' + check.errors.join('; '), true); return; }
+        if (typeof PotdGen2 === 'undefined' || !PotdGen2.playDesign) {
+            say('PotdGen2.playDesign unavailable', true);
+            return;
+        }
 
         building = true;
         if (els.test) els.test.disabled = true;
         say('Building…');
         const paths = els.paths ? (parseInt(els.paths.value, 10) || 1) : 1;
+        // Twins as a 0..1 piece fraction (blank/garbage → the default 30%
+        // via null); gates as a target count (blank → none).
+        const twinsPct = els.twins ? parseInt(els.twins.value, 10) : NaN;
+        const gates    = els.gates ? (parseInt(els.gates.value, 10) || 0) : 0;
 
         try {
-            // Order matters: quad FIRST, mosaic SECOND (setQuadMode clears
-            // mosaic — see maze.js). Then the layout, then the dimensions it
-            // was designed for, which buildMosaicLayout checks against.
-            Maze.setQuadMode(false);
-            Maze.setMosaicMode(true);
-            Maze.setMosaicLayout(layout);
-            Maze.setPathCount(paths);
-            // Neutralise whatever the PotD tuning panel last left set, so a
-            // test build measures the layout rather than the other panel.
-            if (Maze.setTwinCoverageTarget) Maze.setTwinCoverageTarget(null);
-            if (Maze.setTwinGroupSizeRange) Maze.setTwinGroupSizeRange(null, null);
-            if (Maze.setTwinCoverageScale)  Maze.setTwinCoverageScale(1);
-            Maze.setDimensions(layout.rows, layout.cols);
-
-            const t0 = performance.now();
-            await Maze.init();
-            const snap = Maze.snapshotState();
-            const ms = performance.now() - t0;
-
-            // Clear it immediately: the live Maze is shared with Marathon,
-            // PotD and the debug generator, and none of them would expect to
-            // inherit a designed layout.
-            Maze.setMosaicLayout(null);
-
-            const stats = Maze.mosaicStats ? Maze.mosaicStats() : null;
-            close();
-            PotdGen2.loadIntoPlay({
-                maze: snap,
-                gates: null,
-                roll: { quadMode: false, mosaicMode: true, pathCount: paths }
+            const res = await PotdGen2.playDesign({
+                layout: layout,
+                pathCount: paths,
+                gateTarget: Math.max(0, gates),
+                twinCoverage: isFinite(twinsPct)
+                    ? Math.min(1, Math.max(0, twinsPct / 100)) : null,
             });
-            if (typeof Logger !== 'undefined') {
-                Logger.info('[mosaic-editor] built in ' + Math.round(ms) + 'ms' +
-                            (stats ? ' — ' + stats.pieces + ' pieces, ' + stats.dissolved + ' dissolved' : ''));
+            close();
+            if (res && typeof Logger !== 'undefined') {
+                const stats = Maze.mosaicStats ? Maze.mosaicStats() : null;
+                Logger.info('[mosaic-editor] built in ' + Math.round(res.mazeMs) + 'ms' +
+                            (stats ? ' — ' + stats.pieces + ' pieces, ' + stats.dissolved + ' dissolved' : '') +
+                            (res.twins ? ' — ganged ' + res.twins.groups + ' rings' : '') +
+                            ' — gates ' + res.gatesPlaced +
+                            (res.minMoves != null ? ' — ' + res.minMoves + ' moves' : ''));
             }
         } catch (err) {
-            Maze.setMosaicLayout(null);
             say('Build failed: ' + ((err && err.message) ? err.message : err), true);
             if (typeof Logger !== 'undefined') Logger.warn('[mosaic-editor] build failed', err);
         } finally {
@@ -804,6 +793,7 @@ const MosaicEditor = (function () {
             palette: $('mePalette'), stats: $('meStats'), score: $('meScore'),
             warn: $('meWarn'), msg: $('meMsg'), list: $('meList'),
             rows: $('meRows'), cols: $('meCols'), paths: $('mePaths'),
+            twins: $('meTwins'), gates: $('meGates'),
             name: $('meName'), author: $('meAuthor'),
             io: $('meIO'), test: $('meTestBtn'), ghost: null
         };

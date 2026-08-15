@@ -9,7 +9,20 @@ Read `NOTES.md` (in this folder) at the start of every session. It's the running
 `PROJECT_NAME` is defined in `config.js` (currently `'Circuitousness'`). Change it
 there to rename the project — every other file references it.
 
-## Input support — keyboard + touch, NO gamepad (deliberate)
+## Terminology — "ganged" in player copy, `twin` in code (deliberate split)
+(Renamed 2026-08-15, user call.) The lockstep-rotation mechanic is called
+**"ganged"** in every player-facing string — the electronics term for
+controls mechanically coupled so operating one operates all, chosen because
+groups grew past two members and "twins" stopped fitting. Each locale uses
+its natural coupled/linked-motion term (es/pt acopladas, fr couplées,
+de/nl gekoppelt, it accoppiate, pl sprzężone, ru сцепленные, tr bağlı,
+ar مترابطة, hi जुड़ी, ja 連動, ko 연동, zh 联动).
+
+**Code and data keep `twin`** — `_twin` is a wire format baked into every
+stored snapshot and server-side recording, and identifiers
+(`assignTwins`, `TWIN_COVERAGE`, i18n KEY names like `tooltip.twinTiles`,
+element ids like `pg2TwinMin`/`meTwins`) follow it. Do not rename those;
+do not let "twin" back into player-facing copy.
 Recorded per universal rule b, which was softened 2026-08-07 to make gamepad
 optional. Circuitousness ships keyboard and touch only, and that is a decision,
 not an unfinished task: the game is grid-cursor navigation against a clock, so a

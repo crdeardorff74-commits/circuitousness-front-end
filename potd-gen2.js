@@ -384,6 +384,10 @@ const PotdGen2 = (() => {
                 rows: roll.rows, cols: roll.cols,
                 pathCount: roll.pathCount, quadMode: roll.quadMode,
                 mosaicMode: roll.mosaicMode,
+                // Authored layout for designed-mosaic builds (playDesign);
+                // null/undefined = the random packer, as before. The worker
+                // already accepts this field (maze-worker.js).
+                mosaicLayout: roll.mosaicLayout || null,
                 twinCoverage: roll.twinCoverage,   // absolute override
                 twinGroupMin: roll.twinGroupMin,
                 twinGroupMax: roll.twinGroupMax,
@@ -403,6 +407,49 @@ const PotdGen2 = (() => {
     // Quad rings are keyed by each member quad's top-left sub-tile, so the
     // walk steps by 2 there and each member counts as 4 sub-tiles.
     function twinStats() {
+        // Mosaic: the PIECE is the twin unit and every cell of a coupled
+        // piece carries the shared _twin, so the per-cell walk below would
+        // start "rings" from non-anchor cells and never close them. Walk
+        // the anchor cycle instead: partner pointers only ever name
+        // anchors, so the set of partner values IS the anchor set; each
+        // unvisited anchor starts one ring, sized in pieces. Coupled-cell
+        // coverage is just the _twin-carrying cell count.
+        if (Maze.mosaicMode) {
+            const anchors = new Set();
+            let coupledCells = 0;
+            for (let r = 0; r < Maze.ROWS; r++) {
+                for (let c = 0; c < Maze.COLS; c++) {
+                    const t = Maze.grid[r] && Maze.grid[r][c];
+                    if (!t || !t._twin) continue;
+                    coupledCells++;
+                    anchors.add(String(t._twin.partner));
+                }
+            }
+            const seenA = new Set();
+            const ringSizes = [];
+            for (const a of anchors) {
+                if (seenA.has(a)) continue;
+                let ring = 0;
+                let cur = a;
+                for (let guard = 0; guard < 4096; guard++) {
+                    if (seenA.has(cur)) break;
+                    seenA.add(cur);
+                    ring++;
+                    const p = cur.split(',');
+                    const t = Maze.grid[+p[0]] && Maze.grid[+p[0]][+p[1]];
+                    if (!t || !t._twin) break;
+                    cur = String(t._twin.partner);
+                    if (cur === a) break;
+                }
+                ringSizes.push(ring);
+            }
+            return {
+                groups: ringSizes.length,
+                min: ringSizes.length ? Math.min.apply(null, ringSizes) : 0,
+                max: ringSizes.length ? Math.max.apply(null, ringSizes) : 0,
+                coverage: coupledCells / (Maze.ROWS * Maze.COLS),
+            };
+        }
         const quad = !!Maze.quadMode;
         const step = quad ? 2 : 1;
         const seen = new Set();
@@ -516,6 +563,11 @@ const PotdGen2 = (() => {
     async function buildOnMain(roll) {
         Maze.setQuadMode(roll.quadMode);
         if (Maze.setMosaicMode) Maze.setMosaicMode(roll.mosaicMode);
+        // Set per job like the coverage knobs — this Maze is the live
+        // game's and outlives any one build, so a stale layout from a
+        // previous designed build would silently ship on a random roll
+        // (see setMosaicLayout's comment in maze.js).
+        if (Maze.setMosaicLayout) Maze.setMosaicLayout(roll.mosaicLayout || null);
         Maze.setPathCount(roll.pathCount);
         if (Maze.setTwinCoverageTarget) Maze.setTwinCoverageTarget(roll.twinCoverage);
         if (Maze.setTwinGroupSizeRange) {
@@ -528,6 +580,7 @@ const PotdGen2 = (() => {
         } finally {
             if (Maze.setTwinCoverageTarget) Maze.setTwinCoverageTarget(null);
             if (Maze.setTwinGroupSizeRange) Maze.setTwinGroupSizeRange(null, null);
+            if (Maze.setMosaicLayout)      Maze.setMosaicLayout(null);
         }
     }
 
@@ -550,6 +603,76 @@ const PotdGen2 = (() => {
             twins: placed.twins,
             mazeMs: t1 - t0, gatesMs: t2 - t1, totalMs: t2 - t0,
         };
+    }
+
+    // ── Designed-layout play (mosaic editor hand-off) ─────────────────
+    // The design the player is currently playing, or null. Set by
+    // playDesign (the editor's Test Play routes through it), cleared by
+    // generateAndPlay — an explicit panel roll means leaving the design.
+    // nextPuzzle (the win-banner click / N key, via game.js's
+    // nextDebugPuzzle) regenerates the SAME design while one is active,
+    // so solving a designed mosaic chains into a fresh maze on the same
+    // piece packing instead of reverting to a panel roll (user report
+    // 2026-08-15: "it reverts to a non-Mosaic type").
+    let activeDesign = null;
+
+    // Build and play one puzzle on an authored mosaic layout.
+    //   design = { layout,                 // mosaic-library.js format
+    //              pathCount,              // 1-4
+    //              gateTarget,             // 0 = no gates
+    //              twinCoverage }          // 0..1 piece fraction, or null
+    //                                      // for the default 30%
+    // Runs the same worker-or-main build + gate placement pipeline as a
+    // panel roll — the layout rides the roll object into both build paths
+    // and placeGates already handles mosaic's un-scramble dance. Resolves
+    // to the placeGates stats for the caller's logging.
+    async function playDesign(design) {
+        if (generating) return null;
+        generating = true;
+        try {
+            if (typeof Game !== 'undefined' && Game.clearWinBanner) Game.clearWinBanner();
+            const roll = {
+                rows: design.layout.rows, cols: design.layout.cols,
+                pathCount: design.pathCount || 1,
+                quadMode: false, mosaicMode: true,
+                mosaicLayout: design.layout,
+                // Resolved to an ABSOLUTE coverage here rather than left
+                // null: null would fall through to TWIN_COVERAGE × the
+                // ramp scale, and on the main-thread build path that
+                // scale is the live Maze's — whatever Marathon last set,
+                // possibly 0 (twin-free early-run levels). 0.30 mirrors
+                // maze.js's TWIN_COVERAGE default.
+                twinCoverage: (typeof design.twinCoverage === 'number')
+                    ? design.twinCoverage : 0.30,
+                twinGroupMin: null, twinGroupMax: null,
+                gateTarget: design.gateTarget | 0,
+            };
+            const t0 = performance.now();
+            const mazeSnap = ensureWorker()
+                ? await requestWorkerMaze(roll)
+                : await buildOnMain(roll);
+            const placed = placeGates(mazeSnap, roll);
+            // Remember the design ONLY once a build has succeeded — a
+            // throwing build must not leave next-puzzle clicks replaying
+            // a design that never reached the screen.
+            activeDesign = design;
+            loadIntoPlay({ maze: placed.maze, gates: placed.gates, roll: roll });
+            return {
+                mazeMs: performance.now() - t0,
+                gatesPlaced: placed.gatesPlaced,
+                minMoves: placed.minMoves,
+                twins: placed.twins,
+            };
+        } finally {
+            generating = false;
+        }
+    }
+
+    // The debug next-puzzle action (win banner / N key). Chains the
+    // active design when there is one; otherwise a fresh panel roll.
+    function nextPuzzle() {
+        if (activeDesign) { playDesign(activeDesign); return; }
+        if (api.generateAndPlay) api.generateAndPlay();
     }
 
     // Is the viewport taller than it is wide? Portrait players get the
@@ -759,6 +882,9 @@ const PotdGen2 = (() => {
         async function generateAndPlay() {
             if (generating) return;
             generating = true;
+            // An explicit roll is the player leaving the designed-mosaic
+            // loop — stop chaining the design on the next solve.
+            activeDesign = null;
             btn.disabled = true;
             // Drop the previous solve's win banner NOW, not when the build
             // lands — a big board can take ten seconds, and leaving "Path
@@ -801,7 +927,7 @@ const PotdGen2 = (() => {
                         // 16-colour group cap binds; seeing both is the
                         // only way to tell a coverage setting that took
                         // from one that was quietly unreachable.
-                        ' · twins ' + Math.round(r.twinCoverage * 100) + '%' +
+                        ' · ganged ' + Math.round(r.twinCoverage * 100) + '%' +
                         (res.twins
                             ? '→' + Math.round(res.twins.coverage * 100) + '%' +
                               ' (' + res.twins.groups + ' grps ' +
@@ -850,6 +976,12 @@ const PotdGen2 = (() => {
         defaultParams,
         isPortrait,
         initDebugUI,
+        // Designed-mosaic play loop: the editor starts it (playDesign),
+        // game.js's debug advance routes through it (nextPuzzle) so a
+        // solved designed board chains into a fresh maze on the same
+        // layout. generateAndPlay breaks the loop.
+        playDesign,
+        nextPuzzle,
         // Bounds + defaults, so the markup and the module can't drift
         // apart silently — index.html carries the same numbers and
         // syncDefaults() below asserts them onto the inputs at boot.

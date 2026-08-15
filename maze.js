@@ -287,8 +287,23 @@ const Maze = (() => {
 
     // Anchor key for a cell: itself in singular mode, its quad's top-left
     // sub-tile in quad mode (where all 4 sub-tiles share one _twin whose
-    // partner names the next quad's top-left).
+    // partner names the next quad's top-left), its PIECE's first cell in
+    // mosaic mode (where every cell of a grouped piece shares one _twin
+    // whose partner names the next piece's cells[0]). cells[0] rather
+    // than the bounding-box corner (r0,c0) because a piece with a hollow
+    // corner — a plus sign, say — has no tile AT its bounding-box corner;
+    // cells[0] is always a real cell, is stable under piece rotation
+    // (shapes map onto their own footprint), and remaps positionally
+    // through the board penalties (remapMosaic maps g.cells in order with
+    // the same cell map that rewrites each tile's partner key).
     function twinAnchorKey(row, col) {
+        if (mosaicMode && mosaicIdx) {
+            const gi = mosaicGroupIndex(row, col);
+            if (gi >= 0) {
+                const a = mosaicGroups[gi].cells[0];
+                return a[0] + ',' + a[1];
+            }
+        }
         return quadMode
             ? ((row >> 1) * 2) + ',' + ((col >> 1) * 2)
             : row + ',' + col;
@@ -337,6 +352,25 @@ const Maze = (() => {
     // Every quad-turn site needs this to keep a group in lockstep.
     function quadTwinPartners(qr, qc) {
         return twinPartnerCells(qr * 2, qc * 2).map(([pr, pc]) => [pr / 2, pc / 2]);
+    }
+    // Mosaic counterpart: partner PIECE indices for the piece gi belongs
+    // to — [] when the piece is untwinned. The ring is walked from the
+    // piece's anchor cell (see twinAnchorKey); each hop lands on a
+    // partner piece's anchor and maps back to its group index. Every
+    // mosaic turn site needs this for the same lockstep reason as quad.
+    function mosaicTwinPartnerGroups(gi) {
+        if (gi < 0 || !mosaicGroups || !mosaicGroups[gi]) return [];
+        const a = mosaicGroups[gi].cells[0];
+        const out = [];
+        for (const [r, c] of twinPartnerCells(a[0], a[1])) {
+            const pgi = mosaicGroupIndex(r, c);
+            if (pgi >= 0 && pgi !== gi) out.push(pgi);
+        }
+        return out;
+    }
+    // The whole ring, self first — the shape every lockstep loop wants.
+    function mosaicTwinRing(gi) {
+        return [gi].concat(mosaicTwinPartnerGroups(gi));
     }
 
     const BASE_CONNECTIONS = {
@@ -2320,10 +2354,13 @@ const Maze = (() => {
 
         // Mosaic mode. Same strict retry contract as quad — the requested
         // path count is a hard promise, so keep building at these dims until
-        // it is met — and the same reason for skipping canonical-uniqueness
-        // and twins: both assume tiles rotate independently, which is false
-        // once cells are grouped. Checked BEFORE quadMode so the two can
-        // never both fire; callers are expected to set only one.
+        // it is met — and the same reason for skipping canonical-uniqueness:
+        // it assumes tiles rotate independently, which is false once cells
+        // are grouped. Twins DO exist here (2026-08-15): whole pieces
+        // couple into lockstep rings, assigned inside scrambleMosaic after
+        // the dissolve pass — see assignMosaicTwins. Checked BEFORE
+        // quadMode so the two can never both fire; callers are expected to
+        // set only one.
         if (mosaicMode) {
             let bestSnapshot = null;
             let bestCount = 0;
@@ -2975,7 +3012,10 @@ const Maze = (() => {
     //
     // Walks the piece through all four offsets and compares each against the
     // solved one; the four turns leave the grid and the offset untouched.
-    function mosaicGroupMinTurns(gi) {
+    // Returns the SET of CW turn counts (from the current state) that leave
+    // the piece port-identical to solved — (4 − offset) & 3 is always in it,
+    // so the set is never empty.
+    function mosaicGroupEquivalentTurns(gi) {
         const g = mosaicGroups[gi];
         const scramble = g.scramble;
         const masks = [];
@@ -2984,16 +3024,23 @@ const Maze = (() => {
             rotateMosaicGroup(gi, false);
         }
         // masks[i] is how the piece reads after i CW turns from where it
-        // stands now; solved is (4 − offset) turns away, so that entry always
-        // matches and `best` is always assigned.
+        // stands now; solved is (4 − offset) turns away, so that entry
+        // always matches and the set is always non-empty.
         const solved = masks[(4 - scramble) & 3];
-        let best = 4;
+        const ok = [];
         for (let i = 0; i < 4; i++) {
             let same = true;
             for (let j = 0; j < solved.length; j++) {
                 if (masks[i][j] !== solved[j]) { same = false; break; }
             }
-            if (same) best = Math.min(best, Math.min(i, 4 - i));
+            if (same) ok.push(i);
+        }
+        return ok;
+    }
+    function mosaicGroupMinTurns(gi) {
+        let best = 4;
+        for (const i of mosaicGroupEquivalentTurns(gi)) {
+            best = Math.min(best, Math.min(i, 4 - i));
         }
         return best;
     }
@@ -3001,18 +3048,38 @@ const Maze = (() => {
     // Mosaic arm of minSolveMoves. Pieces holding only filler are never worth
     // touching — nothing lit runs through them — so only pieces carrying part
     // of a solution are priced, each at its cheapest equivalent orientation.
+    //
+    // A twin RING prices as ONE motion: its members only ever rotate
+    // together, so the perfect solver pays the cheapest lockstep turn
+    // count that lands EVERY path-carrying member on a solved-equivalent
+    // reading simultaneously — the intersection of their equivalence
+    // sets. Same-turns scrambling keeps offsets equal, so the shared
+    // solved index is in every set and the intersection is never empty.
+    // Filler-only members ride along free, exactly like singular fillers.
     function mosaicMinMoves() {
         let total = 0;
+        const priced = new Set();
         for (let gi = 0; gi < mosaicGroups.length; gi++) {
-            const g = mosaicGroups[gi];
-            if (g.scramble === 0) continue;
-            let carriesPath = false;
-            for (const [r, c] of g.cells) {
-                const t = grid[r] && grid[r][c];
-                if (t && t._solution !== undefined) { carriesPath = true; break; }
+            if (priced.has(gi)) continue;
+            const ring = mosaicTwinRing(gi);
+            ring.forEach((mgi) => priced.add(mgi));
+            let sets = null;
+            for (const mgi of ring) {
+                const g = mosaicGroups[mgi];
+                if (g.scramble === 0) continue;
+                let carriesPath = false;
+                for (const [r, c] of g.cells) {
+                    const t = grid[r] && grid[r][c];
+                    if (t && t._solution !== undefined) { carriesPath = true; break; }
+                }
+                if (!carriesPath) continue;
+                const eq = new Set(mosaicGroupEquivalentTurns(mgi));
+                sets = sets === null ? eq : new Set([...sets].filter((i) => eq.has(i)));
             }
-            if (!carriesPath) continue;
-            total += mosaicGroupMinTurns(gi);
+            if (sets === null) continue;   // nothing path-carrying and mis-rotated
+            let best = 4;
+            for (const i of sets) best = Math.min(best, Math.min(i, 4 - i));
+            total += best;
         }
         return total;
     }
@@ -3322,15 +3389,25 @@ const Maze = (() => {
                 const quota = Math.min(n, Math.max(2, Math.ceil(n * MIN_PATH_SCRAMBLE_FRACTION)));
                 let need = quota - (n - untouched.length);
                 if (need <= 0) continue;
+                const ringTouched = new Set();
                 for (const gi of shuffle(untouched)) {
                     if (need <= 0) break;
-                    // 1-3 turns, honouring the terminal-lit rule. A group
-                    // with no qualifying turn is skipped WITHOUT counting
-                    // against the quota — same convention as quad.
-                    const pool = allowedMosaicTurns(gi).filter((t) => t !== 0);
+                    // A ring partner already turned this pass — turning
+                    // this piece again through its ring would double-move
+                    // the partner. It's no longer at scramble 0 anyway.
+                    if (ringTouched.has(gi)) continue;
+                    // 1-3 turns, honouring the terminal-lit rule across
+                    // the WHOLE twin ring (lockstep moves every member).
+                    // A group with no qualifying turn is skipped WITHOUT
+                    // counting against the quota — same convention as quad.
+                    const ring = mosaicTwinRing(gi);
+                    const pool = allowedMosaicRingTurns(ring).filter((t) => t !== 0);
                     if (pool.length === 0) continue;
                     const turns = pool[Math.floor(Math.random() * pool.length)];
-                    for (let t = 0; t < turns; t++) rotateMosaicGroup(gi, false);
+                    for (const mgi of ring) {
+                        for (let t = 0; t < turns; t++) rotateMosaicGroup(mgi, false);
+                        ringTouched.add(mgi);
+                    }
                     need--;
                 }
             }
@@ -3602,16 +3679,20 @@ const Maze = (() => {
             if (cells.length === 0) return; // nothing safe to touch — ship as-is
             const cell = cells[Math.floor(Math.random() * cells.length)];
             if (mosaicMode && mosaicIdx) {
-                // 1-3 extra turns on the piece containing the cell. Endpoint
-                // pieces honour the terminal-lit rule; a piece with no
-                // qualifying turn is left alone and the next iteration picks
-                // a different cell.
+                // 1-3 extra turns on the piece containing the cell — the
+                // whole twin ring in lockstep (mirrors the quad branch
+                // below). Endpoint pieces honour the terminal-lit rule
+                // ring-wide; a ring with no qualifying turn is left alone
+                // and the next iteration picks a different cell.
                 const gi = mosaicGroupIndex(cell.row, cell.col);
                 if (gi < 0) continue;
-                const pool = allowedMosaicTurns(gi).filter((t) => t !== 0);
+                const ring = mosaicTwinRing(gi);
+                const pool = allowedMosaicRingTurns(ring).filter((t) => t !== 0);
                 if (pool.length === 0) continue;
                 const turns = pool[Math.floor(Math.random() * pool.length)];
-                for (let i = 0; i < turns; i++) rotateMosaicGroup(gi, false);
+                for (const mgi of ring) {
+                    for (let i = 0; i < turns; i++) rotateMosaicGroup(mgi, false);
+                }
             } else if (quadMode && quadScramble) {
                 // 1-3 extra turns on the quad containing the cell, the
                 // whole twin group in lockstep (mirrors scrambleQuads).
@@ -4209,6 +4290,20 @@ const Maze = (() => {
         return ok.length ? ok : [0];
     }
 
+    // Turn counts a whole TWIN RING may take together: the intersection
+    // of every member piece's allowed pool, since a lockstep turn moves
+    // all of them at once and each member's terminal-lit rule must hold.
+    // 0 is in every member's pool, so the intersection is never empty in
+    // practice; the [0] fallback is the same belt-and-braces as above.
+    function allowedMosaicRingTurns(ring) {
+        let pool = allowedMosaicTurns(ring[0]);
+        for (let i = 1; i < ring.length; i++) {
+            const s = new Set(allowedMosaicTurns(ring[i]));
+            pool = pool.filter((t) => s.has(t));
+        }
+        return pool.length ? pool : [0];
+    }
+
     // Mosaic counterpart of scrambleQuads: snap the maze to solved, resolve
     // every group's interior, then give each group a random quarter-turn
     // offset. Returns the interior-solve failure count for diagnostics.
@@ -4232,10 +4327,25 @@ const Maze = (() => {
             }
         }
         for (const g of mosaicGroups) g.scramble = 0;
+        // Twin groups are assigned HERE — after the dissolve pass, because
+        // dissolution rewrites the group table (a twinned piece that
+        // dissolved would leave its ring pointing at cells that are now
+        // one-cell groups); and before the turn pass, so ring members can
+        // scramble with the SAME turns. Equal turns is the mosaic form of
+        // the solvability invariant: a ring only ever rotates in lockstep,
+        // so all members can reach their solved offsets simultaneously
+        // iff those offsets are equal — exactly scrambleQuads' rule.
+        assignMosaicTwins();
+        const scrambledRings = new Set();
         for (let gi = 0; gi < mosaicGroups.length; gi++) {
-            const pool = allowedMosaicTurns(gi);
+            if (scrambledRings.has(gi)) continue;
+            const ring = mosaicTwinRing(gi);
+            const pool = allowedMosaicRingTurns(ring);
             const turns = pool[Math.floor(Math.random() * pool.length)];
-            for (let i = 0; i < turns; i++) rotateMosaicGroup(gi, false);
+            for (const mgi of ring) {
+                for (let i = 0; i < turns; i++) rotateMosaicGroup(mgi, false);
+                scrambledRings.add(mgi);
+            }
         }
         return dissolved;
     }
@@ -4328,12 +4438,19 @@ const Maze = (() => {
     function rotate(row, col, ccw = false) {
         if (!inBounds(row, col)) return false;
 
-        // Mosaic mode: the whole piece containing (row, col) turns as one.
+        // Mosaic mode: the whole piece containing (row, col) turns as one —
+        // and its twin ring turns with it. EVERY member piece must be
+        // unlocked (hint or player) before anything moves, same contract
+        // as the quad branch below: a blocked rotation leaves the board
+        // untouched.
         if (mosaicMode && mosaicIdx) {
             const gi = mosaicGroupIndex(row, col);
             if (gi < 0) return false;
-            if (mosaicGroupLocked(gi)) return false;
-            rotateMosaicGroup(gi, ccw);
+            const ring = mosaicTwinRing(gi);
+            for (const mgi of ring) {
+                if (mosaicGroupLocked(mgi)) return false;
+            }
+            for (const mgi of ring) rotateMosaicGroup(mgi, ccw);
             updateHighlighted();
             return true;
         }
@@ -4406,7 +4523,10 @@ const Maze = (() => {
         if (!inBounds(row, col)) return;
         // Mosaic: the piece is one object, so it locks as one — same
         // reasoning as the quad branch below, just over an arbitrary shape.
-        // A one-cell group behaves exactly like the singular branch.
+        // A one-cell group behaves exactly like the singular branch. The
+        // whole twin ring locks together, same as both other modes:
+        // rotating any member still moves all of them, so marking only
+        // the touched piece would lie about what's frozen.
         if (mosaicMode && mosaicIdx) {
             const gi = mosaicGroupIndex(row, col);
             if (gi < 0) return;
@@ -4414,8 +4534,13 @@ const Maze = (() => {
             for (const [r, c] of cells) {
                 if (locked.has(r + ',' + c)) return;   // hint-locked already
             }
+            // Toggle from the CLICKED piece's state, applied ring-wide.
             const next = !cells.some(([r, c]) => grid[r][c]._playerLocked);
-            for (const [r, c] of cells) grid[r][c]._playerLocked = next;
+            for (const mgi of mosaicTwinRing(gi)) {
+                for (const [r, c] of mosaicGroups[mgi].cells) {
+                    grid[r][c]._playerLocked = next;
+                }
+            }
             return;
         }
         if (quadMode) {
@@ -4487,18 +4612,30 @@ const Maze = (() => {
         // Mosaic: snap the whole piece back to its solved offset and lock
         // every cell of it. Direct counterpart of the quad branch — the
         // stored offset IS the answer, so no port-equivalence search is
-        // needed to find the target orientation. (Twins are not assigned in
-        // mosaic mode yet, so there is no lockstep group to carry along.)
+        // needed to find the target orientation. The twin ring rides
+        // along and locks with it: same-turns scrambling gave every
+        // member the same offset, so the same `turns` lands all of them
+        // on solved simultaneously (quad's exact argument).
         if (mosaicMode && mosaicIdx) {
             const gi = mosaicGroupIndex(row, col);
             if (gi < 0) return { turns: 0 };
-            const g = mosaicGroups[gi];
-            const turns = (4 - g.scramble) & 3;
-            for (let i = 0; i < turns; i++) rotateMosaicGroup(gi, false);
-            for (const [r, c] of g.cells) {
-                locked.add(r + ',' + c);
-                grid[r][c]._hinted = true;
-                grid[r][c]._playerLocked = false;
+            const ring = mosaicTwinRing(gi);
+            const turns = (4 - mosaicGroups[gi].scramble) & 3;
+            for (const mgi of ring) {
+                for (let i = 0; i < turns; i++) rotateMosaicGroup(mgi, false);
+                for (const [r, c] of mosaicGroups[mgi].cells) {
+                    locked.add(r + ',' + c);
+                    // Only the piece the hint landed on goes gold; ring
+                    // partners lock without _hinted so render.js gives
+                    // them the twin-of-hint face (group color, gold
+                    // bevels) — the singular convention, not quad's
+                    // everything-gold one, because distinct pieces read
+                    // as distinct objects. Partners keep whatever
+                    // _hinted they already carry (an earlier hint may
+                    // have landed on one) rather than being demoted.
+                    if (mgi === gi) grid[r][c]._hinted = true;
+                    grid[r][c]._playerLocked = false;
+                }
             }
             updateHighlighted();
             return { turns: turns };
@@ -5205,6 +5342,77 @@ const Maze = (() => {
                     for (let dc = 0; dc < 2; dc++) {
                         grid[q.qr * 2 + dr][q.qc * 2 + dc]._twin = twin;
                     }
+                }
+            }
+        }
+    }
+
+    // Mosaic-mode twins: group whole PIECES, the mosaic counterpart of
+    // assignQuadTwins with the piece as the unit. Every cell of a grouped
+    // piece shares one `_twin = { partner, color }` whose partner names
+    // the NEXT piece's anchor cell (cells[0] — see twinAnchorKey), so any
+    // cell inspection finds the ring even after the piece's contents
+    // permute through rotations. Rotating any member piece rotates the
+    // rest of the ring in lockstep — same delta, same instant.
+    //
+    // Candidates are ALL pieces except one-cell crosses: a cross is
+    // 4-rotation-symmetric, so coupling one would give the ring a member
+    // whose motion is invisible — the same exclusion assignTwins makes
+    // for cross TILES. Multi-cell pieces always move visibly (their
+    // cells permute) and one-cell straights/elbows read like singular
+    // tiles, so all of those qualify. No path/filler split, for quad's
+    // reason: pieces scramble positionally, so any piece can anchor.
+    //
+    // Called from scrambleMosaic AFTER the dissolve pass (dissolution
+    // rewrites the group table) and BEFORE the turn pass (rings scramble
+    // with equal turns — the solvability invariant). Coverage counts
+    // PIECES, mirroring quad's quads-as-units; a multi-cell piece
+    // amplifies the CELL coverage, which is fine — the knob is a budget,
+    // not a promise (see setTwinCoverageTarget's comment).
+    const MOSAIC_MAX_GROUP = 4;
+    function mosaicTwinGroupSize(pieceCount) {
+        const paletteFloor = Math.ceil(
+            pieceCount * twinCoverageFrac() / TWIN_COLORS.length);
+        // Ladder capped like quad — a ring of 4 pieces can already be
+        // 30+ cells swinging at once — with the palette floor free to
+        // override it: a repeated color is worse than an oversized group.
+        return Math.max(2, Math.min(MOSAIC_MAX_GROUP, twinLadderSize()), paletteFloor);
+    }
+    function assignMosaicTwins() {
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) delete grid[r][c]._twin;
+        }
+        if (!mosaicGroups || !mosaicIdx) return;
+        // Same ramp/override gate as the other two assigners.
+        if (twinCoverageFrac() <= 0) return;
+        const candidates = [];
+        for (let gi = 0; gi < mosaicGroups.length; gi++) {
+            const g = mosaicGroups[gi];
+            if (g.n === 1) {
+                const cell = g.cells[0];
+                if (grid[cell[0]][cell[1]].type === T_CROSS) continue;
+            }
+            candidates.push(gi);
+        }
+        const budget = Math.round(candidates.length * twinCoverageFrac());
+        const sizes = twinGroupSizes(budget, TWIN_COLORS.length,
+                                     candidates.length,
+                                     mosaicTwinGroupSize(candidates.length));
+        const picks = shuffle(candidates);
+        let pickAt = 0;
+        for (let i = 0; i < sizes.length; i++) {
+            const color = TWIN_COLORS[i % TWIN_COLORS.length];
+            const members = picks.slice(pickAt, pickAt + sizes[i]);
+            pickAt += sizes[i];
+            if (members.length < 2) break;
+            const keys = members.map((gi) => {
+                const a = mosaicGroups[gi].cells[0];
+                return a[0] + ',' + a[1];
+            });
+            for (let m = 0; m < members.length; m++) {
+                const twin = { partner: keys[(m + 1) % keys.length], color };
+                for (const [r, c] of mosaicGroups[members[m]].cells) {
+                    grid[r][c]._twin = twin;
                 }
             }
         }

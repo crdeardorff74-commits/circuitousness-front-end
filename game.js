@@ -2357,7 +2357,14 @@
         // Falls back to newPuzzle when the module is absent (it's the
         // last script in the debug set; nothing else depends on it).
         function nextDebugPuzzle() {
-            if (typeof PotdGen2 !== 'undefined' && PotdGen2.generateAndPlay) {
+            // nextPuzzle (2026-08-15) chains the active designed-mosaic
+            // layout when one is being played — solving a designed board
+            // regenerates the SAME design — and falls through to a fresh
+            // panel roll otherwise. generateAndPlay is the pre-design
+            // fallback for cached pages mid-update.
+            if (typeof PotdGen2 !== 'undefined' && PotdGen2.nextPuzzle) {
+                PotdGen2.nextPuzzle();
+            } else if (typeof PotdGen2 !== 'undefined' && PotdGen2.generateAndPlay) {
                 PotdGen2.generateAndPlay();
             } else {
                 newPuzzle();
