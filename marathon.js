@@ -3521,18 +3521,22 @@ const Marathon = (() => {
     }
 
     // Did a PotD recording's moves happen on a portrait-ROTATED board?
-    // Inference for legacy scores that predate the explicit `rotated`
-    // flag (2026-08-15) and only stored moves: the canonical board is
-    // landscape (rows < cols), the rotated presentation is its
+    // Coordinate PROOF for legacy scores that predate the explicit
+    // `rotated` flag (2026-08-15) and only stored moves: the canonical
+    // board is landscape (rows < cols), the rotated presentation is its
     // transpose, and a row index at or beyond the canonical row count
     // is only addressable on the rotated board. Scanning stops at the
     // first rotateBoard penalty move — dims swap there, so later
     // coordinates say nothing about the STARTING orientation
-    // (flipBoard keeps dims and doesn't stop the scan). A recording
-    // that never touches the lower rows is undetectable and replays
-    // unrotated — vanishingly rare for a real solve, which sweeps most
-    // of the board. Exposed on the public object for the test suite
-    // (tests/potd-replay-rotation-test.js).
+    // (flipBoard keeps dims and doesn't stop the scan).
+    //
+    // A hit is proof; a miss is NOT proof of canonical — on a
+    // near-square board almost every rotated-space coordinate is also
+    // canonical-legal (8×9 leaves exactly ONE distinguishing row
+    // index, and a real 13-move solve missed it on 2026-08-15's s1),
+    // so a miss falls through to the dry-run in
+    // potdInferReplayRotation. Exposed on the public object for the
+    // test suite (tests/potd-replay-rotation-test.js).
     function potdMovesLookRotated(snap, moves) {
         if (!snap || !(snap.rows < snap.cols) || !Array.isArray(moves)) return false;
         for (const m of moves) {
@@ -3541,6 +3545,107 @@ const Marathon = (() => {
             if (typeof m.r === 'number' && m.r >= snap.rows) return true;
         }
         return false;
+    }
+
+    // Dry-run a PotD recording's moves data-only against the live Maze
+    // and report whether the board ends SOLVED. The decisive
+    // orientation test for ambiguous legacy recordings: applied to the
+    // right orientation a real solve ends won; applied to the wrong
+    // one it twists the wrong tiles and cannot (validated against the
+    // four production recordings of 2026-08-15 — rotated solved all
+    // four, canonical solved none). No rendering, no SFX, no
+    // recording — Maze.rotate / Gates.rotate are pure data ops and
+    // nothing here routes through game.js's refresh. The live Maze is
+    // scratch space (caller is about to replay anyway; playOneRecording
+    // loads its own snapshot over whatever this leaves behind).
+    //
+    // Moves apply through the same Maze entry points the real replay
+    // uses (game.js playOneRecording's switch): rotate / applyHintAt /
+    // togglePlayerLock / Gates.rotate / rotateBoard / flipBoard —
+    // minus every Render call. undo/reset restore through a snapshot
+    // stack mirroring the replay's replayUndoStack, built only when
+    // such moves exist (the stack is the expensive part).
+    function potdDryRunSolves(puzzle, moves, quadMode, pathCount, rotateFirst) {
+        if (typeof Maze === 'undefined' || !Maze.loadSnapshot || !Maze.snapshotState) return false;
+        const G = (typeof Gates !== 'undefined') ? Gates : null;
+        const clone = (o) => JSON.parse(JSON.stringify(o));
+        function snapState() {
+            return { maze: clone(Maze.snapshotState()),
+                     gates: (G && G.snapshot) ? clone(G.snapshot()) : null };
+        }
+        function restoreState(s) {
+            Maze.loadSnapshot(clone(s.maze));
+            if (s.gates && G && G.restore) G.restore(clone(s.gates));
+            else if (G && G.clear) G.clear();
+            if (Maze.recompute) Maze.recompute();
+        }
+        Maze.setQuadMode(quadMode);
+        Maze.setPathCount(pathCount);
+        Maze.loadSnapshot(clone(puzzle.snapshot.maze));
+        if (puzzle.snapshot.gates && G && G.restore) G.restore(clone(puzzle.snapshot.gates));
+        else if (G && G.clear) G.clear();
+        if (Maze.recompute) Maze.recompute();
+        if (rotateFirst) {
+            const oR = Maze.ROWS, oC = Maze.COLS;
+            if (!Maze.rotateBoard || !Maze.rotateBoard(false)) return false;
+            if (G && G.rotateBoard) G.rotateBoard(false, oR, oC);
+            if (Maze.recompute) Maze.recompute();
+        }
+        const needsHistory = moves.some((m) => m && (m.type === 'undo' || m.type === 'reset'));
+        const states = needsHistory ? [snapState()] : null;
+        for (const m of moves) {
+            if (!m) continue;
+            if (m.type === 'undo') {
+                if (states && states.length > 1) states.pop();
+                if (states) restoreState(states[states.length - 1]);
+                continue;               // the undo itself banks no state
+            }
+            if (m.type === 'reset') {
+                if (states) { restoreState(states[0]); states.length = 1; }
+                continue;
+            }
+            if (m.type === 'rotate') {
+                Maze.rotate(m.r, m.c, !!m.ccw);   // false on wrong-orientation OOB — exactly the signal
+            } else if (m.type === 'gate') {
+                if (G && G.rotate) G.rotate(!!m.ccw);
+            } else if (m.type === 'hint') {
+                if (Maze.applyHintAt) Maze.applyHintAt(m.r, m.c);
+            } else if (m.type === 'lock') {
+                if (Maze.togglePlayerLock) Maze.togglePlayerLock(m.r, m.c);
+            } else if (m.type === 'rotateBoard') {
+                const oR = Maze.ROWS, oC = Maze.COLS;
+                if (Maze.rotateBoard && Maze.rotateBoard(!!m.ccw) && G && G.rotateBoard) {
+                    G.rotateBoard(!!m.ccw, oR, oC);
+                }
+            } else if (m.type === 'flipBoard') {
+                if (Maze.flipBoard && Maze.flipBoard(!!m.vertical) && G && G.flipBoard) {
+                    G.flipBoard(!!m.vertical, Maze.ROWS, Maze.COLS);
+                }
+            }
+            // Anything unrecognized: no data effect on ports.
+            if (Maze.recompute) Maze.recompute();
+            if (states) states.push(snapState());
+        }
+        return !!Maze.won;
+    }
+
+    // Full orientation inference for a legacy recording (server
+    // returned rotated === null): coordinate proof first (cheap,
+    // exact), then the dry-run tiebreak. Canonical is tried first and
+    // wins outright when it solves — a symmetric board that solves
+    // both ways should replay in the agreed canonical orientation —
+    // and when NEITHER solves (recording truncated, fidelity gap) the
+    // answer stays canonical, which is the pre-fix behavior. Exposed
+    // for the test suite.
+    function potdInferReplayRotation(puzzle, moves, quadMode, pathCount) {
+        if (potdMovesLookRotated(puzzle.snapshot.maze, moves)) return true;
+        try {
+            if (potdDryRunSolves(puzzle, moves, quadMode, pathCount, false)) return false;
+            return potdDryRunSolves(puzzle, moves, quadMode, pathCount, true);
+        } catch (e) {
+            Logger.warn('Marathon: replay orientation dry-run failed', e);
+            return false;
+        }
     }
 
     // PotD-board Watch buttons route here. Different from marathon's
@@ -3609,19 +3714,21 @@ const Marathon = (() => {
         // every move in THAT space — replaying those moves against the
         // canonical snapshot twists the wrong tiles (sister-reported,
         // 2026-08-15). Newer scores say so via the submitted `rotated`
-        // flag; older rows return null and fall back to the coordinate
-        // heuristic. When rotated, rebuild the board the player
-        // actually saw by running the exact presentation pipeline
-        // potd.js ran live — load canonical, apply the same CW board
-        // rotation — then snapshot THAT as the replay's initial state.
-        // Rotating the snapshot (rather than remapping move
-        // coordinates) sidesteps mid-play rotateBoard/flipBoard
+        // flag; older rows return null and fall back to inference —
+        // coordinate proof, then the solve-outcome dry-run (see
+        // potdInferReplayRotation). When rotated, rebuild the board
+        // the player actually saw by running the exact presentation
+        // pipeline potd.js ran live — load canonical, apply the same
+        // CW board rotation — then snapshot THAT as the replay's
+        // initial state. Rotating the snapshot (rather than remapping
+        // move coordinates) sidesteps mid-play rotateBoard/flipBoard
         // penalty moves, which change dims partway through a
-        // recording. The live Maze is fair game as scratch space here:
-        // playOneRecording loads its own snapshot over it immediately.
+        // recording. The live Maze is fair game as scratch space here
+        // (for the dry-run too): playOneRecording loads its own
+        // snapshot over it immediately.
         const rotated = (typeof rec.rotated === 'boolean')
             ? rec.rotated
-            : potdMovesLookRotated(puzzle.snapshot.maze, moves);
+            : potdInferReplayRotation(puzzle, moves, quadMode, pathCount);
         let initialState = puzzle.snapshot.maze;
         let gates        = puzzle.snapshot.gates || null;
         if (rotated && typeof Game !== 'undefined' && Game.applyBoardRotation &&
@@ -3769,5 +3876,5 @@ const Marathon = (() => {
              // Legacy-recording orientation inference — exposed ONLY for
              // tests/potd-replay-rotation-test.js; no runtime caller
              // outside startPotdReplay.
-             potdMovesLookRotated };
+             potdMovesLookRotated, potdDryRunSolves, potdInferReplayRotation };
 })();

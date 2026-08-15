@@ -96,12 +96,15 @@ const PotdGen2 = (() => {
     // those shapes would simply never generate its daily puzzle. 6 keeps
     // the widest shape near 13×6, which builds.
     const DEF_SIZE_MIN = 6, DEF_SIZE_MAX = 16;
-    // The area window is the DOMINANT control at these settings: a 6-16
-    // size range rolls boards from 36 to 256 sub-tiles, and this clamps
-    // almost all of them into 50-80. That's deliberate — the size range
-    // supplies the SHAPE (how square or oblong), the window pins the
-    // actual amount of board, and generation cost tracks area far more
-    // closely than it tracks either axis.
+    // The area window pins the actual amount of board — generation cost
+    // tracks area far more closely than it tracks either axis — while
+    // the size range bounds how square or oblong a shape can get. Since
+    // the 2026-08-15 roll rework the two combine up front: rollDims
+    // enumerates every stepped landscape pair inside BOTH constraints
+    // and rolls aspect ratio + area across that vocabulary, so the
+    // window shapes the choice rather than clamping it after the fact
+    // (the old clamp funneled 54% of singular rolls to 8×9 — see
+    // fitToTileRange's comment).
     const DEF_TILES_MIN = 50, DEF_TILES_MAX = 80;
     const DEF_TWIN_MIN = 11, DEF_TWIN_MAX = 42;
     const DEF_GATE_MIN = 2,  DEF_GATE_MAX = 6;
@@ -116,8 +119,19 @@ const PotdGen2 = (() => {
         return lo + Math.floor(Math.random() * (hi - lo + 1));
     }
 
-    // Walk a board's dimensions until rows × cols lands inside the area
-    // window [minT, maxT].
+    // FALLBACK ONLY (2026-08-15): walk a board's dimensions until
+    // rows × cols lands inside the area window [minT, maxT]. rollDims'
+    // candidate enumeration is the primary path now; this walk survives
+    // solely for panel configs whose window no candidate can satisfy
+    // (e.g. a min/max window pinched between two step positions), where
+    // its best-effort convergence and guaranteed termination still earn
+    // their keep. It was retired as the primary because first-fit
+    // shrinking of the larger axis is a shape FUNNEL: every roll whose
+    // smaller axis was ≥ 9 walked down to exactly 8×9, which made 54%
+    // of all singular PotD boards 8×9 and put all four singular slots
+    // on the same shape roughly one day in eleven (observed 2026-08-15
+    // — the diversity the size range was meant to supply didn't
+    // survive the clamp).
     //
     // Too small: grow whichever axis is currently SMALLER, ties to the
     // WIDTH. Too big: shrink whichever axis is currently LARGER, ties to
@@ -162,6 +176,91 @@ const PotdGen2 = (() => {
         return { rows: r, cols: c };
     }
 
+    // Every (rows, cols) pair the panel's constraints allow: stepped dims
+    // inside [sizeMin, sizeMax], landscape (rows ≤ cols), area inside the
+    // window. This is the shape VOCABULARY rollDims picks from — the live
+    // config yields 12 singular / 4 quad pairs, and even the panel's
+    // widest settings stay under ~150, so rebuilding per roll is free.
+    function enumerateDims(p, step) {
+        const out = [];
+        for (let r = p.sizeMin; r <= p.sizeMax; r += step) {
+            for (let c = r; c <= p.sizeMax; c += step) {
+                const area = r * c;
+                if (area >= p.minTiles && area <= p.maxTiles) {
+                    out.push({ rows: r, cols: c });
+                }
+            }
+        }
+        return out;
+    }
+
+    // Roll a board shape as ASPECT RATIO + AREA (reworked 2026-08-15;
+    // user call — "I was aiming for diversity"). The previous roll —
+    // both axes uniform from the size range, then fitToTileRange
+    // clamping into the area window — collapsed under the clamp: see
+    // fitToTileRange's comment for the 54%-of-boards-are-8×9 funnel.
+    // Rolling the two things the roll is actually FOR — how oblong
+    // (ratio) and how much board (area) — and then picking the nearest
+    // legal shape spreads rolls across the whole vocabulary: the live
+    // singular config lands each of its 12 shapes 5-15% of the time
+    // instead of 0.8-54%.
+    //
+    // Mechanics: ratio target is uniform across the vocabulary's actual
+    // ratio span, and each candidate wins the targets nearest its own
+    // ratio — so a shape's share is the size of the gap it sits in, and
+    // every shape has a nonzero basin (the SHAPE SET is exactly the
+    // enumeration, never wider — which is what keeps potd-config-test's
+    // allowlist, and its 4-path buildability guarantee, intact without a
+    // re-proof). The area target only breaks ratio TIES (same ratio at
+    // two scales, e.g. 6×9 vs 12×18 on wide panel windows); in the live
+    // config every ratio is unique and area is decided by the shape.
+    //
+    // resizedFrom is always null here — the window never rewrites a
+    // pick, it defines the vocabulary — so the panel's ⤓/⤒ annotation
+    // only ever appears on the fallback path below.
+    function rollDims(p) {
+        const step = p.quadMode ? SIZE_STEP : 1;
+        const candidates = enumerateDims(p, step);
+        if (candidates.length === 0) {
+            // Degenerate panel config — no stepped pair hits the window
+            // (a pinched min/max between step positions, say). The old
+            // walk still terminates and lands closest; keep its
+            // wanted-vs-got annotation so the panel shows the rewrite.
+            const roll = p.quadMode
+                ? () => p.sizeMin + SIZE_STEP * Math.floor(Math.random() *
+                        (Math.floor((p.sizeMax - p.sizeMin) / SIZE_STEP) + 1))
+                : () => randInt(p.sizeMin, p.sizeMax);
+            const a = roll();
+            const b = roll();
+            const wanted = { rows: Math.min(a, b), cols: Math.max(a, b) };
+            const dims = fitToTileRange(wanted.rows, wanted.cols,
+                                        p.minTiles, p.maxTiles, step);
+            const moved = (dims.rows !== wanted.rows || dims.cols !== wanted.cols);
+            return { rows: dims.rows, cols: dims.cols,
+                     resizedFrom: moved ? wanted : null };
+        }
+        let minRatio = Infinity, maxRatio = -Infinity;
+        for (const d of candidates) {
+            const q = d.cols / d.rows;
+            if (q < minRatio) minRatio = q;
+            if (q > maxRatio) maxRatio = q;
+        }
+        const targetRatio = minRatio + Math.random() * (maxRatio - minRatio);
+        const targetArea  = randInt(p.minTiles, p.maxTiles);
+        let best = [], bestDr = Infinity;
+        for (const d of candidates) {
+            const dr = Math.abs(d.cols / d.rows - targetRatio);
+            if (dr < bestDr - 1e-9)                { bestDr = dr; best = [d]; }
+            else if (Math.abs(dr - bestDr) <= 1e-9) best.push(d);
+        }
+        let pick = best[0], bestDa = Infinity;
+        for (const d of best) {
+            const da = Math.abs(d.rows * d.cols - targetArea);
+            if (da < bestDa) { bestDa = da; pick = d; }
+        }
+        return { rows: pick.rows, cols: pick.cols, resizedFrom: null };
+    }
+
     // The tuned live configuration, shaped for rollParams. potd.js calls
     // this for every daily slot, so the DEF_* block above is the single
     // definition of PotD difficulty — the debug panel's sliders open on
@@ -193,37 +292,20 @@ const PotdGen2 = (() => {
     // and the worker both consume — and, since the size range is now
     // expressed in sub-tiles too, no conversion happens on the way.
     function rollParams(p) {
-        // The slider's step of 2 is a constraint on what the RANGE can
-        // express, not on what gets rolled inside it. Only quad actually
-        // needs even dims (each 2×2 group has to divide cleanly), so quad
-        // steps by 2 while singular rolls every integer in the range — a
-        // 6-10 range gives quad {6,8,10} and singular {6,7,8,9,10}. Losing
-        // the odd sizes in singular would have thrown away half the size
-        // variety for a constraint that mode doesn't have.
-        const evenSpan = Math.floor((p.sizeMax - p.sizeMin) / SIZE_STEP) + 1;
-        const roll = p.quadMode
-            ? () => p.sizeMin + SIZE_STEP * Math.floor(Math.random() * evenSpan)
-            : () => randInt(p.sizeMin, p.sizeMax);
-        // Both axes roll from the same range, then the pair is ORDERED so
-        // the board is always wider than tall, or square — never taller
-        // than wide. Screens are landscape far more often than not, and a
-        // tall board wastes the width it does have. Portrait players get
-        // the same board rotated 90° at load (see loadIntoPlay), so this
+        // Shape comes from rollDims — aspect ratio + area over the
+        // enumerated vocabulary (see its comment). Landscape ordering,
+        // the quad even-dims constraint (only quad needs it — each 2×2
+        // group has to divide cleanly; singular keeps its odd sizes),
+        // and the area window are all built into the enumeration.
+        // Boards stay wider-than-tall-or-square because screens are
+        // landscape far more often than not; portrait players get the
+        // same board rotated 90° at load (see loadIntoPlay), so this
         // costs them nothing: one canonical puzzle, two presentations.
-        const a = roll();
-        const b = roll();
-        const wanted = { rows: Math.min(a, b), cols: Math.max(a, b) };
-        // Area window, applied to the ordered pair so the grow/shrink rules
-        // and "stay landscape" agree. Recorded when it moves the dims so the
-        // panel can show what the roll originally wanted — a window that's
-        // silently rewriting most rolls is worth seeing.
-        const dims = fitToTileRange(wanted.rows, wanted.cols, p.minTiles, p.maxTiles,
-                                    p.quadMode ? SIZE_STEP : 1);
-        const moved = (dims.rows !== wanted.rows || dims.cols !== wanted.cols);
+        const dims = rollDims(p);
         return {
             rows:         dims.rows,
             cols:         dims.cols,
-            resizedFrom:  moved ? wanted : null,
+            resizedFrom:  dims.resizedFrom,
             // Continuous, not stepped — coverage is a budget fraction, so
             // any value in the range is meaningful.
             twinCoverage: p.twinMin + Math.random() * (p.twinMax - p.twinMin),
