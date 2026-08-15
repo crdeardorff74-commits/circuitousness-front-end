@@ -1385,8 +1385,8 @@
     <div id="mosaicEditor">
         <div class="meHead">
             <strong>Mosaic Layout Editor</strong>
-            <label class="meDim">Rows <input type="number" id="meRows" min="4" max="24" step="1" value="10"></label>
-            <label class="meDim">Cols <input type="number" id="meCols" min="4" max="24" step="1" value="10"></label>
+            <label class="meDim">Rows <input type="range" id="meRows" min="4" max="24" step="1" value="10"> <span class="meSliderVal" id="meRowsVal">10</span></label>
+            <label class="meDim">Cols <input type="range" id="meCols" min="4" max="24" step="1" value="10"> <span class="meSliderVal" id="meColsVal">10</span></label>
             <span class="meHint">drag to place · drag off the board to delete · right-click removes · arrows nudge</span>
             <button type="button" id="meCloseBtn">Close</button>
         </div>
@@ -1420,17 +1420,21 @@
                         <option value="4">4</option>
                     </select>
                 </label>
-                <!-- Gang coverage is a % of PIECES coupled into lockstep
-                     rings (30 mirrors the live TWIN_COVERAGE default;
-                     "ganged" is the player-facing name, the code keeps
-                     twin/_twin internally — see CLAUDE.md). Part of the
-                     LAYOUT: it saves with the design and feeds the
-                     difficulty score as relief. Gates have no control
-                     here on purpose — the count is derived from the
+                <!-- Gang coverage: every multi-cell PIECE is a mandatory
+                     gang member (the colored fill is what makes a complex
+                     shape read as one object), so this knob only adds
+                     SINGLES beyond them — its min is set live by
+                     renderStats to the pieces' unit share, the knob's
+                     real floor. Part of the LAYOUT: saves with the
+                     design and feeds the difficulty score as relief.
+                     ("Ganged" is the player-facing name; the code keeps
+                     twin/_twin internally — see CLAUDE.md.) Gates have
+                     no control here on purpose — the count derives from
                      grid size (PotdGen2.playDesign), matching live
                      play's size curve. -->
                 <label class="mePathPick">Ganged %
-                    <input type="number" id="meTwins" min="0" max="80" step="5" value="30">
+                    <input type="range" id="meTwins" min="0" max="80" step="5" value="30">
+                    <span class="meSliderVal" id="meTwinsVal">30</span>
                 </label>
                 <button type="button" id="meTestBtn" class="mePrimary">▶ Test play this layout</button>
 

@@ -23,29 +23,40 @@
  *
  * DIFFICULTY
  * ──────────
- * Per the design calls (2026-08-15 added the third input): difficulty is
- * board SIZE, the PERCENTAGE of the board covered by mosaic (non-singular)
- * pieces, and the layout's GANGED coverage. All three are motivated:
+ * Per the design calls (2026-08-15, twice revised the same day): difficulty
+ * is board SIZE, mosaic COVERAGE amplified by piece COMPLEXITY, minus
+ * GANGED relief. All four are motivated:
  *   • Size — more sub-tiles is more to read and more to turn.
  *   • Coverage — a singular cell rotates alone, so it can be solved locally.
  *     A cell inside a piece cannot: turning it moves every other cell of that
  *     piece too. Coverage is therefore the fraction of the board that has to
  *     be reasoned about non-locally, which is the thing that actually makes
  *     mosaic hard. At 0% coverage a "mosaic" board is a singular board.
+ *   • Complexity — the long-promised "a 5×5 ring is harder than four 2×2
+ *     blocks at identical coverage", promoted into the score after a real
+ *     board of interlocking 9- and 12-cell pieces ranked Light (user
+ *     report). Measured as the SIZE-WEIGHTED mean piece size — the piece
+ *     size a random covered cell finds itself inside, so a couple of big
+ *     tangles dominate a scatter of 2×2s — normalized over 4..16 and
+ *     applied as a multiplier on coverage (CPLX_BOOST). A board of plain
+ *     2×2 blocks has complexity 0 and keeps the original
+ *     coverage-is-the-score reading.
  *   • Ganged % — EASES rather than hardens (user call: it cuts down the
  *     number of bad moves that would otherwise remain — solving one ring
- *     member solves them all, so the effective move space shrinks). It
- *     enters as RELIEF relative to the 30% default (maze.js
- *     TWIN_COVERAGE): a layout that never says otherwise scores exactly
- *     as it did before the field existed, cranking gangs above 30%
- *     lowers the score, and starving them below raises it.
+ *     member solves them all, so the effective move space shrinks).
+ *     Subtracted outright at a deliberately small weight: the whole
+ *     0..80% range moves a score by about one tier (W_GANG; its first
+ *     value, 0.3 relative to a neutral 30% baseline, let 80% gangs drag
+ *     a genuinely hard board two tiers down — same user report). The
+ *     baseline-relative form went with nothing deployed to stay
+ *     compatible with. Since the every-piece-ganged mandate (also
+ *     2026-08-15), relief is computed on the FLOORED value — the knob
+ *     can't go below pieces/(pieces+singles), because the build gangs
+ *     every multi-cell piece regardless.
  *
  * Deliberately NOT in the score, so this doesn't quietly become a different
- * metric than the one that was specified: piece size distribution, hole
- * nesting, path count, gate count. Piece size is the most
- * defensible future addition (a 5×5 ring is harder than four 2×2 blocks at
- * identical coverage) — the editor SHOWS mean piece size next to the score
- * for exactly that reason, without folding it in.
+ * metric than the one that was specified: hole nesting, path count,
+ * gate count, piece-size DISTRIBUTION beyond the weighted mean.
  *
  * STORAGE
  * ───────
@@ -92,17 +103,25 @@ const MosaicLibrary = (function () {
     // justify a curve; revisit it when there are real solve times per tier.
     const AREA_FLOOR = 16;
     const AREA_CEIL  = 256;
-    const W_SIZE  = 0.5;
-    const W_COVER = 0.5;
-    // Ganged relief: score −= W_GANG × (ganged − GANGED_BASELINE), so the
-    // baseline is NEUTRAL — the 30% default neither adds nor subtracts,
-    // which is what keeps every layout saved before the field existed at
-    // its original score and tier (their normalize() default is exactly
-    // the baseline). Spread at W_GANG 0.3: the 0..80% input range moves a
-    // score by +9 to −15 points — one to two tiers, proportionate to how
-    // much a heavy gang net actually collapses the move space.
-    const W_GANG          = 0.3;
-    const GANGED_BASELINE = 0.30;   // mirrors maze.js TWIN_COVERAGE
+    const W_SIZE  = 0.45;
+    const W_COVER = 0.55;
+    // Complexity multiplier on coverage: coverEffect = coverage ×
+    // (1 + CPLX_BOOST × complexity), complexity 0 at all-smallest-pieces
+    // (weighted mean 4) up to 1 at all-16s — so the biggest tangles can
+    // amplify coverage by half again, clamped so W_SIZE + W_COVER still
+    // tops out at exactly 100.
+    const CPLX_BOOST = 0.5;
+    const PIECE_MIN  = 4;    // smallest legal piece (mosaic.js SIZES)
+    const PIECE_MAX  = 16;   // largest — also the biggest frame's solid
+    // Ganged relief: score −= W_GANG × ganged, subtracted outright.
+    // Deliberately small — the whole 0..80% range moves a score ~10
+    // points, about one tier. (First cut was 0.3 relative to a neutral
+    // 30% baseline; that let heavy gangs drag a hard board two tiers,
+    // and the neutrality existed for a compatibility that has nothing
+    // deployed to be compatible with.)
+    const W_GANG          = 0.12;
+    const GANGED_BASELINE = 0.30;   // the DEFAULT for layouts that don't say
+                                    // (mirrors maze.js TWIN_COVERAGE)
     const GANGED_MAX      = 0.8;    // mirrors the editor input's ceiling
 
     // A layout's ganged coverage: the stored fraction clamped to the legal
@@ -142,7 +161,7 @@ const MosaicLibrary = (function () {
         // overlapping contributes nothing here either. A score computed off
         // the raw piece list would over-report exactly the layouts that are
         // broken.
-        let covered = 0, pieces = 0, largestFrame = 0;
+        let covered = 0, pieces = 0, largestFrame = 0, sizeSq = 0;
         const bySize = {};
         if (area > 0 && typeof Mosaic !== 'undefined') {
             const packed = Mosaic.packFromLayout(rows, cols, l.pieces || []);
@@ -150,6 +169,7 @@ const MosaicLibrary = (function () {
                 if (g.single) continue;
                 pieces++;
                 covered += g.size;
+                sizeSq  += g.size * g.size;
                 bySize[g.size] = (bySize[g.size] || 0) + 1;
                 if (g.n > largestFrame) largestFrame = g.n;
             }
@@ -157,16 +177,32 @@ const MosaicLibrary = (function () {
 
         const coverage   = area > 0 ? covered / area : 0;
         const sizeScore  = clamp01((area - AREA_FLOOR) / (AREA_CEIL - AREA_FLOOR));
-        const coverScore = clamp01(coverage);
-        // Relief is SIGNED: positive above the baseline (easier board,
-        // score drops), negative below it (a gang-starved board is
-        // harder than the default and the score rises). clamp01 keeps
-        // the ends honest — relief can't push a full 24×24 past 100 or
-        // an empty 4×4 below 0.
-        const ganged       = gangedOf(l);
-        const gangedRelief = W_GANG * (ganged - GANGED_BASELINE);
+        // Complexity: the SIZE-WEIGHTED mean piece size — Σsize²/Σsize is
+        // the piece size a random covered cell sits inside, so two 12-cell
+        // tangles outweigh six 2×2 blocks — normalized over the legal
+        // 4..16 band and applied as a coverage multiplier. All-smallest
+        // pieces → 0 → coverEffect is plain coverage, the original score.
+        const cellMeanPieceSize = covered > 0 ? sizeSq / covered : 0;
+        const complexity = clamp01((cellMeanPieceSize - PIECE_MIN) / (PIECE_MAX - PIECE_MIN));
+        const coverEffect = clamp01(coverage * (1 + CPLX_BOOST * complexity));
+        // Ganged relief subtracts outright — more gangs, easier board —
+        // computed on the EFFECTIVE coverage: every multi-cell piece is a
+        // mandatory gang member (maze.js assignMosaicTwins' mandate,
+        // 2026-08-15), so the knob has a floor of pieces/(pieces+singles)
+        // and a stored value below it would be a value the build won't
+        // honor. Scoring the floored value keeps the rank honest; the
+        // editor clamps its input to the same floor. (Approximation
+        // note: the build excludes cross singles from its denominator,
+        // so its true floor can sit a whisker higher — it enforces
+        // itself regardless.) clamp01 keeps the bottom honest: relief
+        // can't pull an empty 4×4 below 0.
+        const units       = pieces + (area - covered);
+        const gangedFloor = (pieces > 0 && units > 0) ? pieces / units : 0;
+        const ganged          = gangedOf(l);
+        const gangedEffective = Math.max(ganged, gangedFloor);
+        const gangedRelief    = W_GANG * gangedEffective;
         const score = Math.round(100 * clamp01(
-            W_SIZE * sizeScore + W_COVER * coverScore - gangedRelief));
+            W_SIZE * sizeScore + W_COVER * coverEffect - gangedRelief));
         // floor(score/10) is 0..10 — a perfect 100 would otherwise be an
         // eleventh tier of exactly one score.
         const tier = Math.min(TIER_COUNT, Math.floor(score / 10) + 1);
@@ -176,10 +212,14 @@ const MosaicLibrary = (function () {
             pieces: pieces, covered: covered, singles: area - covered,
             coverage: coverage,
             meanPieceSize: pieces ? covered / pieces : 0,
+            cellMeanPieceSize: cellMeanPieceSize,
+            complexity: complexity,
             largestFrame: largestFrame,
             bySize: bySize,
-            sizeScore: sizeScore, coverScore: coverScore,
-            ganged: ganged, gangedRelief: gangedRelief,
+            sizeScore: sizeScore, coverScore: clamp01(coverage),
+            coverEffect: coverEffect,
+            ganged: ganged, gangedFloor: gangedFloor,
+            gangedEffective: gangedEffective, gangedRelief: gangedRelief,
             score: score, tier: tier, tierName: TIER_NAMES[tier - 1]
         };
     }
@@ -454,6 +494,7 @@ const MosaicLibrary = (function () {
         AREA_FLOOR: AREA_FLOOR, AREA_CEIL: AREA_CEIL,
         W_SIZE: W_SIZE, W_COVER: W_COVER,
         W_GANG: W_GANG, GANGED_BASELINE: GANGED_BASELINE, GANGED_MAX: GANGED_MAX,
+        CPLX_BOOST: CPLX_BOOST,
         TIER_COUNT: TIER_COUNT, TIER_NAMES: TIER_NAMES,
         STORE_KEY: STORE_KEY,
 

@@ -4172,7 +4172,69 @@ const Maze = (() => {
             return false;
         }
 
-        if (!search(0)) return false;   // caller dissolves; grid untouched
+        // A solution with no dead ends can still be wrong one other way: a
+        // sealed LOOP — filler cells wired to each other in a cycle that
+        // never shows a port outside the piece and never joins the path
+        // (field report 2026-08-15, second sighting ever: a ring piece
+        // filled as a closed circle of pipe). Every wired component must
+        // ESCAPE — present at least one port on a piece-exterior side
+        // (board edge, another piece, or the piece's own hole), or wire
+        // into a path tile, whose lane reaches the edge by construction.
+        // A component with neither is necessarily a cycle: a mere chain's
+        // end cell would have to park its remaining ports somewhere, and
+        // "on an interior side the neighbour declined" is exactly what
+        // consistent() forbids.
+        function enclosedComponentExists() {
+            const parent = vars.map((_, i) => i);
+            const find = (x) => {
+                while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+                return x;
+            };
+            const escapes = new Array(vars.length).fill(false);
+            for (let i = 0; i < vars.length; i++) {
+                const v = vars[i], mask = chosen[i].mask;
+                for (const p of [N, E, S, W]) {
+                    if ((mask & (1 << p)) && !(v.inner & (1 << p))) escapes[i] = true;
+                }
+                for (const f of v.fixed) {
+                    // consistent() already made mask agree with required —
+                    // a required interior port IS a live wire into a path
+                    // tile.
+                    if (f.required) escapes[i] = true;
+                }
+                for (const l of v.links) {
+                    if ((mask & (1 << l.port)) &&
+                        (chosen[l.slot].mask & (1 << opposite(l.port)))) {
+                        parent[find(i)] = find(l.slot);
+                    }
+                }
+            }
+            const compEscapes = new Map();
+            for (let i = 0; i < vars.length; i++) {
+                const root = find(i);
+                compEscapes.set(root, (compEscapes.get(root) || false) || escapes[i]);
+            }
+            for (const esc of compEscapes.values()) {
+                if (!esc) return true;
+            }
+            return false;
+        }
+
+        // Loop rejection by RETRY rather than in-search pruning: the
+        // shuffled candidate order makes every attempt a fresh draw, a
+        // loop-free filling always exists (all-radial straights show no
+        // interior ports at all and satisfy every constraint), and loops
+        // are rare enough — twice ever seen in play — that folding the
+        // component walk into the hot search path would be all cost.
+        const LOOP_RETRIES = 8;
+        let solved = false;
+        for (let attempt = 0; attempt < LOOP_RETRIES && !solved; attempt++) {
+            chosen.fill(null);
+            nodes = 0;
+            if (!search(0)) return false;   // unsatisfiable — caller dissolves
+            solved = !enclosedComponentExists();
+        }
+        if (!solved) return false;          // caller dissolves; grid untouched
 
         for (let i = 0; i < vars.length; i++) {
             const v = vars[i], cand = chosen[i];
@@ -5355,24 +5417,31 @@ const Maze = (() => {
     // permute through rotations. Rotating any member piece rotates the
     // rest of the ring in lockstep — same delta, same instant.
     //
-    // Candidates are ALL pieces except one-cell crosses: a cross is
-    // 4-rotation-symmetric, so coupling one would give the ring a member
-    // whose motion is invisible — the same exclusion assignTwins makes
-    // for cross TILES. Multi-cell pieces always move visibly (their
-    // cells permute) and one-cell straights/elbows read like singular
-    // tiles, so all of those qualify. No path/filler split, for quad's
-    // reason: pieces scramble positionally, so any piece can anchor.
+    // THE MANDATE (user call 2026-08-15): every multi-cell piece joins a
+    // ring. The gang's colored fill is what makes a complex shape READ
+    // as one object at a glance — uncolored, its outline dissolves into
+    // the tile field and the mode's whole visual grammar goes with it.
+    // So multi-cell pieces are all mandatory members, and the coverage
+    // knob only controls how many SINGLES join beyond them — which gives
+    // the knob a floor of mandatory/(mandatory+singles). The editor
+    // surfaces the same floor on its Ganged % input, and the difficulty
+    // relief is computed on the floored value (mosaic-library.js).
+    // Coverage 0 stays a true OFF switch — the twin-free escape the test
+    // rounds and any future gang-free context rely on; the mandate
+    // applies whenever ganging is on at all.
+    //
+    // Single-cell candidates still exclude crosses: 4-rotation-symmetric,
+    // so a ring member whose motion is invisible — the same exclusion
+    // assignTwins makes for cross TILES. Multi-cell pieces always move
+    // visibly (their cells permute), so no piece is excluded.
     //
     // Called from scrambleMosaic AFTER the dissolve pass (dissolution
     // rewrites the group table) and BEFORE the turn pass (rings scramble
-    // with equal turns — the solvability invariant). Coverage counts
-    // PIECES, mirroring quad's quads-as-units; a multi-cell piece
-    // amplifies the CELL coverage, which is fine — the knob is a budget,
-    // not a promise (see setTwinCoverageTarget's comment).
+    // with equal turns — the solvability invariant).
     const MOSAIC_MAX_GROUP = 4;
-    function mosaicTwinGroupSize(pieceCount) {
+    function mosaicTwinGroupSize(unitCount) {
         const paletteFloor = Math.ceil(
-            pieceCount * twinCoverageFrac() / TWIN_COLORS.length);
+            unitCount * twinCoverageFrac() / TWIN_COLORS.length);
         // Ladder capped like quad — a ring of 4 pieces can already be
         // 30+ cells swinging at once — with the palette floor free to
         // override it: a repeated color is worse than an oversized group.
@@ -5383,35 +5452,54 @@ const Maze = (() => {
             for (let c = 0; c < COLS; c++) delete grid[r][c]._twin;
         }
         if (!mosaicGroups || !mosaicIdx) return;
-        // Same ramp/override gate as the other two assigners.
+        // Same ramp/override gate as the other two assigners — and the
+        // mandate's off switch (see the block comment).
         if (twinCoverageFrac() <= 0) return;
-        const candidates = [];
+        const mandatory = [], singlesPool = [];
         for (let gi = 0; gi < mosaicGroups.length; gi++) {
             const g = mosaicGroups[gi];
-            if (g.n === 1) {
-                const cell = g.cells[0];
-                if (grid[cell[0]][cell[1]].type === T_CROSS) continue;
-            }
-            candidates.push(gi);
+            if (g.n > 1) { mandatory.push(gi); continue; }
+            const cell = g.cells[0];
+            if (grid[cell[0]][cell[1]].type === T_CROSS) continue;
+            singlesPool.push(gi);
         }
-        const budget = Math.round(candidates.length * twinCoverageFrac());
-        const sizes = twinGroupSizes(budget, TWIN_COLORS.length,
-                                     candidates.length,
-                                     mosaicTwinGroupSize(candidates.length));
-        const picks = shuffle(candidates);
-        let pickAt = 0;
-        for (let i = 0; i < sizes.length; i++) {
+        const units = mandatory.length + singlesPool.length;
+        if (units < 2) return;   // nothing can ring alone
+        const frac = Math.max(twinCoverageFrac(),
+                              mandatory.length / units);
+        // Member count: the budget, floored at every mandatory piece —
+        // plus a partner pulled beyond the budget when one lone piece
+        // would otherwise have nobody to ring with (mandate outranks
+        // budget) — capped at what exists.
+        let target = Math.round(units * frac);
+        target = Math.max(target, mandatory.length, Math.min(2, units));
+        target = Math.min(target, units);
+        const members = shuffle(mandatory)
+            .concat(shuffle(singlesPool).slice(0, target - mandatory.length));
+        if (members.length < 2) return;
+        // Ring count from the ladder size, bounded so every ring holds
+        // ≥2 members and colors never repeat. Members then DEAL
+        // round-robin — sizes differ by at most one, and every mandatory
+        // piece is guaranteed a ring, where the old twinGroupSizes
+        // chunking could truncate the tail on a rounding shortfall. (The
+        // mixed-size override — setTwinGroupSizeRange — deliberately
+        // does not apply in mosaic mode: the mandate needs the dealing
+        // guarantee more than that experiment needs mosaic.)
+        const ringCount = Math.max(1, Math.min(
+            TWIN_COLORS.length,
+            Math.floor(members.length / 2),
+            Math.round(members.length / mosaicTwinGroupSize(units))));
+        const rings = Array.from({ length: ringCount }, () => []);
+        members.forEach((gi, i) => { rings[i % ringCount].push(gi); });
+        for (let i = 0; i < rings.length; i++) {
             const color = TWIN_COLORS[i % TWIN_COLORS.length];
-            const members = picks.slice(pickAt, pickAt + sizes[i]);
-            pickAt += sizes[i];
-            if (members.length < 2) break;
-            const keys = members.map((gi) => {
+            const keys = rings[i].map((gi) => {
                 const a = mosaicGroups[gi].cells[0];
                 return a[0] + ',' + a[1];
             });
-            for (let m = 0; m < members.length; m++) {
+            for (let m = 0; m < rings[i].length; m++) {
                 const twin = { partner: keys[(m + 1) % keys.length], color };
-                for (const [r, c] of mosaicGroups[members[m]].cells) {
+                for (const [r, c] of mosaicGroups[rings[i][m]].cells) {
                     grid[r][c]._twin = twin;
                 }
             }

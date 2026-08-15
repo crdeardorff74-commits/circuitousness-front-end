@@ -5675,7 +5675,20 @@ html.dbgHidden #mosaicEditor.visible { display: flex; }
     font-size: 0.78rem;
     opacity: 0.85;
 }
-#mosaicEditor .meDim input { width: 3.4rem; }
+/* Rows / Cols / Ganged % are SLIDERS (user call 2026-08-15 — the number
+   spinners were fiddly). Each carries a .meSliderVal readout; the fixed
+   min-width + tabular digits stop the label row jittering as the value's
+   digit count changes mid-drag. */
+#mosaicEditor input[type="range"] {
+    width: 6.5rem;
+    accent-color: #FFD700;
+}
+#mosaicEditor .meSliderVal {
+    min-width: 1.6rem;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.9;
+}
 
 #mosaicEditor .meBody {
     display: flex;
@@ -5711,7 +5724,14 @@ html.dbgHidden #mosaicEditor.visible { display: flex; }
     align-items: center;
     justify-content: center;
     padding: 0.8rem;
-    overflow: auto;
+    /* hidden, not auto (user report 2026-08-15): refit() sizes the canvas
+       from this box's rect, which INCLUDES the padding above, so at some
+       dims the canvas ran a few pixels past the content box and auto
+       spawned a sliver of scrollbar. refit now subtracts the padding
+       too; hidden is the belt to that braces — the canvas is always
+       JS-sized to fit, so there is never anything meaningful to scroll
+       to. */
+    overflow: hidden;
 }
 #meBoard {
     touch-action: none;

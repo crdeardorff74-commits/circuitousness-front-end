@@ -204,9 +204,21 @@ const MosaicEditor = (function () {
     // its box is only known once it is on screen.
     function refit() {
         if (!els.board || !els.boardWrap) return;
+        // getBoundingClientRect INCLUDES the wrap's padding, so budget it
+        // out (0.8rem per side in styles.css, measured live so a style
+        // tweak can't silently reopen the gap) — the old flat −8 left the
+        // canvas overrunning the content box at some dims, which is where
+        // the sliver of scrollbar came from (user report 2026-08-15; the
+        // wrap is overflow:hidden now as well).
         const box = els.boardWrap.getBoundingClientRect();
-        const availW = Math.max(80, box.width  - 8);
-        const availH = Math.max(80, box.height - 8);
+        let padW = 8, padH = 8;
+        if (typeof getComputedStyle === 'function') {
+            const cs = getComputedStyle(els.boardWrap);
+            padW = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight)  || 0);
+            padH = (parseFloat(cs.paddingTop)  || 0) + (parseFloat(cs.paddingBottom) || 0);
+        }
+        const availW = Math.max(80, box.width  - padW);
+        const availH = Math.max(80, box.height - padH);
         cell = Math.floor(Math.min(availW / cols, availH / rows));
         cell = Math.max(CELL_MIN, Math.min(CELL_MAX, cell));
     }
@@ -689,16 +701,18 @@ const MosaicEditor = (function () {
             num.textContent = 'difficulty ' + d.score + ' / 100';
             const work = document.createElement('div');
             work.className = 'meScoreWork';
-            // The ganged term is RELIEF — above the 30% baseline it
-            // subtracts (gangs collapse the move space, easing the
-            // board), below it it adds. Signed display so a designer
-            // sees which way their setting is pushing the tier.
+            // Coverage is shown raw → effective so the complexity
+            // amplification is visible (big interlocking pieces lift it;
+            // a board of 2×2s shows the same number twice), and ganged
+            // as the points it shaves — more gangs, easier board. The
+            // EFFECTIVE ganged is shown: every piece is a mandatory gang
+            // member, so the input's floor (set below) is what actually
+            // scores.
             const reliefPts = Math.round(100 * d.gangedRelief);
             work.textContent = 'size ' + pct(d.sizeScore) + ' × ' + MosaicLibrary.W_SIZE +
-                               '  +  coverage ' + pct(d.coverScore) + ' × ' + MosaicLibrary.W_COVER +
-                               '  ·  ganged ' + pct(d.ganged) +
-                               ' → ' + (reliefPts > 0 ? '−' : reliefPts < 0 ? '+' : '±') +
-                               Math.abs(reliefPts) + ' pts';
+                               '  +  coverage ' + pct(d.coverScore) + '→' + pct(d.coverEffect) +
+                               ' (complexity ' + pct(d.complexity) + ') × ' + MosaicLibrary.W_COVER +
+                               '  −  ganged ' + pct(d.gangedEffective) + ' → ' + reliefPts + ' pts';
             els.score.appendChild(big);
             els.score.appendChild(num);
             els.score.appendChild(work);
@@ -711,6 +725,29 @@ const MosaicEditor = (function () {
             els.warn.hidden = msgs.length === 0;
             els.warn.classList.toggle('bad', check.errors.length > 0);
         }
+
+        // Ganged % FLOOR (the every-piece mandate): the build gangs every
+        // multi-cell piece regardless, so values below the pieces' unit
+        // share aren't selectable — the slider's min tracks the layout
+        // live and the value is bumped up onto the floor when a new
+        // piece drops it below. Percent is ceil'd so the min is never
+        // fractionally under the true floor.
+        if (els.twins) {
+            const minPct = Math.min(80, Math.ceil(100 * d.gangedFloor));
+            els.twins.min = minPct;
+            const cur = parseInt(els.twins.value, 10);
+            if (!isFinite(cur) || cur < minPct) els.twins.value = minPct;
+        }
+        syncSliderReadouts();
+    }
+
+    // The sliders' value readouts (rows / cols / ganged %). Called from
+    // every path that can move a slider — live 'input' ticks, loadLayout
+    // and setDims writing values back, and renderStats' floor bump.
+    function syncSliderReadouts() {
+        if (els.rowsVal  && els.rows)  els.rowsVal.textContent  = els.rows.value;
+        if (els.colsVal  && els.cols)  els.colsVal.textContent  = els.cols.value;
+        if (els.twinsVal && els.twins) els.twinsVal.textContent = els.twins.value;
     }
 
     function say(msg, bad) {
@@ -810,6 +847,7 @@ const MosaicEditor = (function () {
             warn: $('meWarn'), msg: $('meMsg'), list: $('meList'),
             rows: $('meRows'), cols: $('meCols'), paths: $('mePaths'),
             twins: $('meTwins'),
+            rowsVal: $('meRowsVal'), colsVal: $('meColsVal'), twinsVal: $('meTwinsVal'),
             name: $('meName'), author: $('meAuthor'),
             io: $('meIO'), test: $('meTestBtn'), ghost: null
         };
@@ -821,12 +859,23 @@ const MosaicEditor = (function () {
         els.board.addEventListener('pointerdown', onBoardPointerDown);
         els.board.addEventListener('contextmenu', onBoardContextMenu);
 
+        // Dims COMMIT on 'change' (slider release), not per input tick —
+        // setDims prunes pieces that no longer fit, and a live-committing
+        // drag from 19 rows down to 10 would delete pieces at every size
+        // it passed through. The readout still tracks the thumb live.
         const onDim = () => setDims(parseInt(els.rows.value, 10), parseInt(els.cols.value, 10));
-        if (els.rows) els.rows.addEventListener('change', onDim);
-        if (els.cols) els.cols.addEventListener('change', onDim);
+        if (els.rows) {
+            els.rows.addEventListener('change', onDim);
+            els.rows.addEventListener('input', syncSliderReadouts);
+        }
+        if (els.cols) {
+            els.cols.addEventListener('change', onDim);
+            els.cols.addEventListener('input', syncSliderReadouts);
+        }
         // Ganged % feeds the difficulty score (as relief — see
         // mosaic-library.js), so the readout re-ranks live as the
-        // designer drags the number.
+        // designer drags the slider. renderStats also re-syncs the value
+        // readouts, covering its own floor-bump of the slider.
         if (els.twins) els.twins.addEventListener('input', renderStats);
 
         const bind = (id, fn) => { const b = $(id); if (b) b.addEventListener('click', fn); };
