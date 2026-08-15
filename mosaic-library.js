@@ -23,19 +23,26 @@
  *
  * DIFFICULTY
  * ──────────
- * Per the design call: difficulty is board SIZE combined with the PERCENTAGE
- * of the board covered by mosaic (non-singular) pieces. Nothing else. Both
- * halves are motivated:
+ * Per the design calls (2026-08-15 added the third input): difficulty is
+ * board SIZE, the PERCENTAGE of the board covered by mosaic (non-singular)
+ * pieces, and the layout's GANGED coverage. All three are motivated:
  *   • Size — more sub-tiles is more to read and more to turn.
  *   • Coverage — a singular cell rotates alone, so it can be solved locally.
  *     A cell inside a piece cannot: turning it moves every other cell of that
  *     piece too. Coverage is therefore the fraction of the board that has to
  *     be reasoned about non-locally, which is the thing that actually makes
  *     mosaic hard. At 0% coverage a "mosaic" board is a singular board.
+ *   • Ganged % — EASES rather than hardens (user call: it cuts down the
+ *     number of bad moves that would otherwise remain — solving one ring
+ *     member solves them all, so the effective move space shrinks). It
+ *     enters as RELIEF relative to the 30% default (maze.js
+ *     TWIN_COVERAGE): a layout that never says otherwise scores exactly
+ *     as it did before the field existed, cranking gangs above 30%
+ *     lowers the score, and starving them below raises it.
  *
  * Deliberately NOT in the score, so this doesn't quietly become a different
  * metric than the one that was specified: piece size distribution, hole
- * nesting, path count, twin coverage, gate count. Piece size is the most
+ * nesting, path count, gate count. Piece size is the most
  * defensible future addition (a 5×5 ring is harder than four 2×2 blocks at
  * identical coverage) — the editor SHOWS mean piece size next to the score
  * for exactly that reason, without folding it in.
@@ -87,6 +94,25 @@ const MosaicLibrary = (function () {
     const AREA_CEIL  = 256;
     const W_SIZE  = 0.5;
     const W_COVER = 0.5;
+    // Ganged relief: score −= W_GANG × (ganged − GANGED_BASELINE), so the
+    // baseline is NEUTRAL — the 30% default neither adds nor subtracts,
+    // which is what keeps every layout saved before the field existed at
+    // its original score and tier (their normalize() default is exactly
+    // the baseline). Spread at W_GANG 0.3: the 0..80% input range moves a
+    // score by +9 to −15 points — one to two tiers, proportionate to how
+    // much a heavy gang net actually collapses the move space.
+    const W_GANG          = 0.3;
+    const GANGED_BASELINE = 0.30;   // mirrors maze.js TWIN_COVERAGE
+    const GANGED_MAX      = 0.8;    // mirrors the editor input's ceiling
+
+    // A layout's ganged coverage: the stored fraction clamped to the legal
+    // band, or the baseline when the field is absent/junk (every layout
+    // predating 2026-08-15, and every import from one).
+    function gangedOf(l) {
+        const g = Number(l && l.ganged);
+        if (!isFinite(g)) return GANGED_BASELINE;
+        return g < 0 ? 0 : (g > GANGED_MAX ? GANGED_MAX : g);
+    }
 
     // Tiers are the thing a run actually selects on — "give me the next
     // puzzle, a little harder than the last". Ten of them across 0..100, so
@@ -132,7 +158,15 @@ const MosaicLibrary = (function () {
         const coverage   = area > 0 ? covered / area : 0;
         const sizeScore  = clamp01((area - AREA_FLOOR) / (AREA_CEIL - AREA_FLOOR));
         const coverScore = clamp01(coverage);
-        const score      = Math.round(100 * (W_SIZE * sizeScore + W_COVER * coverScore));
+        // Relief is SIGNED: positive above the baseline (easier board,
+        // score drops), negative below it (a gang-starved board is
+        // harder than the default and the score rises). clamp01 keeps
+        // the ends honest — relief can't push a full 24×24 past 100 or
+        // an empty 4×4 below 0.
+        const ganged       = gangedOf(l);
+        const gangedRelief = W_GANG * (ganged - GANGED_BASELINE);
+        const score = Math.round(100 * clamp01(
+            W_SIZE * sizeScore + W_COVER * coverScore - gangedRelief));
         // floor(score/10) is 0..10 — a perfect 100 would otherwise be an
         // eleventh tier of exactly one score.
         const tier = Math.min(TIER_COUNT, Math.floor(score / 10) + 1);
@@ -145,16 +179,22 @@ const MosaicLibrary = (function () {
             largestFrame: largestFrame,
             bySize: bySize,
             sizeScore: sizeScore, coverScore: coverScore,
+            ganged: ganged, gangedRelief: gangedRelief,
             score: score, tier: tier, tierName: TIER_NAMES[tier - 1]
         };
     }
 
     // ── Layout construction + validation ─────────────────────────────────
 
-    function makeLayout(rows, cols, pieces) {
+    // `ganged` (0..GANGED_MAX fraction) joined the layout 2026-08-15 — it
+    // feeds the difficulty score, so it is part of the DESIGN, not a play-
+    // time knob. Optional everywhere for back-compat: absent reads as the
+    // baseline (see gangedOf).
+    function makeLayout(rows, cols, pieces, ganged) {
         return {
             v: FORMAT_VERSION,
             rows: rows, cols: cols,
+            ganged: gangedOf({ ganged: ganged }),
             pieces: (pieces || []).map((p) => ({ n: p.n, mask: p.mask, r: p.r, c: p.c }))
         };
     }
@@ -218,12 +258,18 @@ const MosaicLibrary = (function () {
             if (!Mosaic.findShape(n, mask)) return null;
             pieces.push({ n: n, mask: mask, r: r, c: c });
         }
-        return { v: FORMAT_VERSION, rows: rows, cols: cols, pieces: pieces };
+        // Canonicalise ganged on the way through — junk and absence both
+        // land on the baseline, so everything downstream (difficulty,
+        // encode, the store) sees an explicit legal value.
+        return { v: FORMAT_VERSION, rows: rows, cols: cols,
+                 ganged: gangedOf(raw), pieces: pieces };
     }
 
     // ── Compact string form ──────────────────────────────────────────────
     //
-    // "M1:10x8:3,0,0,186:2,4,2,15" — version, dims, then one
+    // "M1:10x8:g30:3,0,0,186:2,4,2,15" — version, dims, an optional
+    // `g<pct>` ganged segment (2026-08-15; codes from before it simply
+    // lack the segment and decode to the baseline), then one
     // `n,r,c,mask` group per piece. ~12 characters a piece, so a dense
     // 12×12 board is under 400 bytes: small enough for a share code, a URL,
     // or a text column, and readable enough to eyeball in a database row.
@@ -233,7 +279,8 @@ const MosaicLibrary = (function () {
     function encode(layout) {
         const l = normalize(layout);
         if (!l) return null;
-        const parts = ['M' + FORMAT_VERSION, l.rows + 'x' + l.cols];
+        const parts = ['M' + FORMAT_VERSION, l.rows + 'x' + l.cols,
+                       'g' + Math.round(l.ganged * 100)];
         for (const p of l.pieces) parts.push([p.n, p.r, p.c, p.mask].join(','));
         return parts.join(':');
     }
@@ -246,13 +293,18 @@ const MosaicLibrary = (function () {
         const dims = parts[1].split('x');
         if (dims.length !== 2) return null;
         const pieces = [];
+        let ganged;   // undefined → normalize's baseline default
         for (let i = 2; i < parts.length; i++) {
             if (!parts[i]) continue;
+            // The ganged segment: 'g' + integer percent, commaless, so it
+            // can never be mistaken for a 4-field piece group.
+            if (/^g\d+$/.test(parts[i])) { ganged = +parts[i].slice(1) / 100; continue; }
             const f = parts[i].split(',');
             if (f.length !== 4) return null;
             pieces.push({ n: +f[0], r: +f[1], c: +f[2], mask: +f[3] });
         }
-        return normalize({ v: FORMAT_VERSION, rows: +dims[0], cols: +dims[1], pieces: pieces });
+        return normalize({ v: FORMAT_VERSION, rows: +dims[0], cols: +dims[1],
+                           ganged: ganged, pieces: pieces });
     }
 
     // ── Entries + the store ──────────────────────────────────────────────
@@ -401,6 +453,7 @@ const MosaicLibrary = (function () {
         MIN_DIM: MIN_DIM, MAX_DIM: MAX_DIM,
         AREA_FLOOR: AREA_FLOOR, AREA_CEIL: AREA_CEIL,
         W_SIZE: W_SIZE, W_COVER: W_COVER,
+        W_GANG: W_GANG, GANGED_BASELINE: GANGED_BASELINE, GANGED_MAX: GANGED_MAX,
         TIER_COUNT: TIER_COUNT, TIER_NAMES: TIER_NAMES,
         STORE_KEY: STORE_KEY,
 

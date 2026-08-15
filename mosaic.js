@@ -110,6 +110,21 @@ const Mosaic = (function () {
         return seen.size === cells.length;
     }
 
+    // Hand-vetoed shapes. The enumeration is value-blind — any legal-size,
+    // connected, frame-filling orbit union gets in — and one of them is a
+    // hollow hooked cross whose clockwise form reads as a swastika
+    // (removed 2026-08-15, user call): a symbol the game must never put
+    // on a board or in the editor palette. Vetoed by canonical key so a
+    // change to enumeration or sort order can never resurrect it.
+    // Everything downstream refuses it for free: findShape is built from
+    // SHAPES so the mask no longer resolves, validate() therefore rejects
+    // stored layouts that used it, and packFromLayout skips the piece so
+    // its cells degrade to singular fill (../tests/mosaic-library-test.js
+    // pins the refusal alongside the other negatives).
+    const VETOED_KEYS = new Set([
+        '5:011112131421233031323343',   // 5×5 hollow hooked cross, clockwise (size 12)
+    ]);
+
     // Build the full library once at module load. Cost is trivial (the
     // largest frame is 5×5 → 7 orbits → 127 subsets) so there is no reason
     // to precompute it into a literal, and an enumerated library can never
@@ -138,11 +153,13 @@ const Mosaic = (function () {
                 if (minR !== 0 || minC !== 0 || maxR !== n - 1 || maxC !== n - 1) continue;
                 if (!isConnected(cells)) continue;
                 cells.sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
+                const key = n + ':' + cells.map(([r, c]) => r + '' + c).join('');
+                if (VETOED_KEYS.has(key)) continue;
                 out.push({
                     n: n,
                     size: cells.length,
                     cells: cells,
-                    key: n + ':' + cells.map(([r, c]) => r + '' + c).join('')
+                    key: key
                 });
             }
         }

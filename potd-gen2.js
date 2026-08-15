@@ -616,21 +616,31 @@ const PotdGen2 = (() => {
     // 2026-08-15: "it reverts to a non-Mosaic type").
     let activeDesign = null;
 
+    // Gate count for a designed board, from GRID SIZE alone (user call
+    // 2026-08-15: never a designer knob). Same curve live play derives —
+    // game.js prices 1 + growthUnits/4 over the singular 4×4 start, which
+    // for a standalone rows×cols board is exactly this.
+    function designGateTarget(rows, cols) {
+        return Math.max(1, 1 + Math.floor((rows + cols - 8) / 4));
+    }
+
     // Build and play one puzzle on an authored mosaic layout.
-    //   design = { layout,                 // mosaic-library.js format
-    //              pathCount,              // 1-4
-    //              gateTarget,             // 0 = no gates
-    //              twinCoverage }          // 0..1 piece fraction, or null
-    //                                      // for the default 30%
-    // Runs the same worker-or-main build + gate placement pipeline as a
-    // panel roll — the layout rides the roll object into both build paths
-    // and placeGates already handles mosaic's un-scramble dance. Resolves
-    // to the placeGates stats for the caller's logging.
+    //   design = { layout,                 // mosaic-library.js format —
+    //                                      // its `ganged` field (0..1
+    //                                      // piece fraction) sets the
+    //                                      // ring coverage
+    //              pathCount }             // 1-4
+    // The gate count is derived from the layout's dims (designGateTarget),
+    // never passed in. Runs the same worker-or-main build + gate placement
+    // pipeline as a panel roll — the layout rides the roll object into
+    // both build paths and placeGates already handles mosaic's un-scramble
+    // dance. Resolves to the placeGates stats for the caller's logging.
     async function playDesign(design) {
         if (generating) return null;
         generating = true;
         try {
             if (typeof Game !== 'undefined' && Game.clearWinBanner) Game.clearWinBanner();
+            spinAwayCurrentBoard();
             const roll = {
                 rows: design.layout.rows, cols: design.layout.cols,
                 pathCount: design.pathCount || 1,
@@ -641,11 +651,12 @@ const PotdGen2 = (() => {
                 // ramp scale, and on the main-thread build path that
                 // scale is the live Maze's — whatever Marathon last set,
                 // possibly 0 (twin-free early-run levels). 0.30 mirrors
-                // maze.js's TWIN_COVERAGE default.
-                twinCoverage: (typeof design.twinCoverage === 'number')
-                    ? design.twinCoverage : 0.30,
+                // maze.js's TWIN_COVERAGE default for layouts that
+                // predate the `ganged` field.
+                twinCoverage: (typeof design.layout.ganged === 'number')
+                    ? design.layout.ganged : 0.30,
                 twinGroupMin: null, twinGroupMax: null,
-                gateTarget: design.gateTarget | 0,
+                gateTarget: designGateTarget(design.layout.rows, design.layout.cols),
             };
             const t0 = performance.now();
             const mazeSnap = ensureWorker()
@@ -663,6 +674,13 @@ const PotdGen2 = (() => {
                 minMoves: placed.minMoves,
                 twins: placed.twins,
             };
+        } catch (e) {
+            // The board tumbled away at the top of this try; a failed
+            // build never reaches loadIntoPlay's spinInBoard, so release
+            // the hold or the canvas stays invisible. Rethrown — the
+            // editor's testPlay owns the error message.
+            if (typeof Render !== 'undefined' && Render.cancelSpin) Render.cancelSpin();
+            throw e;
         } finally {
             generating = false;
         }
@@ -673,6 +691,23 @@ const PotdGen2 = (() => {
     function nextPuzzle() {
         if (activeDesign) { playDesign(activeDesign); return; }
         if (api.generateAndPlay) api.generateAndPlay();
+    }
+
+    // Tumble the on-screen board away at the start of a dev-mode build,
+    // exactly like live play's between-puzzle transition (user call
+    // 2026-08-15 — generator and editor boards used to just blink). A
+    // board on screen spins out — ghost canvas animates into the
+    // distance while the real canvas hides behind the hold class, so the
+    // build redraws it invisibly; an empty canvas primes the same hold
+    // so the incoming board still tumbles IN (marathon's first-puzzle
+    // convention). loadIntoPlay's spinInBoard completes the pair; any
+    // build that FAILS after this must Render.cancelSpin() or the canvas
+    // stays hidden behind the hold (the quit-path lesson in render.js's
+    // cancelSpin comment).
+    function spinAwayCurrentBoard() {
+        if (typeof Render === 'undefined') return;
+        if (Maze.grid && Maze.ROWS > 0 && Render.spinOutBoard) Render.spinOutBoard();
+        else if (Render.primeSpinIn) Render.primeSpinIn();
     }
 
     // Is the viewport taller than it is wide? Portrait players get the
@@ -737,6 +772,12 @@ const PotdGen2 = (() => {
             if (Game.resetSfxBaselines) Game.resetSfxBaselines();
             if (Game.startRecording)    Game.startRecording();
         }
+        // Tumble the freshly drawn board IN — completes the spin-out (or
+        // primed hold) that spinAwayCurrentBoard opened at build start,
+        // waiting out whatever remains of the outbound animation first.
+        // A no-op (returns 0) when no spin is pending, so callers that
+        // never spun away are untouched.
+        if (typeof Render !== 'undefined' && Render.spinInBoard) Render.spinInBoard();
         return rotated;
     }
 
@@ -892,6 +933,10 @@ const PotdGen2 = (() => {
             // the click having done nothing. loadIntoPlay clears it too, for
             // callers that don't come through this button.
             if (typeof Game !== 'undefined' && Game.clearWinBanner) Game.clearWinBanner();
+            // And tumble it away, like live play — the hold hides the
+            // canvas for the whole build; loadIntoPlay tumbles the new
+            // board in (the catch below releases the hold on failure).
+            spinAwayCurrentBoard();
             const competing = preGenBusy();
             const started = performance.now();
             // Live elapsed counter — a 14×14 singular build runs over a
@@ -952,6 +997,9 @@ const PotdGen2 = (() => {
                 if (history.length > HISTORY_MAX) history.pop();
                 renderLog();
             } catch (e) {
+                // Failed builds never reach loadIntoPlay's spinInBoard —
+                // release the spin hold or the canvas stays invisible.
+                if (typeof Render !== 'undefined' && Render.cancelSpin) Render.cancelSpin();
                 if (resultEl) {
                     resultEl.textContent = 'Generation failed: ' + ((e && e.message) ? e.message : e);
                 }

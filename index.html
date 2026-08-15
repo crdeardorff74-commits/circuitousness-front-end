@@ -1423,14 +1423,14 @@
                 <!-- Gang coverage is a % of PIECES coupled into lockstep
                      rings (30 mirrors the live TWIN_COVERAGE default;
                      "ganged" is the player-facing name, the code keeps
-                     twin/_twin internally — see CLAUDE.md); gates count
-                     is a target, not a promise — placement honours the
-                     same spacing rules as every other mode. -->
+                     twin/_twin internally — see CLAUDE.md). Part of the
+                     LAYOUT: it saves with the design and feeds the
+                     difficulty score as relief. Gates have no control
+                     here on purpose — the count is derived from the
+                     grid size (PotdGen2.playDesign), matching live
+                     play's size curve. -->
                 <label class="mePathPick">Ganged %
                     <input type="number" id="meTwins" min="0" max="80" step="5" value="30">
-                </label>
-                <label class="mePathPick">Gates
-                    <input type="number" id="meGates" min="0" max="12" step="1" value="4">
                 </label>
                 <button type="button" id="meTestBtn" class="mePrimary">▶ Test play this layout</button>
 

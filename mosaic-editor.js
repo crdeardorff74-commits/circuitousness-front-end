@@ -137,8 +137,18 @@ const MosaicEditor = (function () {
 
     // ── The design as a layout ───────────────────────────────────────────
 
+    // The Ganged % input as a 0..1 fraction, or undefined when the input
+    // is absent/blank — makeLayout then applies the baseline default.
+    // It is part of the LAYOUT (2026-08-15): it feeds the difficulty
+    // score, so it saves, exports and loads with the design.
+    function gangedInput() {
+        if (!els.twins) return undefined;
+        const pct = parseInt(els.twins.value, 10);
+        return isFinite(pct) ? pct / 100 : undefined;
+    }
+
     function currentLayout() {
-        return MosaicLibrary.makeLayout(rows, cols, pieces);
+        return MosaicLibrary.makeLayout(rows, cols, pieces, gangedInput());
     }
 
     function loadLayout(layout, entryId) {
@@ -151,6 +161,7 @@ const MosaicEditor = (function () {
         rebuildOcc();
         if (els.rows) els.rows.value = rows;
         if (els.cols) els.cols.value = cols;
+        if (els.twins) els.twins.value = Math.round(l.ganged * 100);
         refit();
         renderAll();
         return true;
@@ -678,8 +689,16 @@ const MosaicEditor = (function () {
             num.textContent = 'difficulty ' + d.score + ' / 100';
             const work = document.createElement('div');
             work.className = 'meScoreWork';
+            // The ganged term is RELIEF — above the 30% baseline it
+            // subtracts (gangs collapse the move space, easing the
+            // board), below it it adds. Signed display so a designer
+            // sees which way their setting is pushing the tier.
+            const reliefPts = Math.round(100 * d.gangedRelief);
             work.textContent = 'size ' + pct(d.sizeScore) + ' × ' + MosaicLibrary.W_SIZE +
-                               '  +  coverage ' + pct(d.coverScore) + ' × ' + MosaicLibrary.W_COVER;
+                               '  +  coverage ' + pct(d.coverScore) + ' × ' + MosaicLibrary.W_COVER +
+                               '  ·  ganged ' + pct(d.ganged) +
+                               ' → ' + (reliefPts > 0 ? '−' : reliefPts < 0 ? '+' : '±') +
+                               Math.abs(reliefPts) + ' pts';
             els.score.appendChild(big);
             els.score.appendChild(num);
             els.score.appendChild(work);
@@ -729,18 +748,15 @@ const MosaicEditor = (function () {
         if (els.test) els.test.disabled = true;
         say('Building…');
         const paths = els.paths ? (parseInt(els.paths.value, 10) || 1) : 1;
-        // Twins as a 0..1 piece fraction (blank/garbage → the default 30%
-        // via null); gates as a target count (blank → none).
-        const twinsPct = els.twins ? parseInt(els.twins.value, 10) : NaN;
-        const gates    = els.gates ? (parseInt(els.gates.value, 10) || 0) : 0;
 
         try {
+            // Ganged % rides inside the layout (currentLayout reads the
+            // input); the gate count is NOT ours to pass — playDesign
+            // derives it from the grid size, the same curve live play
+            // uses (user call 2026-08-15).
             const res = await PotdGen2.playDesign({
                 layout: layout,
                 pathCount: paths,
-                gateTarget: Math.max(0, gates),
-                twinCoverage: isFinite(twinsPct)
-                    ? Math.min(1, Math.max(0, twinsPct / 100)) : null,
             });
             close();
             if (res && typeof Logger !== 'undefined') {
@@ -793,7 +809,7 @@ const MosaicEditor = (function () {
             palette: $('mePalette'), stats: $('meStats'), score: $('meScore'),
             warn: $('meWarn'), msg: $('meMsg'), list: $('meList'),
             rows: $('meRows'), cols: $('meCols'), paths: $('mePaths'),
-            twins: $('meTwins'), gates: $('meGates'),
+            twins: $('meTwins'),
             name: $('meName'), author: $('meAuthor'),
             io: $('meIO'), test: $('meTestBtn'), ghost: null
         };
@@ -808,6 +824,10 @@ const MosaicEditor = (function () {
         const onDim = () => setDims(parseInt(els.rows.value, 10), parseInt(els.cols.value, 10));
         if (els.rows) els.rows.addEventListener('change', onDim);
         if (els.cols) els.cols.addEventListener('change', onDim);
+        // Ganged % feeds the difficulty score (as relief — see
+        // mosaic-library.js), so the readout re-ranks live as the
+        // designer drags the number.
+        if (els.twins) els.twins.addEventListener('input', renderStats);
 
         const bind = (id, fn) => { const b = $(id); if (b) b.addEventListener('click', fn); };
         bind('meOpenBtn',   openEditor);   // the debug panel's entry point
