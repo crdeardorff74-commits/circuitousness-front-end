@@ -2,6 +2,11 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-08-19 — Release v1.70: Spotify + Apple Music credits clicks now tracked
+- **Soundtrack store links in the credits were invisible to click tracking**: user clicked 4 links, only 3 recorded. The Spotify and Apple Music `<a>`s carried vestigial ids (`creditsSpotify`/`creditsApple`, referenced by nothing) but not the `data-credit-link` attribute share.js's capture listener keys on. Now tagged `spotify` / `apple-music`. Swept every other anchor: all credits links tracked, share-popup donate link is structural (`.share-donate a`), legal-footer links untracked by design.
+- Same session, other folders (not zipped): per-visitor wipe ✕ added to the admin Recent Visits table (official-intelligence-web) + `dryRun` support and share/credits click counts on the back-end's `wipe-session-visits` (rate limit 5→30/min). ⚠ **Deploy back-end to Render BEFORE the admin page** — the old deployed endpoint ignores `dryRun`, so the ✕ button's preview request would real-delete.
+- Version 1.69 → 1.70. Not browser-verified per rule 0.
+
 ## 2026-08-15 — Release v1.69: Mosaic gangs/gates/design-loop, "ganged" rename, difficulty calibration pipeline
 - **Mosaic grew its designed-play loop**: editor Test Play routes through `PotdGen2.playDesign`; solving a designed board and clicking for a new puzzle regenerates the SAME layout (`PotdGen2.nextPuzzle`; panel Generate breaks the loop). Dev-mode boards now tumble in/out via the live spin machinery (`spinAwayCurrentBoard` + `loadIntoPlay`'s `spinInBoard`; failed builds must `cancelSpin` or the canvas stays hidden).
 - **Mosaic got twins ("ganged") and gates.** Piece-level lockstep rings (`assignMosaicTwins`, quad's analogue): rotation/hint/lock/scramble/penalties/pricing all ring-aware. ⚠ **Every multi-cell piece is a MANDATORY ring member** (the gang color is what makes complex shapes legible — user call), each bringing ≥1 SINGLE partner; two pieces weld only when singles/palette run out (welded terminal-carrying pieces intersect their allowed-turn pools toward {0} and arrive near-solved — field-reported). Coverage 0 is the only off switch (tests rely on it). Gates: count derived from grid size (`designGateTarget`, marathon's curve) — never a designer knob.
