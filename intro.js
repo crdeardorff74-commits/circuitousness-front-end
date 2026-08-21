@@ -23,15 +23,20 @@
  * It is ALSO skipped on CrazyGames (see the skip block in init) — their
  * QA requires ≤1 click to gameplay, and CG's loading screen is the gate.
  * CG loses the fullscreen key shortcuts with it (custom fullscreen
- * controls are prohibited there); everyone else keeps them.
+ * controls are prohibited there); everyone else keeps them. DESKTOP
+ * first-time visitors skip too (2026-08-21 user call): desktop has no
+ * install button to offer, so newcomers there go straight into the
+ * auto-start Practice sequence.
  *
- * A FIRST-TIME visitor on any other host gets a SIMPLIFIED intro
- * (2026-08-21; they used to skip like CG): title + PLAY + install
- * hint/button only — the WARNING gag, toggles, and "I agree" small
- * print are hidden, so the gag stays a returning player's reward while
- * the newcomer still gets a landing screen that can carry the Install
- * button. PLAY drops them into the same auto-start Practice puzzle the
- * old skip did (dismiss → Marathon.autoStartFirstPractice).
+ * A FIRST-TIME visitor on a PHONE/TABLET (any host but CG) instead gets
+ * a SIMPLIFIED intro (2026-08-21; they used to skip like CG): title +
+ * toggles + PLAY + install hint/button — the WARNING gag and "I agree"
+ * small print are hidden, so the gag stays a returning player's reward
+ * while the newcomer still gets a landing screen that can carry the
+ * Install button. The music/SFX/fullscreen toggles stay (setup, not
+ * flavor — a newcomer should get to mute before PLAY starts the music).
+ * PLAY drops them into the same auto-start Practice puzzle the skip
+ * path uses (dismiss → Marathon.autoStartFirstPractice).
  *
  * The body text's {activity} placeholder is filled from warnings.txt
  * (one phrase per line). Fetch is cache-friendly; first failure falls
@@ -216,11 +221,13 @@ const Intro = (() => {
         // re-derived fallback covers a stale cached index.html that
         // predates the class.
         const onCrazyGames = (typeof IS_CRAZYGAMES !== 'undefined') && IS_CRAZYGAMES;
-        // CG only since 2026-08-21 — first-time visitors no longer skip;
-        // they get the SIMPLIFIED intro (see firstVisitIntro below). The
-        // class check still honors a stale cached index.html that tagged
-        // a first-timer intro-skip under the old policy: those players
-        // take the old auto-start path, which remains fully wired.
+        // Since 2026-08-21: CG, plus DESKTOP first-time visitors (tagged
+        // intro-skip by index.html — desktop has no install button to
+        // show, so newcomers there auto-start as they always did).
+        // PHONE/TABLET first-timers no longer skip; they get the
+        // SIMPLIFIED intro (see firstVisitIntro below). The class check
+        // also still honors a stale cached index.html that tagged every
+        // first-timer intro-skip under the old policy.
         const skipIntro = document.documentElement.classList.contains('intro-skip')
             || onCrazyGames;
         if (skipIntro) {
@@ -275,14 +282,15 @@ const Intro = (() => {
 
         // ---- First-time visitor: SIMPLIFIED intro (2026-08-21) ----
         // A brand-new browser (any host but CG) still sees the intro, but
-        // stripped to title + PLAY + install hint: the WARNING gag, the
-        // toggles row, and the "I agree" small print are hidden — the gag
-        // is a returning player's reward, and a newcomer's landing screen
+        // stripped to title + toggles + PLAY + install hint: the WARNING
+        // gag and the "I agree" small print are hidden — the gag is a
+        // returning player's reward, and a newcomer's landing screen
         // exists to carry the Install button (the old full skip left them
-        // no screen that could). CSS (html.intro-first) already keeps
-        // these nodes out of the first frame; the inline hides below are
-        // belt-and-braces for a stale cached styles.css. PLAY lands them
-        // in the same auto-start Practice puzzle the skip used to —
+        // no screen that could). The music/SFX/fullscreen toggles stay:
+        // they're setup, not flavor. CSS (html.intro-first) already keeps
+        // the hidden nodes out of the first frame; the inline hides below
+        // are belt-and-braces for a stale cached styles.css. PLAY lands
+        // them in the same auto-start Practice puzzle the skip used to —
         // dismiss() already routes first-timers through
         // Marathon.autoStartFirstPractice.
         // Read the class index.html set before first paint rather than
@@ -292,7 +300,7 @@ const Intro = (() => {
         // skip block above still honors.
         const firstVisitIntro = document.documentElement.classList.contains('intro-first');
         if (firstVisitIntro) {
-            ['.introWarningBlock', '.introToggles', '.introPlaySub'].forEach((sel) => {
+            ['.introWarningBlock', '.introPlaySub'].forEach((sel) => {
                 const el = overlay.querySelector(sel);
                 if (el) el.style.display = 'none';
             });

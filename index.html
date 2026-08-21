@@ -97,29 +97,48 @@
          Two root classes, both read back by intro.js (never re-derived
          there, so DOM and CSS can never disagree — a mismatch would mean
          an invisible overlay the game is stuck behind):
-           • intro-skip  — CrazyGames only. Their QA requires ≤1 click to
-             gameplay, and CG's loading screen is the gate; no intro at all.
-           • intro-first — brand-new browser on any other host. The intro
-             STILL SHOWS (changed 2026-08-21 — the old full skip meant a
-             first-time phone visitor never saw a screen that could carry
-             the Install button; they had to dig it out of the browser
-             menu), but simplified: title + PLAY + install hint only. CSS
-             hides the WARNING gag, the toggles row, and the "I agree"
-             small print — the gag stays a returning player's reward.
-             Tapping PLAY drops them into the same auto-start Practice
-             puzzle the skip used to (intro.js dismiss →
-             Marathon.autoStartFirstPractice), so the newcomer flow is
-             one tap on a clean screen rather than zero taps with no
-             install path.
-         Deciding here rather than in intro.js keeps the wrong variant out
-         of the first frame entirely, exactly like html.mode-debug above. -->
+           • intro-skip  — CrazyGames (their QA requires ≤1 click to
+             gameplay, and CG's loading screen is the gate), and any
+             DESKTOP first-time visitor (2026-08-21 user call: desktop
+             gains nothing from an intro stop — no install button to
+             show — so newcomers there go straight into the auto-start
+             Practice sequence, the pre-2026-08-21 behavior).
+           • intro-first — brand-new browser, PHONE/TABLET, any other
+             host. The intro STILL SHOWS (changed 2026-08-21 — the old
+             full skip meant a first-time phone visitor never saw a
+             screen that could carry the Install button; they had to dig
+             it out of the browser menu), but simplified: title +
+             toggles + PLAY + install hint. CSS hides the WARNING gag
+             and the "I agree" small print — the gag stays a returning
+             player's reward; the music/SFX/fullscreen toggles stay
+             (setup, not flavor). Tapping PLAY drops them into the same
+             auto-start Practice puzzle the skip path uses (intro.js
+             dismiss → Marathon.autoStartFirstPractice), so the newcomer
+             flow is one tap on a clean screen rather than zero taps
+             with no install path.
+         The phone/tablet test mirrors DeviceDetection.detect() in
+         touch-controls.js (phone + tablet UA classes + iPadOS-reports-
+         as-Mac), inlined because that file loads far too late for a
+         pre-paint decision. Deliberately UA-based, not touch-based: a
+         touch-screen Windows laptop is a desktop for install purposes.
+         Deciding here rather than in intro.js keeps the wrong variant
+         out of the first frame entirely, exactly like html.mode-debug
+         above. -->
     <script>
     (function () {
         try {
+            var firstVisit = (typeof isFirstVisitBrowser === 'function') && isFirstVisitBrowser();
+            var ua = navigator.userAgent;
+            var phoneTablet =
+                /(ipad|tablet|playbook|silk)|(android(?!.*mobile))/i.test(ua)
+                || /android|webos|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua)
+                || (/Mac/.test(ua) && navigator.maxTouchPoints > 2);
             if (typeof IS_CRAZYGAMES !== 'undefined' && IS_CRAZYGAMES) {
                 document.documentElement.classList.add('intro-skip');
-            } else if (typeof isFirstVisitBrowser === 'function' && isFirstVisitBrowser()) {
+            } else if (firstVisit && phoneTablet) {
                 document.documentElement.classList.add('intro-first');
+            } else if (firstVisit) {
+                document.documentElement.classList.add('intro-skip');
             }
         } catch (e) { /* fall through: full intro shows, which is the safe default */ }
     })();

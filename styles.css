@@ -832,24 +832,27 @@ html.mode-game #resetBtn { display: none; }
 /* Debug mode bypasses the intro entirely — hide it server-side too in
    case intro.js doesn't get to run for some reason. */
 html.mode-debug #introOverlay { display: none !important; }
-/* Intro skipped for this player — CrazyGames only since 2026-08-21
-   (first-time visitors used to skip too; they now get the simplified
-   intro below). The class is set by an inline script in index.html
-   BEFORE FIRST PAINT (intro.js runs too late; the gag would flash by
-   on the way to the first puzzle). Same mechanism as mode-debug above. */
+/* Intro skipped for this player — CrazyGames, or a DESKTOP first-time
+   visitor (phone/tablet first-timers get the simplified intro below
+   instead, 2026-08-21 — desktop has no install button to show, so its
+   newcomers auto-start as they always did). The class is set by an
+   inline script in index.html BEFORE FIRST PAINT (intro.js runs too
+   late; the gag would flash by on the way to the first puzzle). Same
+   mechanism as mode-debug above. */
 html.intro-skip #introOverlay { display: none !important; }
-/* First-time visitor (any host but CrazyGames): SIMPLIFIED intro —
-   title + PLAY + the install hint/button only. The WARNING gag, the
-   toggles row, and the "I agree to solve responsibly" small print are
-   returning-player flavor a newcomer shouldn't have to parse; what a
-   newcomer DOES need is a landing screen that can carry the Install
-   button (the old full skip auto-started them into the first Practice
-   puzzle with no such screen — field report 2026-08-21). Tapping PLAY
-   still lands them in that same auto-start Practice puzzle. Class set
-   before first paint by index.html, same as intro-skip above; intro.js
-   also hides these nodes inline as a stale-CSS belt-and-braces. */
+/* First-time visitor on a PHONE/TABLET (any host but CG): SIMPLIFIED intro —
+   title + toggles + PLAY + the install hint/button. The WARNING gag and
+   the "I agree to solve responsibly" small print are returning-player
+   flavor a newcomer shouldn't have to parse; what a newcomer DOES need
+   is a landing screen that can carry the Install button (the old full
+   skip auto-started them into the first Practice puzzle with no such
+   screen — field report 2026-08-21). The music/SFX/fullscreen toggles
+   STAY (user call, same day): they're setup, not flavor — a newcomer
+   should get to mute before PLAY starts the music. Tapping PLAY still
+   lands them in that same auto-start Practice puzzle. Class set before
+   first paint by index.html, same as intro-skip above; intro.js also
+   hides these nodes inline as a stale-CSS belt-and-braces. */
 html.intro-first .introWarningBlock,
-html.intro-first .introToggles,
 html.intro-first .introPlaySub { display: none !important; }
 
 /* Short-viewport (landscape phone) overrides for the intro. WARNING and
