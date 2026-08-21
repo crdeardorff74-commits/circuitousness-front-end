@@ -1579,8 +1579,10 @@
                 // gate-free run.
                 const runLevel = (typeof Marathon !== 'undefined' && Marathon.getLevel)
                     ? Marathon.getLevel() : 3;
-                // Gate-count progression: 1 gate on a start-size board,
-                // +1 for every 4 SUB-TILE units of growth past it, where a
+                // Gate-count progression: 1 + growth/4, floored at 2 (see
+                // the target line below) — so 2 gates on a start-size
+                // board, +1 for every 4 SUB-TILE units of growth past the
+                // point where the ramp overtakes the floor, where a
                 // unit is +1 physical row or column. Size-based (was
                 // solve-count-based until 2026-07-28) so both modes ride
                 // one density curve: singular grows 1 unit per solve →
@@ -1588,7 +1590,7 @@
                 // 2 units per solve (each logical step is 2 sub-tiles) →
                 // +1 gate per 2 solves — same rate per sub-tile. This
                 // also makes the first-run fast track's quad hand-off
-                // open at exactly 1 gate (its board is start-size), where
+                // open at the floor (its board is start-size), where
                 // the solve-count formula would have carried the singular
                 // phase's 9 solves in and opened at 3. Side effect,
                 // accepted: gate count now dips with the tier-drop
@@ -1620,7 +1622,7 @@
                 // gates on real puzzle 1. Every level below 1 is a
                 // warm-up, so the comparison covers them for free.
                 // Run-level on purpose: the fast track's quad hand-off is
-                // NOT an opening (it's level 10+), so it gets its 1 gate.
+                // NOT an opening (it's level 10+), so it gets its gates.
                 const gateFrom = (typeof MARATHON === 'object' && MARATHON.ZEN_GATE_START_LEVEL)
                     || 3;   // stale cached config → the long-standing default
                 const zenOpening = (typeof Marathon !== 'undefined' && Marathon.isZenRun
@@ -1634,9 +1636,18 @@
                 // puzzle in the game.
                 const gateOverride = (gateOpts && typeof gateOpts.gateTarget === 'number')
                     ? gateOpts.gateTarget : null;
+                // Floor of TWO once gates appear at all (user call
+                // 2026-08-21): every gate shares one rotation delta, so a
+                // LONE gate is trivial — one twist parks it clear of the
+                // route and nothing else moves. The mechanic only bites
+                // when clearing one gate can swing another into the way,
+                // which takes two. Zero (gate-free openings) stays legal;
+                // exactly one is never rolled. The ramp above the floor is
+                // unchanged (1 + growth/4 already exceeds 2 from 4 growth
+                // units on).
                 const target = (gateOverride !== null)
                     ? gateOverride
-                    : (zenOpening ? 0 : 1 + Math.floor(growthUnits / 4));
+                    : (zenOpening ? 0 : Math.max(2, 1 + Math.floor(growthUnits / 4)));
                 // Quad mode: anchor gates at quad-corners only (every other
                 // sub-tile vertex). The prong is still one sub-tile long.
                 const stride = Maze.quadMode ? 2 : 1;

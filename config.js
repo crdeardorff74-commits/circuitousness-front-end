@@ -572,7 +572,15 @@ const MARATHON = {
     // point; do not merge these into two.
     //   1. the basic twist-to-connect loop, nothing else
     //   2. + twin tiles      (fires the animated twin demo)
-    //   3. + a gate          (fires the animated gate demo)
+    //   3. + gates           (fires the animated gate demo)
+    //
+    // TWO gates on board 3, not one (user call 2026-08-21, and the
+    // game-wide floor in game.js's target formula matches): all gates
+    // share one rotation delta, so a LONE gate is trivial — one twist
+    // parks it clear of the route and nothing else moves. The mechanic's
+    // actual bite is that clearing one gate can swing another INTO the
+    // way, and a single-gate board can't even hint at that. Still one
+    // mechanic, so the one-thing-per-board rule above holds.
     //
     // `twinScale` / `gates` are passed EXPLICITLY rather than left to the
     // ramps (TWIN_RAMP_START_LEVEL, ZEN_GATE_START_LEVEL): those are
@@ -586,7 +594,7 @@ const MARATHON = {
     FIRST_RUN_PRACTICE: [
         { rows: 4, cols: 4, twinScale: 0,   gates: 0, teachGate: false },
         { rows: 4, cols: 5, twinScale: 0.1, gates: 0, teachGate: false },
-        { rows: 5, cols: 5, twinScale: 0.1, gates: 1, teachGate: true  },
+        { rows: 5, cols: 5, twinScale: 0.1, gates: 2, teachGate: true  },
     ],
 
     // Aspect cap on grid growth: neither logical dimension may grow to

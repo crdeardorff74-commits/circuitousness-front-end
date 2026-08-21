@@ -314,7 +314,15 @@ const PotdGen2 = (() => {
             // board rather than one size being picked for the whole board.
             twinGroupMin: p.groupMin,
             twinGroupMax: p.groupMax,
-            gateTarget:   randInt(p.gateMin, p.gateMax),
+            // Never exactly 1 (game-wide rule, 2026-08-21): all gates
+            // share one rotation delta, so a lone gate is trivially
+            // parked clear of the route — 0 or ≥2 only. The defaults
+            // (DEF_GATE_MIN 2) never roll a 1; this guards dev-panel
+            // ranges whose lo dips below 2.
+            gateTarget:   (function () {
+                const g = randInt(p.gateMin, p.gateMax);
+                return g === 1 ? 2 : g;
+            })(),
             pathCount:    p.pathCount,
             quadMode:     p.quadMode,
             mosaicMode:   !!p.mosaicMode,
@@ -625,9 +633,12 @@ const PotdGen2 = (() => {
     // Gate count for a designed board, from GRID SIZE alone (user call
     // 2026-08-15: never a designer knob). Same curve live play derives —
     // game.js prices 1 + growthUnits/4 over the singular 4×4 start, which
-    // for a standalone rows×cols board is exactly this.
+    // for a standalone rows×cols board is exactly this. Floor of 2, not
+    // 1, matching game.js's floor (game-wide rule, 2026-08-21: a lone
+    // gate is trivially parked clear of the route — 0 or ≥2 only, and
+    // designed boards are always gated).
     function designGateTarget(rows, cols) {
-        return Math.max(1, 1 + Math.floor((rows + cols - 8) / 4));
+        return Math.max(2, 1 + Math.floor((rows + cols - 8) / 4));
     }
 
     // Build and play one puzzle on an authored mosaic layout.
