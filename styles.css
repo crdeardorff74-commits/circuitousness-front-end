@@ -679,9 +679,17 @@ html.mode-game #resetBtn { display: none; }
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     overflow: auto;
+    /* No scrollbar chrome — it reads as a layout bug on a landing
+       screen. Content still scrolls by touch/wheel when it genuinely
+       overflows (short landscape phones); overflow stays auto rather
+       than hidden so nothing is ever unreachable. Same treatment as
+       TANTЯO's .start-overlay. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     opacity: 1;
     transition: opacity 0.32s ease;
 }
+#introOverlay::-webkit-scrollbar { display: none; }
 #introOverlay.introDismissing {
     opacity: 0;
     pointer-events: none;
@@ -873,6 +881,15 @@ html.intro-first .introPlaySub { display: none !important; }
     #introOverlay::after {
         content: '';
         flex: 1 0 0;
+        /* Cancel the flex gap each spacer introduces — without this the
+           two spacers add 2 × gap of phantom content height, enough to
+           conjure a scrollbar on viewports where the intro used to fit
+           exactly (seen on TANTЯO's twin of this fix, 2026-08-21). */
+        margin-bottom: -0.35rem;
+    }
+    #introOverlay::after {
+        margin-bottom: 0;
+        margin-top: -0.35rem;
     }
     /* .introTitleFrame inherits the .titleFrame short-viewport rule
        at clamp(1.3rem, 8vh, 2.2rem) — same as the main menu title. */
