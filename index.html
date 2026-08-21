@@ -93,23 +93,35 @@
          load would re-declare its consts and throw. -->
     <script>(function(){var dev=location.hostname==='localhost'||location.hostname==='127.0.0.1';document.write('<script src="config.js'+(dev?'?t='+Date.now():'')+'"><\/script>');})();</script>
 
-    <!-- Intro-skip decision, made BEFORE FIRST PAINT.
-         The disclaimer is skipped on CrazyGames and for any first-time
-         visitor (see intro.js). Deciding that in intro.js alone is too
-         late — the overlay has already painted, so a newcomer sees the
-         gag flash by on the way to their first puzzle. Setting a root
-         class here lets CSS keep the overlay out of the first frame
-         entirely, exactly like html.mode-debug above.
-         intro.js reads this same class rather than re-deriving the
-         answer, so the DOM and the CSS can never disagree — a mismatch
-         would mean an invisible overlay the game is stuck behind. -->
+    <!-- Intro decision, made BEFORE FIRST PAINT.
+         Two root classes, both read back by intro.js (never re-derived
+         there, so DOM and CSS can never disagree — a mismatch would mean
+         an invisible overlay the game is stuck behind):
+           • intro-skip  — CrazyGames only. Their QA requires ≤1 click to
+             gameplay, and CG's loading screen is the gate; no intro at all.
+           • intro-first — brand-new browser on any other host. The intro
+             STILL SHOWS (changed 2026-08-21 — the old full skip meant a
+             first-time phone visitor never saw a screen that could carry
+             the Install button; they had to dig it out of the browser
+             menu), but simplified: title + PLAY + install hint only. CSS
+             hides the WARNING gag, the toggles row, and the "I agree"
+             small print — the gag stays a returning player's reward.
+             Tapping PLAY drops them into the same auto-start Practice
+             puzzle the skip used to (intro.js dismiss →
+             Marathon.autoStartFirstPractice), so the newcomer flow is
+             one tap on a clean screen rather than zero taps with no
+             install path.
+         Deciding here rather than in intro.js keeps the wrong variant out
+         of the first frame entirely, exactly like html.mode-debug above. -->
     <script>
     (function () {
         try {
-            var skip = (typeof IS_CRAZYGAMES !== 'undefined' && IS_CRAZYGAMES)
-                    || (typeof isFirstVisitBrowser === 'function' && isFirstVisitBrowser());
-            if (skip) document.documentElement.classList.add('intro-skip');
-        } catch (e) { /* fall through: intro shows, which is the safe default */ }
+            if (typeof IS_CRAZYGAMES !== 'undefined' && IS_CRAZYGAMES) {
+                document.documentElement.classList.add('intro-skip');
+            } else if (typeof isFirstVisitBrowser === 'function' && isFirstVisitBrowser()) {
+                document.documentElement.classList.add('intro-first');
+            }
+        } catch (e) { /* fall through: full intro shows, which is the safe default */ }
     })();
     </script>
 
@@ -1457,7 +1469,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '1.70';</script>
+    <script>var PAGE_VERSION = '1.71';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

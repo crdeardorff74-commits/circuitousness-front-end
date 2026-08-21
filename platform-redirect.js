@@ -139,14 +139,27 @@
         overlay.id = 'oiRedirectOverlay';
         overlay.setAttribute('role', 'dialog');
         overlay.setAttribute('aria-modal', 'true');
+        // SAFE centering + scroll: the content lives in an inner wrapper
+        // with margin:auto rather than justify-content:center on the
+        // overlay — a centered flex column that overflows crops BOTH ends
+        // with no way to scroll to them (field report 2026-08-21: short
+        // landscape phone cut off part of this message). Auto margins
+        // center identically when everything fits and collapse to 0 when
+        // it doesn't, letting overflow-y:auto expose the whole thing.
         overlay.style.cssText = [
             'position:fixed', 'inset:0', 'z-index:2147483647',
-            'display:flex', 'flex-direction:column',
-            'align-items:center', 'justify-content:center', 'gap:1.25rem',
+            'display:flex', 'flex-direction:column', 'align-items:center',
+            'overflow-y:auto',
             'padding:2rem', 'box-sizing:border-box', 'text-align:center',
             'background:rgba(6,8,16,0.94)',
             'backdrop-filter:blur(6px)', '-webkit-backdrop-filter:blur(6px)',
             'color:#fff', "font-family:'Segoe UI',system-ui,Arial,sans-serif"
+        ].join(';');
+
+        var content = document.createElement('div');
+        content.style.cssText = [
+            'margin:auto 0', 'display:flex', 'flex-direction:column',
+            'align-items:center', 'gap:1.25rem', 'max-width:100%'
         ].join(';');
 
         // Corner close (×) — language-neutral escape hatch so the overlay never
@@ -205,10 +218,11 @@
         ].join(';');
 
         overlay.appendChild(close);
-        overlay.appendChild(title);
-        overlay.appendChild(body);
-        overlay.appendChild(btn);
-        overlay.appendChild(fallback);
+        content.appendChild(title);
+        content.appendChild(body);
+        content.appendChild(btn);
+        content.appendChild(fallback);
+        overlay.appendChild(content);
         document.body.appendChild(overlay);
     }
 

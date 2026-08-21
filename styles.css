@@ -832,11 +832,25 @@ html.mode-game #resetBtn { display: none; }
 /* Debug mode bypasses the intro entirely — hide it server-side too in
    case intro.js doesn't get to run for some reason. */
 html.mode-debug #introOverlay { display: none !important; }
-/* Intro skipped for this player — CrazyGames, or a first-time visitor.
-   The class is set by an inline script in index.html BEFORE FIRST PAINT
-   (intro.js runs too late; the gag would flash by on the way to the
-   first puzzle). Same mechanism as mode-debug above. */
+/* Intro skipped for this player — CrazyGames only since 2026-08-21
+   (first-time visitors used to skip too; they now get the simplified
+   intro below). The class is set by an inline script in index.html
+   BEFORE FIRST PAINT (intro.js runs too late; the gag would flash by
+   on the way to the first puzzle). Same mechanism as mode-debug above. */
 html.intro-skip #introOverlay { display: none !important; }
+/* First-time visitor (any host but CrazyGames): SIMPLIFIED intro —
+   title + PLAY + the install hint/button only. The WARNING gag, the
+   toggles row, and the "I agree to solve responsibly" small print are
+   returning-player flavor a newcomer shouldn't have to parse; what a
+   newcomer DOES need is a landing screen that can carry the Install
+   button (the old full skip auto-started them into the first Practice
+   puzzle with no such screen — field report 2026-08-21). Tapping PLAY
+   still lands them in that same auto-start Practice puzzle. Class set
+   before first paint by index.html, same as intro-skip above; intro.js
+   also hides these nodes inline as a stale-CSS belt-and-braces. */
+html.intro-first .introWarningBlock,
+html.intro-first .introToggles,
+html.intro-first .introPlaySub { display: none !important; }
 
 /* Short-viewport (landscape phone) overrides for the intro. WARNING and
    title both shrink hard; toggles wrap if needed. */
@@ -844,7 +858,18 @@ html.intro-skip #introOverlay { display: none !important; }
     #introOverlay {
         padding: clamp(0.4rem, 1.5vh, 0.8rem) clamp(0.8rem, 3vw, 1.5rem);
         gap: 0.35rem;
-        justify-content: center;
+        /* SAFE centering: grow-only pseudo spacers instead of
+           justify-content:center — a centered flex column that overflows
+           crops both ends unreachably (overflow:auto can't scroll to
+           them). The spacers absorb free space when content fits
+           (identical look to center) and collapse to 0 when it doesn't,
+           so short landscape phones can scroll the whole intro. */
+        justify-content: flex-start;
+    }
+    #introOverlay::before,
+    #introOverlay::after {
+        content: '';
+        flex: 1 0 0;
     }
     /* .introTitleFrame inherits the .titleFrame short-viewport rule
        at clamp(1.3rem, 8vh, 2.2rem) — same as the main menu title. */

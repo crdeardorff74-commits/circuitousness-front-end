@@ -20,12 +20,18 @@
  * way. The intro is also suppressed when the URL carries ?nointro=true,
  * useful for screenshots / dev iteration.
  *
- * It is ALSO skipped for two kinds of real player (see the skip block in
- * init): on CrazyGames, and for any FIRST-TIME visitor on any host. A
- * newcomer's landing should be the same everywhere — arrive, and be
- * playing — so the gag is a returning player's reward rather than a
- * stranger's toll gate. Only CG loses the fullscreen key shortcuts with
- * it; everyone else keeps them.
+ * It is ALSO skipped on CrazyGames (see the skip block in init) — their
+ * QA requires ≤1 click to gameplay, and CG's loading screen is the gate.
+ * CG loses the fullscreen key shortcuts with it (custom fullscreen
+ * controls are prohibited there); everyone else keeps them.
+ *
+ * A FIRST-TIME visitor on any other host gets a SIMPLIFIED intro
+ * (2026-08-21; they used to skip like CG): title + PLAY + install
+ * hint/button only — the WARNING gag, toggles, and "I agree" small
+ * print are hidden, so the gag stays a returning player's reward while
+ * the newcomer still gets a landing screen that can carry the Install
+ * button. PLAY drops them into the same auto-start Practice puzzle the
+ * old skip did (dismiss → Marathon.autoStartFirstPractice).
  *
  * The body text's {activity} placeholder is filled from warnings.txt
  * (one phrase per line). Fetch is cache-friendly; first failure falls
@@ -210,10 +216,13 @@ const Intro = (() => {
         // re-derived fallback covers a stale cached index.html that
         // predates the class.
         const onCrazyGames = (typeof IS_CRAZYGAMES !== 'undefined') && IS_CRAZYGAMES;
+        // CG only since 2026-08-21 — first-time visitors no longer skip;
+        // they get the SIMPLIFIED intro (see firstVisitIntro below). The
+        // class check still honors a stale cached index.html that tagged
+        // a first-timer intro-skip under the old policy: those players
+        // take the old auto-start path, which remains fully wired.
         const skipIntro = document.documentElement.classList.contains('intro-skip')
-            || onCrazyGames
-            || ((typeof Marathon !== 'undefined' && Marathon.isFirstVisit)
-                ? Marathon.isFirstVisit() : false);
+            || onCrazyGames;
         if (skipIntro) {
             overlay.style.display = 'none';
             dismissed = true;
@@ -262,6 +271,31 @@ const Intro = (() => {
             };
             KICK_EVENTS.forEach((evt) => document.addEventListener(evt, kickMusic));
             return;
+        }
+
+        // ---- First-time visitor: SIMPLIFIED intro (2026-08-21) ----
+        // A brand-new browser (any host but CG) still sees the intro, but
+        // stripped to title + PLAY + install hint: the WARNING gag, the
+        // toggles row, and the "I agree" small print are hidden — the gag
+        // is a returning player's reward, and a newcomer's landing screen
+        // exists to carry the Install button (the old full skip left them
+        // no screen that could). CSS (html.intro-first) already keeps
+        // these nodes out of the first frame; the inline hides below are
+        // belt-and-braces for a stale cached styles.css. PLAY lands them
+        // in the same auto-start Practice puzzle the skip used to —
+        // dismiss() already routes first-timers through
+        // Marathon.autoStartFirstPractice.
+        // Read the class index.html set before first paint rather than
+        // re-deriving, same reasoning as intro-skip above. No re-derive
+        // fallback needed: every cached index.html that predates
+        // intro-first tags first-timers intro-skip instead, which the
+        // skip block above still honors.
+        const firstVisitIntro = document.documentElement.classList.contains('intro-first');
+        if (firstVisitIntro) {
+            ['.introWarningBlock', '.introToggles', '.introPlaySub'].forEach((sel) => {
+                const el = overlay.querySelector(sel);
+                if (el) el.style.display = 'none';
+            });
         }
 
         // Fill the body text with a random activity. The template comes
@@ -358,15 +392,21 @@ const Intro = (() => {
         // already substitutes FALLBACK_ACTIVITIES so the body is never
         // permanently blank. No sync pre-paint — see the comment above
         // `setBodyText` for the trade-off.
-        loadWarnings().then((list) => {
-            // If the player dismissed the intro before the fetch
-            // resolved (Escape/Enter on the empty overlay) don't write
-            // to a detached DOM node.
-            if (dismissed) return;
-            const idx = pickActivityIndex(list);
-            if (idx < 0) return;
-            setBodyText(localizeActivity(idx, list));
-        });
+        // First-timers never see the warning block, so don't fetch or
+        // draw from the shuffle bag for them — an invisible draw would
+        // silently burn a warning (and persist bag state) before the
+        // player has ever seen one.
+        if (!firstVisitIntro) {
+            loadWarnings().then((list) => {
+                // If the player dismissed the intro before the fetch
+                // resolved (Escape/Enter on the empty overlay) don't write
+                // to a detached DOM node.
+                if (dismissed) return;
+                const idx = pickActivityIndex(list);
+                if (idx < 0) return;
+                setBodyText(localizeActivity(idx, list));
+            });
+        }
 
         // Paint the title-O canvas. requestAnimationFrame x2 lets the
         // font load + layout settle before measuring (the canvas's CSS
