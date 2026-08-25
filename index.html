@@ -10,6 +10,32 @@
     <script src="platform-redirect.js"></script>
 
     <title data-i18n="app.title">Circuitousness</title>
+    <meta name="author" content="Christopher Ryan Deardorff">
+
+    <!-- Search / social metadata. Deliberately NOT i18n'd: these are read by
+         crawlers and link unfurlers before any script runs, so data-i18n could
+         never reach them in time. Same choice TANTЯO makes. -->
+    <meta name="description" content="Play Circuitousness, a free browser puzzle game. Twist the tiles to connect every path and complete the circuit before the clock runs out. No download, no ads, nothing to buy.">
+    <meta name="keywords" content="Circuitousness, puzzle game, circuit puzzle, tile rotation puzzle, pipe puzzle, free online game, browser game, indie game, solo developer, daily puzzle">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://circuitousness.official-intelligence.art/">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Circuitousness">
+    <meta property="og:url" content="https://circuitousness.official-intelligence.art/">
+    <meta property="og:title" content="Circuitousness — Free Online Circuit Puzzle Game">
+    <meta property="og:description" content="Twist the tiles to connect every path and complete the circuit. A free browser puzzle game made by one person — no download, no ads, nothing to buy.">
+    <meta property="og:image" content="https://images.official-intelligence.art/circuitousness/Singular%203%20Paths.jpg">
+    <meta property="og:image:alt" content="A Circuitousness puzzle grid with three glowing connected paths.">
+    <meta property="og:locale" content="en_US">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Circuitousness — Free Online Circuit Puzzle Game">
+    <meta name="twitter:description" content="Twist the tiles to connect every path and complete the circuit. A free browser puzzle game made by one person — no download, no ads, nothing to buy.">
+    <meta name="twitter:image" content="https://images.official-intelligence.art/circuitousness/Singular%203%20Paths.jpg">
+    <meta name="twitter:image:alt" content="A Circuitousness puzzle grid with three glowing connected paths.">
 
     <!-- iOS Standalone Mode (Add to Home Screen) -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -49,6 +75,57 @@
          so the service worker can serve it offline — no manual "strip before
          release" step. -->
     <script>(function(){var dev=location.hostname==='localhost'||location.hostname==='127.0.0.1';document.write('<link rel="stylesheet" href="styles.css'+(dev?'?t='+Date.now():'')+'">');})();</script>
+    <!-- Structured data. Circuitousness had none; this exists mainly to name the
+         one human who makes it. Person — never Organization — is the author,
+         publisher and copyright holder, sharing the @id used on
+         official-intelligence.art and in TANTЯO so all three resolve to a single
+         entity. "Digeratist" rides along in alternateName as the bridge from the
+         itch.io storefront name back to the named person. -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+        {
+            "@type": "Person",
+            "@id": "https://official-intelligence.art/#ryan",
+            "name": "Christopher Ryan Deardorff",
+            "alternateName": ["C. Ryan Deardorff", "Ryan Deardorff", "Digeratist"],
+            "jobTitle": "Independent game developer",
+            "description": "Solo independent developer who designs, builds and publishes free browser games under the personal labels Official Intelligence and Digeratist. Not a company, agency, or organization.",
+            "email": "mailto:privacy@official-intelligence.art",
+            "url": "https://official-intelligence.art/about",
+            "address": { "@type": "PostalAddress", "addressCountry": "US" },
+            "sameAs": [
+                "https://official-intelligence.art/about",
+                "https://digeratist.itch.io",
+                "https://github.com/crdeardorff74-commits"
+            ]
+        },
+        {
+            "@type": "VideoGame",
+            "name": "Circuitousness",
+            "url": "https://circuitousness.official-intelligence.art/",
+            "description": "A free browser puzzle game: twist the tiles to connect the paths and complete the circuits.",
+            "genre": ["Puzzle"],
+            "applicationCategory": "GameApplication",
+            "operatingSystem": "Web browser",
+            "gamePlatform": ["Web", "Android", "iOS"],
+            "inLanguage": "en",
+            "isAccessibleForFree": true,
+            "offers": {
+                "@type": "Offer",
+                "price": "0",
+                "priceCurrency": "USD",
+                "availability": "https://schema.org/InStock"
+            },
+            "author": { "@id": "https://official-intelligence.art/#ryan" },
+            "creator": { "@id": "https://official-intelligence.art/#ryan" },
+            "publisher": { "@id": "https://official-intelligence.art/#ryan" },
+            "copyrightHolder": { "@id": "https://official-intelligence.art/#ryan" }
+        }
+        ]
+    }
+    </script>
 </head>
 <body>
     <!-- URL param gate: ?debug=true enables the existing free-form puzzle UI
@@ -1488,7 +1565,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '1.71';</script>
+    <script>var PAGE_VERSION = '1.72';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +
