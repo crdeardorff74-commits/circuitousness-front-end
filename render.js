@@ -700,20 +700,37 @@ const Render = (() => {
             Math.round(b1 + (b2 - b1) * t) + ')';
     }
 
+    // Degrees of in-flight ROTATION currently applied to `ctx` by
+    // withTileRotation / withGateRotation, positive = clockwise on screen.
+    // The maze rotation a tile has already committed to is baked into its
+    // polygon vertices (see rotateMaze), so the shader reads it for free;
+    // an ANIMATION's rotation is not — it lives in the canvas transform.
+    // Without this, every edge is shaded by the normal it will have when
+    // the spin ENDS, so a turning tile wears its destination lighting from
+    // frame one. That read as motion blur across a 200ms unison spin, and
+    // as an outright glitch once an echo partner could sit at its pre-turn
+    // angle for most of a second (user report 2026-08-27).
+    let spinLightOffsetDeg = 0;
+
     // Pick a palette color for an edge by its outward normal, interpolating
     // between cardinal palette stops (right/top/left/bot at 0°/90°/180°/270°).
     // Axis-aligned edges land exactly on a cardinal (t=0) so they return one
     // palette stop unchanged. Arc chords land between stops and pick up a
     // smooth blend, giving the curved walls a continuous shade gradient.
     // Light is fixed in screen space (top-left), so rotated polygons just
-    // pick up the right shade by their post-rotation outward normal.
+    // pick up the right shade by their post-rotation outward normal —
+    // including the rotation still being animated, via spinLightOffsetDeg.
     function bevelColorForEdge(a, b, palette) {
         // Outward normal for a CW screen polygon edge a→b is (dy, -dx).
         const ox = b.y - a.y;
         const oy = -(b.x - a.x);
         // Cardinal angle: 0°=right, 90°=top (UP), 180°=left, 270°=bot (DOWN).
         // Screen y-down means UP = -y, so flip atan2's y argument.
-        let angle = -Math.atan2(oy, ox) * 180 / Math.PI;
+        // Subtracting the spin: a CW screen rotation of θ° carries an edge's
+        // normal θ° DOWN this scale, so the shade follows the edge round
+        // instead of the light travelling with the tile.
+        let angle = -Math.atan2(oy, ox) * 180 / Math.PI - spinLightOffsetDeg;
+        angle %= 360;
         if (angle < 0) angle += 360;
         const stops = [palette.right, palette.top, palette.left, palette.bot];
         const i = Math.floor(angle / 90) % 4;
@@ -2005,7 +2022,12 @@ const Render = (() => {
         ctx.translate(t.cx, t.cy);
         ctx.rotate(t.angle);
         ctx.translate(-t.cx, -t.cy);
+        // Saved and restored rather than assigned, so this composes if a
+        // caller ever nests transforms.
+        const prevSpin = spinLightOffsetDeg;
+        spinLightOffsetDeg += t.angle * 180 / Math.PI;
         fn();
+        spinLightOffsetDeg = prevSpin;
         ctx.restore();
     }
 
@@ -2060,7 +2082,12 @@ const Render = (() => {
         ctx.translate(t.cx, t.cy);
         ctx.rotate(t.angle);
         ctx.translate(-t.cx, -t.cy);
+        // Gates have the same fixed-light bevels as tiles — brief at 200ms,
+        // but there is no reason for the two to disagree.
+        const prevSpin = spinLightOffsetDeg;
+        spinLightOffsetDeg += t.angle * 180 / Math.PI;
         fn();
+        spinLightOffsetDeg = prevSpin;
         ctx.restore();
     }
 
