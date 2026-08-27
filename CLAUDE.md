@@ -20,11 +20,20 @@ lockstep-rotation mechanic is called **"Echo"** in every player-facing string:
 hi प्रतिध्वनि, ja エコー, ko 에코, zh 回声).
 
 The name drove the ANIMATION (same call): a group no longer twists in unison.
-The touched tile spins first and each ring partner starts the instant the one
-before it lands, so the turn travels around the group like an echo. See
-`render.js` `animateRotationAt` / `ECHO_MAX_TOTAL_MS`. Copy must no longer say
-the group rotates "in unison" / "together" — GATES still do, and that contrast
-is now a real one.
+The touched tile spins first and each ring partner follows, starting as the one
+before it passes its HALFWAY point (`ECHO_OVERLAP`, set to 0.5 the same day —
+strict one-after-the-next read as a queue of separate turns rather than one
+travelling wave). See `render.js` `animateRotationAt` / `ECHO_MAX_TOTAL_MS`.
+Copy must no longer say the group rotates "in unison" / "together" — GATES
+still do, and that contrast is now a real one.
+
+Two things a spinning tile does NOT take with it: its bevel LIGHTING and its
+brushed-metal GRAIN. Both are properties of the board, fixed in screen space —
+the light via `bevelColorForEdge`’s `spinLightOffsetDeg`, the grain by
+un-spinning the CTM for that one pattern fill (`activeSpin`). Both looked fine
+across a 200ms unison spin and broke visibly once a partner could hold its
+pre-turn angle: the bevels wore their destination shading from frame one, and
+the grain snapped 90° out of alignment with every other tile at click time.
 
 The CLICK SFX follows the sequence too — one per tile, not one per input.
 `animateRotationAt` takes an `opts.onStep` callback (render owns the tempo, so

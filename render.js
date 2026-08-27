@@ -711,6 +711,10 @@ const Render = (() => {
     // as an outright glitch once an echo partner could sit at its pre-turn
     // angle for most of a second (user report 2026-08-27).
     let spinLightOffsetDeg = 0;
+    // The same rotation as a transform, or null when nothing is spinning —
+    // { cx, cy, angle } exactly as withTileRotation applied it. Used to pin
+    // the brushed-metal grain, which needs the pivot as well as the angle.
+    let activeSpin = null;
 
     // Pick a palette color for an edge by its outward normal, interpolating
     // between cardinal palette stops (right/top/left/bot at 0°/90°/180°/270°).
@@ -840,13 +844,35 @@ const Render = (() => {
         // fill() doesn't clear it). Strength scales with the face's own
         // opacity so translucent faces get proportionally subtler grain:
         // the background peeking through shouldn't pick up full streaks.
+        //
+        // The grain is a property of the BOARD, not of any one tile: the
+        // pattern is a single repeat laid down in canvas space, so at rest
+        // every tile's streaks line up into one brushed sheet. An in-flight
+        // spin would drag that tile's streaks off that alignment the instant
+        // the transform is applied — and an echo partner holds its pre-turn
+        // angle long before it moves, so the grain visibly snapped 90° at
+        // click time and sat there (user report 2026-08-27).
+        //
+        // Un-spinning the CTM for THIS FILL ONLY pins it. The path was built
+        // under the spin and is already in canvas space, so moving the
+        // transform now leaves the shape exactly where it is and only
+        // remaps the pattern — the standard way to hold a pattern still.
+        // Same reasoning as bevelColorForEdge's fixed light: the tile turns,
+        // its lighting and its brushing do not.
         if (FACE_TEXTURE_ALPHA > 0) {
             if (!faceTexPattern) faceTexPattern = buildFaceTexPattern();
+            ctx.save();
+            if (activeSpin) {
+                ctx.translate(activeSpin.cx, activeSpin.cy);
+                ctx.rotate(-activeSpin.angle);
+                ctx.translate(-activeSpin.cx, -activeSpin.cy);
+            }
             ctx.fillStyle = faceTexPattern;
             ctx.globalAlpha = faceAlpha * FACE_TEXTURE_ALPHA;
             ctx.globalCompositeOperation = 'overlay';
             ctx.fill();
             ctx.globalCompositeOperation = 'source-over';
+            ctx.restore();
         }
         ctx.globalAlpha = 1;
 
@@ -1843,19 +1869,28 @@ const Render = (() => {
     const ROTATION_ANIM_MS = 200;
     // ECHO groups twist in SEQUENCE, not in unison (renamed from "ganged"
     // and resequenced 2026-08-27, user call): the unit the player touched
-    // spins first, and each ring partner starts the instant the one before
-    // it lands, so the turn travels around the group like an echo. A
-    // QUEUED step holds its tile at the OLD orientation until its turn
-    // arrives (tileRotationTransform's t<0 clamp) — Maze state already
-    // moved the whole group on the click, so without the hold the waiting
-    // partners would sit at their new angle and then not appear to move.
+    // spins first and each ring partner follows, so the turn travels around
+    // the group like an echo. A QUEUED step holds its tile at the OLD
+    // orientation until its turn arrives (tileRotationTransform's t<0
+    // clamp) — Maze state already moved the whole group on the click, so
+    // without the hold the waiting partners would sit at their new angle
+    // and then not appear to move.
     //
-    // Sequencing multiplies the span by the group size and gangs run to 16
-    // members, so the per-step duration compresses to keep the whole echo
-    // inside ECHO_MAX_TOTAL_MS. Steps still never overlap — only the tempo
-    // changes, and at the default 2-6 members nothing compresses at all.
+    // Partners OVERLAP by half (user call, same day — strict one-after-the
+    // -next read as a queue of separate turns): the next unit starts as the
+    // one before it passes its halfway point. ECHO_OVERLAP is that fraction
+    // of a step still to run when the next one begins, so the starts are
+    // `stepMs * (1 - ECHO_OVERLAP)` apart and n units span
+    // `stepMs * (1 + (n-1) * (1 - ECHO_OVERLAP))`.
+    //
+    // Sequencing still multiplies the span by the group size and gangs run
+    // to 16 members, so the per-step duration compresses to keep the whole
+    // echo inside ECHO_MAX_TOTAL_MS. Only the tempo changes; the overlap
+    // fraction is fixed. With the halving, groups up to 11 members run at
+    // the full ROTATION_ANIM_MS and nothing compresses at all.
     const ECHO_MAX_TOTAL_MS = 1200;
     const ECHO_MIN_STEP_MS  = 60;
+    const ECHO_OVERLAP      = 0.5;
     // Pending opts.onStep timers, so a board teardown can cancel the taps
     // an in-flight echo would otherwise keep firing into the next screen.
     let echoStepTimers = [];
@@ -1948,15 +1983,20 @@ const Render = (() => {
         } else {
             units = [[r, c]].concat(Maze.twinPartnerCells(r, c));
         }
+        // Solve the span formula above for stepMs against the cap, then
+        // clamp: never longer than one ordinary rotation, never so short
+        // that a big group's turns stop reading as turns.
+        const spans = 1 + (units.length - 1) * (1 - ECHO_OVERLAP);
         const stepMs = units.length < 2
             ? ROTATION_ANIM_MS
             : Math.max(ECHO_MIN_STEP_MS,
                        Math.min(ROTATION_ANIM_MS,
-                                Math.round(ECHO_MAX_TOTAL_MS / units.length)));
-        const totalMs = stepMs * units.length;
+                                Math.round(ECHO_MAX_TOTAL_MS / spans)));
+        const stagger = stepMs * (1 - ECHO_OVERLAP);
+        const totalMs = stepMs + (units.length - 1) * stagger;
         const onStep = opts && typeof opts.onStep === 'function' ? opts.onStep : null;
         units.forEach(function (u, i) {
-            const startTime = baseTime + i * stepMs;
+            const startTime = baseTime + i * stagger;
             if (mosaic)             pushPieceAnim(u[0], u[1], startTime, stepMs);
             else if (Maze.quadMode) pushQuadAnim(u[0], u[1], startTime, stepMs);
             else                    pushTileAnim(u[0], u[1], startTime, stepMs);
@@ -1967,7 +2007,7 @@ const Render = (() => {
                     const at = echoStepTimers.indexOf(id);
                     if (at >= 0) echoStepTimers.splice(at, 1);
                     try { onStep(i); } catch (e) { /* a bad callback must not kill the spin */ }
-                }, i * stepMs);
+                }, i * stagger);
                 echoStepTimers.push(id);
             }
         });
@@ -2032,9 +2072,12 @@ const Render = (() => {
         // Saved and restored rather than assigned, so this composes if a
         // caller ever nests transforms.
         const prevSpin = spinLightOffsetDeg;
+        const prevXf   = activeSpin;
         spinLightOffsetDeg += t.angle * 180 / Math.PI;
+        activeSpin = t;
         fn();
         spinLightOffsetDeg = prevSpin;
+        activeSpin = prevXf;
         ctx.restore();
     }
 
@@ -2089,12 +2132,15 @@ const Render = (() => {
         ctx.translate(t.cx, t.cy);
         ctx.rotate(t.angle);
         ctx.translate(-t.cx, -t.cy);
-        // Gates have the same fixed-light bevels as tiles — brief at 200ms,
-        // but there is no reason for the two to disagree.
+        // Gates have the same fixed-light bevels and grain as tiles — brief
+        // at 200ms, but there is no reason for the two to disagree.
         const prevSpin = spinLightOffsetDeg;
+        const prevXf   = activeSpin;
         spinLightOffsetDeg += t.angle * 180 / Math.PI;
+        activeSpin = t;
         fn();
         spinLightOffsetDeg = prevSpin;
+        activeSpin = prevXf;
         ctx.restore();
     }
 
