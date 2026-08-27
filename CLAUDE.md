@@ -33,6 +33,14 @@ from the three sites that already click on step 0: live rotate, hint, live
 undo. Replay rotations and the tutorial demo pass nothing and stay silent, as
 they always were — do not make this unconditional inside render.
 
+And the LIGHTING waits with it. A unit that has not finished its turn is drawn
+in its pre-turn geometry, so each in-flight anim holds that unit’s lit lanes
+from a snapshot (`applyLitFreeze` / `preTurnCellOf`) instead of the live map —
+otherwise the circuit runs through a lane that has not swung into place. The
+lookup mirrors the canvas transform in both axes (which cell it is drawn on,
+which port each lane had), and `circuitousness/tests/echo-lit-freeze-test.js`
+pins that algebra against the real maze.js.
+
 **Code and data keep `twin`** — `_twin` is a wire format baked into every
 stored snapshot and server-side recording, and identifiers
 (`assignTwins`, `TWIN_COVERAGE`, i18n KEY names like `tooltip.twinTiles`,

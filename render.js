@@ -1859,7 +1859,7 @@ const Render = (() => {
     // Pending opts.onStep timers, so a board teardown can cancel the taps
     // an in-flight echo would otherwise keep firing into the next screen.
     let echoStepTimers = [];
-    let rotationAnims = []; // [{ cx, cy, deltaRad, startTime, duration, keys: Set<"r,c"> }]
+    let rotationAnims = []; // [{ cx, cy, deltaRad, startTime, duration, keys: Set<"r,c">, litFreeze }]
     let gateAnims     = []; // [{ gate, cx, cy, deltaRad, startTime, duration }] — gates rotate in unison but each spins around its own vertex
     function setAnimateRotations(on) { ANIMATE_ROTATIONS = !!on; }
 
@@ -1883,11 +1883,18 @@ const Render = (() => {
         if (turnCount === 0) return;   // nothing to animate
         const baseTime = Date.now();
         const deltaRad = (ccw ? -Math.PI / 2 : Math.PI / 2) * turnCount;
+        // litFreeze on every anim: the lit map as the player last SAW it.
+        // Maze state has already moved, but no draw has happened since, so
+        // lastLitKeys is still the pre-turn lighting. Maps are rebuilt fresh
+        // each draw and never mutated after, so holding the reference is
+        // safe. Null before the first draw — then there is nothing on screen
+        // to preserve anyway.
+        const litFreeze = lastLitKeys;
         function pushTileAnim(tr, tc, startTime, duration) {
             rotationAnims.push({
                 cx: originX + tc * cellSize + cellSize / 2,
                 cy: originY + tr * cellSize + cellSize / 2,
-                deltaRad, startTime, duration,
+                deltaRad, startTime, duration, litFreeze,
                 keys: new Set([tr + ',' + tc])
             });
         }
@@ -1900,7 +1907,7 @@ const Render = (() => {
             rotationAnims.push({
                 cx: originX + (qc0 + 1) * cellSize,
                 cy: originY + (qr0 + 1) * cellSize,
-                deltaRad, startTime, duration,
+                deltaRad, startTime, duration, litFreeze,
                 keys
             });
         }
@@ -1915,7 +1922,7 @@ const Render = (() => {
             rotationAnims.push({
                 cx: originX + pivot.col * cellSize,
                 cy: originY + pivot.row * cellSize,
-                deltaRad, startTime, duration,
+                deltaRad, startTime, duration, litFreeze,
                 keys: new Set(cells.map(([cr, cc]) => cr + ',' + cc))
             });
         }
@@ -2389,7 +2396,75 @@ const Render = (() => {
                 }
             }
         }
+        applyLitFreeze(litKeys);
+        lastLitKeys = litKeys;
         return litKeys;
+    }
+
+    // ---- echo lit-state freeze -------------------------------------------
+    // A unit that has not FINISHED its turn is drawn in its pre-turn
+    // geometry, so it has to be lit as it was pre-turn too. Otherwise a
+    // partner waiting its turn shows the circuit already running through a
+    // lane that has not swung into place — glaring once an echo can hold a
+    // tile for most of a second (user report 2026-08-27).
+    //
+    // Each rotation anim carries the lit map as it stood when the anim was
+    // queued. animateRotationAt runs after Maze.rotate but BEFORE the next
+    // draw, so the last map built is still the pre-turn one — no separate
+    // snapshot of grid state is needed.
+    //
+    // The lookup mirrors the canvas transform exactly, which is why quad
+    // and mosaic need no special case:
+    //   • WHERE — the cell is sampled where the transform draws it. Rotate
+    //     its centre by the hold angle about the anim's own pivot and you
+    //     land on the cell it came from: itself for a lone tile, a sibling
+    //     sub-tile for a quad, a sibling cell for a mosaic piece.
+    //   • WHICH LANE — ports un-rotate by the same number of quarter turns.
+    //     maze.js turns a tile by rot(p, r) = (p + r) & 3 with delta +1 per
+    //     CW step, so the pre-turn port of new port p is p − quarters.
+    let lastLitKeys = null;
+    // Where (r, c) is DRAWN while `anim` is in flight — i.e. the cell whose
+    // contents the player is still looking at. null if that falls off-grid.
+    function preTurnCellOf(anim, r, c) {
+        const a   = -anim.deltaRad;                    // the hold transform
+        const cos = Math.cos(a), sin = Math.sin(a);
+        const dx  = originX + c * cellSize + cellSize / 2 - anim.cx;
+        const dy  = originY + r * cellSize + cellSize / 2 - anim.cy;
+        const sc  = Math.round((anim.cx + dx * cos - dy * sin - originX - cellSize / 2) / cellSize);
+        const sr  = Math.round((anim.cy + dx * sin + dy * cos - originY - cellSize / 2) / cellSize);
+        if (sr < 0 || sr >= Maze.ROWS || sc < 0 || sc >= Maze.COLS) return null;
+        return [sr, sc];
+    }
+    function applyLitFreeze(litKeys) {
+        if (rotationAnims.length === 0) return;
+        const grid = Maze.grid;
+        if (!grid) return;
+        const now = Date.now();
+        // Chronological order (push order), so when a second click lands on
+        // a group mid-echo the LATER anim wins: its snapshot was taken off
+        // an already-frozen map, so it carries the full stacked offset.
+        for (const anim of rotationAnims) {
+            if (!anim.litFreeze) continue;
+            if (now - anim.startTime >= anim.duration) continue;   // already landed
+            const quarters = Math.round(anim.deltaRad / (Math.PI / 2));
+            for (const key of anim.keys) {
+                const [r, c] = key.split(',').map(Number);
+                if (r < 0 || r >= Maze.ROWS || c < 0 || c >= Maze.COLS) continue;
+                const tile = grid[r] && grid[r][c];
+                if (!tile) continue;
+                const src = preTurnCellOf(anim, r, c);
+                for (const [a, b] of Maze.getConnections(tile)) {
+                    const k = r + ',' + c + ',' + Math.min(a, b) + ',' + Math.max(a, b);
+                    if (!src) { litKeys.delete(k); continue; }
+                    const oa = (((a - quarters) % 4) + 4) % 4;
+                    const ob = (((b - quarters) % 4) + 4) % 4;
+                    const was = anim.litFreeze.get(
+                        src[0] + ',' + src[1] + ',' + Math.min(oa, ob) + ',' + Math.max(oa, ob));
+                    if (was === undefined) litKeys.delete(k);
+                    else                   litKeys.set(k, was);
+                }
+            }
+        }
     }
 
     // Per-tile rendering for one of the three passes. All write to whichever
@@ -2839,6 +2914,9 @@ const Render = (() => {
     function dropTileAnimations() {
         rotationAnims = [];
         gateAnims     = [];
+        // Keyed against the grid that is going away — the next draw must
+        // build its lighting from scratch, not freeze against this.
+        lastLitKeys   = null;
         // The echo's queued per-step callbacks belong to the board that is
         // going away — same invariant as the anim queues above.
         for (const id of echoStepTimers) clearTimeout(id);
