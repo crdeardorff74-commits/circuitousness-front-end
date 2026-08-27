@@ -1824,30 +1824,57 @@ const Render = (() => {
     // 0 (the actual NEW position).
     let ANIMATE_ROTATIONS = true;
     const ROTATION_ANIM_MS = 200;
+    // ECHO groups twist in SEQUENCE, not in unison (renamed from "ganged"
+    // and resequenced 2026-08-27, user call): the unit the player touched
+    // spins first, and each ring partner starts the instant the one before
+    // it lands, so the turn travels around the group like an echo. A
+    // QUEUED step holds its tile at the OLD orientation until its turn
+    // arrives (tileRotationTransform's t<0 clamp) — Maze state already
+    // moved the whole group on the click, so without the hold the waiting
+    // partners would sit at their new angle and then not appear to move.
+    //
+    // Sequencing multiplies the span by the group size and gangs run to 16
+    // members, so the per-step duration compresses to keep the whole echo
+    // inside ECHO_MAX_TOTAL_MS. Steps still never overlap — only the tempo
+    // changes, and at the default 2-6 members nothing compresses at all.
+    const ECHO_MAX_TOTAL_MS = 1200;
+    const ECHO_MIN_STEP_MS  = 60;
+    // Pending opts.onStep timers, so a board teardown can cancel the taps
+    // an in-flight echo would otherwise keep firing into the next screen.
+    let echoStepTimers = [];
     let rotationAnims = []; // [{ cx, cy, deltaRad, startTime, duration, keys: Set<"r,c"> }]
     let gateAnims     = []; // [{ gate, cx, cy, deltaRad, startTime, duration }] — gates rotate in unison but each spins around its own vertex
     function setAnimateRotations(on) { ANIMATE_ROTATIONS = !!on; }
 
     // Public API: schedule an animation for a click that already mutated
     // the Maze state. In quad mode the whole 2×2 quad spins together;
-    // otherwise just the single tile — plus its twin partner if it has
-    // one (twin pairs rotate in lockstep, so the partner needs its own
-    // visual spin around its own center).
-    function animateRotationAt(r, c, ccw, turns) {
+    // otherwise just the single tile. An ECHO group adds one step per
+    // partner: every member spins around its OWN centre (never a shared
+    // pivot), one after the next, in ring order starting from the member
+    // the player touched — twinPartnerCells walks the ring from there.
+    //
+    // opts.onStep, if given, fires at the START of every step AFTER the
+    // first — the caller already handles step 0 itself, at click time. It
+    // exists so a per-turn sound can follow the echo around the group
+    // instead of firing once per input; render owns the tempo, so render
+    // is the only thing that knows when each partner actually moves.
+    // Opt-in on purpose: replay rotations and the tutorial demo animate
+    // silently today and must keep doing so.
+    function animateRotationAt(r, c, ccw, turns, opts) {
         if (!ANIMATE_ROTATIONS) return;
         const turnCount = turns == null ? 1 : turns;
         if (turnCount === 0) return;   // nothing to animate
-        const startTime = Date.now();
+        const baseTime = Date.now();
         const deltaRad = (ccw ? -Math.PI / 2 : Math.PI / 2) * turnCount;
-        function pushTileAnim(tr, tc) {
+        function pushTileAnim(tr, tc, startTime, duration) {
             rotationAnims.push({
                 cx: originX + tc * cellSize + cellSize / 2,
                 cy: originY + tr * cellSize + cellSize / 2,
-                deltaRad, startTime, duration: ROTATION_ANIM_MS,
+                deltaRad, startTime, duration,
                 keys: new Set([tr + ',' + tc])
             });
         }
-        function pushQuadAnim(qr0, qc0) {
+        function pushQuadAnim(qr0, qc0, startTime, duration) {
             const keys = new Set();
             keys.add(qr0     + ',' + qc0    );
             keys.add(qr0     + ',' + (qc0+1));
@@ -1856,7 +1883,7 @@ const Render = (() => {
             rotationAnims.push({
                 cx: originX + (qc0 + 1) * cellSize,
                 cy: originY + (qr0 + 1) * cellSize,
-                deltaRad, startTime, duration: ROTATION_ANIM_MS,
+                deltaRad, startTime, duration,
                 keys
             });
         }
@@ -1864,50 +1891,62 @@ const Render = (() => {
         // half-integral for even-sided pieces (a 2×2 or 4×4 turns about a
         // lattice point) and cell-centred for odd-sided ones, which is why
         // it comes from Maze rather than being derived here.
-        if (Maze.mosaicMode && Maze.mosaicPivot) {
-            const pushPieceAnim = function (pr, pc) {
-                const pivot = Maze.mosaicPivot(pr, pc);
-                const cells = Maze.mosaicGroupCells(pr, pc);
-                if (pivot) {
-                    rotationAnims.push({
-                        cx: originX + pivot.col * cellSize,
-                        cy: originY + pivot.row * cellSize,
-                        deltaRad, startTime, duration: ROTATION_ANIM_MS,
-                        keys: new Set(cells.map(([cr, cc]) => cr + ',' + cc))
-                    });
-                } else {
-                    pushTileAnim(pr, pc);
-                }
-            };
-            pushPieceAnim(r, c);
-            // Every other PIECE in the gang spins in lockstep, each around
-            // its own pivot — same convention as the quad and singular
-            // branches below (user report 2026-08-15: the data moved in
-            // lockstep but only the clicked piece animated; partners
-            // snapped). twinPartnerCells is ring-aware from any cell of a
-            // piece (its anchor is the piece's cells[0] — see maze.js
-            // twinAnchorKey), so each returned cell identifies a partner
-            // piece for its own pivot lookup.
-            for (const [pr, pc] of Maze.twinPartnerCells(r, c)) {
-                pushPieceAnim(pr, pc);
-            }
+        function pushPieceAnim(pr, pc, startTime, duration) {
+            const pivot = Maze.mosaicPivot(pr, pc);
+            if (!pivot) { pushTileAnim(pr, pc, startTime, duration); return; }
+            const cells = Maze.mosaicGroupCells(pr, pc);
+            rotationAnims.push({
+                cx: originX + pivot.col * cellSize,
+                cy: originY + pivot.row * cellSize,
+                deltaRad, startTime, duration,
+                keys: new Set(cells.map(([cr, cc]) => cr + ',' + cc))
+            });
+        }
+        // The echo order: the touched unit first, then every partner in
+        // ring order. A "unit" is a PIECE in mosaic, a 2×2 in quad and a
+        // tile otherwise; an un-echoed tile is a one-element sequence, so
+        // it animates exactly as it always did.
+        //
+        // (User report 2026-08-15 — still why partners get their own anims
+        // at all: the data moved in lockstep but only the clicked unit
+        // animated, so partners snapped. twinPartnerCells is ring-aware
+        // from any cell of a piece, its anchor being the piece's cells[0]
+        // — see maze.js twinAnchorKey — so each returned cell identifies a
+        // partner piece for its own pivot lookup.)
+        const mosaic = !!(Maze.mosaicMode && Maze.mosaicPivot);
+        let units;
+        if (mosaic) {
+            units = [[r, c]].concat(Maze.twinPartnerCells(r, c));
         } else if (Maze.quadMode) {
             const qr0 = Math.floor(r / 2) * 2;
             const qc0 = Math.floor(c / 2) * 2;
-            pushQuadAnim(qr0, qc0);
-            // Every other quad in the twin group spins in lockstep, each
-            // around ITS own center.
-            for (const [pr0, pc0] of Maze.twinPartnerCells(qr0, qc0)) {
-                pushQuadAnim(pr0, pc0);
-            }
+            units = [[qr0, qc0]].concat(Maze.twinPartnerCells(qr0, qc0));
         } else {
-            pushTileAnim(r, c);
-            // Every other tile in the twin group spins in lockstep, each
-            // around ITS own center.
-            for (const [tr, tc] of Maze.twinPartnerCells(r, c)) {
-                pushTileAnim(tr, tc);
-            }
+            units = [[r, c]].concat(Maze.twinPartnerCells(r, c));
         }
+        const stepMs = units.length < 2
+            ? ROTATION_ANIM_MS
+            : Math.max(ECHO_MIN_STEP_MS,
+                       Math.min(ROTATION_ANIM_MS,
+                                Math.round(ECHO_MAX_TOTAL_MS / units.length)));
+        const totalMs = stepMs * units.length;
+        const onStep = opts && typeof opts.onStep === 'function' ? opts.onStep : null;
+        units.forEach(function (u, i) {
+            const startTime = baseTime + i * stepMs;
+            if (mosaic)             pushPieceAnim(u[0], u[1], startTime, stepMs);
+            else if (Maze.quadMode) pushQuadAnim(u[0], u[1], startTime, stepMs);
+            else                    pushTileAnim(u[0], u[1], startTime, stepMs);
+            // Step 0 is the caller's own — it fires at click time, before
+            // this function is even reached.
+            if (i > 0 && onStep) {
+                const id = setTimeout(function () {
+                    const at = echoStepTimers.indexOf(id);
+                    if (at >= 0) echoStepTimers.splice(at, 1);
+                    try { onStep(i); } catch (e) { /* a bad callback must not kill the spin */ }
+                }, i * stepMs);
+                echoStepTimers.push(id);
+            }
+        });
         // Maze.rotate has changed grid state; the canvas still shows the
         // PRE-rotate scene. Force the next draw to be a full drawCore so
         // partial-redraw frames after it have a correct backdrop outside
@@ -1919,8 +1958,10 @@ const Render = (() => {
         // can stretch to 30-50ms instead of 16ms), leaving a residual-tilt
         // frame visible. Forcing one draw 30ms past the natural duration
         // guarantees the tile settles cleanly to identity even if the
-        // rAF cadence stuttered around the end of the animation.
-        setTimeout(function () { if (ctx) draw(); }, ROTATION_ANIM_MS + 30);
+        // rAF cadence stuttered around the end of the animation. Waits out
+        // the whole echo (totalMs), not one step, or the tail of a long
+        // sequence loses its guaranteed final frame.
+        setTimeout(function () { if (ctx) draw(); }, totalMs + 30);
     }
 
     // Compute the current rotation transform for a sub-tile, summed across
@@ -1939,8 +1980,14 @@ const Render = (() => {
         let found = false;
         for (const anim of rotationAnims) {
             if (!anim.keys.has(key)) continue;
-            const t = (now - anim.startTime) / anim.duration;
+            let t = (now - anim.startTime) / anim.duration;
             if (t >= 1) continue;
+            // t<0 is an echo step still waiting its turn: pin it at t=0,
+            // the OLD orientation, so it holds still rather than
+            // over-rotating past it. Summing across anims keeps a second
+            // click on a mid-echo group correct — each pending anim
+            // contributes its own full offset.
+            if (t < 0) t = 0;
             totalAngle += -anim.deltaRad * (1 - t);
             cx = anim.cx; cy = anim.cy;
             found = true;
@@ -2765,6 +2812,10 @@ const Render = (() => {
     function dropTileAnimations() {
         rotationAnims = [];
         gateAnims     = [];
+        // The echo's queued per-step callbacks belong to the board that is
+        // going away — same invariant as the anim queues above.
+        for (const id of echoStepTimers) clearTimeout(id);
+        echoStepTimers = [];
     }
     function beginTutorial(targetCanvas, padFrac) {
         if (tutorialMode || !targetCanvas) return;

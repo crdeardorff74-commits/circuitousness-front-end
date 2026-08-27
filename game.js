@@ -20,6 +20,15 @@
 
     Logger.info(PROJECT_NAME + ' v' + PAGE_VERSION + ' ready');
 
+    // An ECHO group turns one tile at a time (render.js sequences the
+    // spins), so the click that marks a turn belongs to each TILE, not to
+    // the input. Passed to Render.animateRotationAt by the call sites that
+    // already click on step 0; replay rotations and the tutorial demo pass
+    // nothing and stay silent, as they always were.
+    const ECHO_CLICK = { onStep: function () {
+        if (typeof Sfx !== 'undefined' && Sfx.click) Sfx.click();
+    } };
+
     // Fire the one-time page-load tracking POST. Defers ~500ms so the
     // request doesn't race the rest of page init for network bandwidth
     // and the cold-start render. Tracking module owns its own
@@ -520,16 +529,19 @@
         // CW `turns` undo CCW by the same count, a gate's spin reverses. Twin
         // partners are handled inside animateRotationAt. Locks have no rotation
         // to animate. Called from both live undo() and replay's applyReplayUndo.
-        function animateUndoMove(move) {
+        // `echoOpts` is ECHO_CLICK for the live undo (which clicks) and
+        // omitted by replay's silent undo — the caller decides, exactly as
+        // it does for a forward rotation.
+        function animateUndoMove(move, echoOpts) {
             if (!move || !Render) return;
             if (move.type === 'rotate') {
-                Render.animateRotationAt(move.r, move.c, !move.ccw, 1);
+                Render.animateRotationAt(move.r, move.c, !move.ccw, 1, echoOpts);
             } else if (move.type === 'hint') {
                 // Forward hint rotated CW (ccw=false) by move.turns; reverse is
                 // CCW by the same count. turns is recorded on the move (see
                 // handleHintClick) so replay undos animate too.
                 const turns = move.turns | 0;
-                if (turns > 0) Render.animateRotationAt(move.r, move.c, true, turns);
+                if (turns > 0) Render.animateRotationAt(move.r, move.c, true, turns, echoOpts);
             } else if (move.type === 'gate') {
                 if (Render.animateGateRotation) Render.animateGateRotation(!move.ccw);
             }
@@ -590,7 +602,7 @@
             // drives the rotation animation). Render.draw() then paints the
             // first animated frame — animateRotationAt set needsFullDraw +
             // started the rAF loop, exactly as a live rotation does.
-            animateUndoMove(undoneMove);
+            animateUndoMove(undoneMove, ECHO_CLICK);
             Render.draw();
             // Re-seed SFX baselines to the restored state and kill any live
             // loop. We deliberately skip refresh() here — its SFX/win state
@@ -2027,7 +2039,7 @@
             const ok = Maze.rotate(cell.row, cell.col, ccw);
             if (ok) {
                 recordMove({ type: 'rotate', r: cell.row, c: cell.col, ccw: !!ccw });
-                Render.animateRotationAt(cell.row, cell.col, ccw);
+                Render.animateRotationAt(cell.row, cell.col, ccw, 1, ECHO_CLICK);
                 if (typeof Sfx !== 'undefined') Sfx.click();
                 if (isTwin && typeof Sfx !== 'undefined') {
                     const postByPath = [new Set(), new Set(), new Set(), new Set()];
@@ -2451,7 +2463,7 @@
                 // toward the solution by `turns` 90° steps). Skip the
                 // animation when turns=0 (tile was already at solution).
                 if (pick.turns > 0) {
-                    Render.animateRotationAt(pick.r, pick.c, false, pick.turns);
+                    Render.animateRotationAt(pick.r, pick.c, false, pick.turns, ECHO_CLICK);
                     if (typeof Sfx !== 'undefined') Sfx.click();
                 }
                 // Marathon penalty — only when actually playing (not in

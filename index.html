@@ -1402,11 +1402,11 @@
             <input type="range" id="pg2TilesMin" min="20" max="300" step="10" value="50" aria-label="Minimum total sub-tiles">
             <input type="range" id="pg2TilesMax" min="20" max="300" step="10" value="80" aria-label="Maximum total sub-tiles">
         </div>
-        <label>Gang coverage (<span id="pg2TwinVal">11–42%</span>)</label>
+        <label>Echo coverage (<span id="pg2TwinVal">11–42%</span>)</label>
         <div class="pg2Range">
             <div class="pg2Track"><div class="pg2Fill" id="pg2TwinFill"></div></div>
-            <input type="range" id="pg2TwinMin" min="10" max="80" value="11" aria-label="Minimum gang coverage">
-            <input type="range" id="pg2TwinMax" min="10" max="80" value="42" aria-label="Maximum gang coverage">
+            <input type="range" id="pg2TwinMin" min="10" max="80" value="11" aria-label="Minimum echo coverage">
+            <input type="range" id="pg2TwinMax" min="10" max="80" value="42" aria-label="Maximum echo coverage">
         </div>
         <!-- Twin GROUP SIZE range. Sizes are rolled per group, so groups of
              different sizes coexist on one board — the uniform sizing the
@@ -1417,11 +1417,11 @@
              most tiles this can couple is 16 × max — a low max makes high
              twin-coverage settings unreachable. The readout shows achieved
              coverage next to the requested one for exactly that reason. -->
-        <label>Gang size (<span id="pg2GroupVal">2–6</span>)</label>
+        <label>Echo size (<span id="pg2GroupVal">2–6</span>)</label>
         <div class="pg2Range">
             <div class="pg2Track"><div class="pg2Fill" id="pg2GroupFill"></div></div>
-            <input type="range" id="pg2GroupMin" min="2" max="16" value="2" aria-label="Minimum gang size">
-            <input type="range" id="pg2GroupMax" min="2" max="16" value="6" aria-label="Maximum gang size">
+            <input type="range" id="pg2GroupMin" min="2" max="16" value="2" aria-label="Minimum echo size">
+            <input type="range" id="pg2GroupMax" min="2" max="16" value="6" aria-label="Maximum echo size">
         </div>
         <label>Gates (<span id="pg2GateVal">2–6</span>)</label>
         <div class="pg2Range">
@@ -1524,19 +1524,20 @@
                     <input type="range" id="mePaths" min="1" max="4" step="1" value="1">
                     <span class="meSliderVal" id="mePathsVal">1</span>
                 </label>
-                <!-- Gang coverage: every multi-cell PIECE is a mandatory
-                     gang member (the colored fill is what makes a complex
+                <!-- Echo coverage: every multi-cell PIECE is a mandatory
+                     echo member (the colored fill is what makes a complex
                      shape read as one object), so this knob only adds
                      SINGLES beyond them — its min is set live by
                      renderStats to the pieces' unit share, the knob's
                      real floor. Part of the LAYOUT: saves with the
                      design and feeds the difficulty score as relief.
-                     ("Ganged" is the player-facing name; the code keeps
-                     twin/_twin internally — see CLAUDE.md.) Gates have
+                     ("Echo" is the player-facing name; the code keeps
+                     twin/_twin and the layout field `ganged` internally
+                     — see CLAUDE.md.) Gates have
                      no control here on purpose — the count derives from
                      grid size (PotdGen2.playDesign), matching live
                      play's size curve. -->
-                <label class="mePathPick">Ganged %
+                <label class="mePathPick">Echo %
                     <input type="range" id="meTwins" min="0" max="80" step="5" value="30">
                     <span class="meSliderVal" id="meTwinsVal">30</span>
                 </label>

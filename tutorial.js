@@ -9,7 +9,7 @@
  * Render's tutorial render mode (the small canvas borrows the live renderer).
  *
  * The puzzle is hand-authored (not generated) so a single solution path passes
- * the teaching beats in order: elbow start → lock → twin (unison) → twin lock →
+ * the teaching beats in order: elbow start → lock → twin (echo) → twin lock →
  * the straight/elbow-twin trap → unlock+fix → two-gate clear → completion.
  * Tile/gate geometry is documented inline at buildPuzzle()/GATE_SNAPSHOT.
  *
@@ -33,7 +33,7 @@ const Tutorial = (function () {
 
     // Twin pair colors — pulled from maze.js's TWIN_COLORS, deliberately
     // avoiding green (clashes with the lit path) and red (gates / hint locks).
-    const COLOR_P1 = '#BF54C9';  // magenta — pair 1 (unison demo)
+    const COLOR_P1 = '#BF54C9';  // magenta — pair 1 (echo demo)
     const COLOR_P2 = '#C98554';  // amber   — pair 2 (twin lock)
     const COLOR_P3 = '#5BA0C2';  // sky     — pair 3 (straight/elbow-twin trap)
 
@@ -89,7 +89,7 @@ const Tutorial = (function () {
         grid[0][1] = pathTile(STRAIGHT, W, E);
         grid[0][2] = pathTile(STRAIGHT, W, E, 1);   // pre-aligned: starts horizontal (no twist needed)
         grid[0][3] = pathTile(STRAIGHT, W, E);
-        grid[0][4] = pathTile(STRAIGHT, W, E); // PAIR 1 (unison demo)
+        grid[0][4] = pathTile(STRAIGHT, W, E); // PAIR 1 (echo demo)
         grid[0][5] = pathTile(ELBOW, W, S);
         // Row 1
         grid[1][5] = pathTile(ELBOW, N, W);    // PAIR 2 (twin lock)
@@ -197,7 +197,7 @@ const Tutorial = (function () {
             { a: 'rotate', r: 0, c: 1 },
             { a: 'rotate', r: 0, c: 3 },
             // ...then rotate the twin a FEW times, slowly, so its partner
-            // (4,1) is clearly seen spinning in unison. 3 steps land it back
+            // (4,1) is clearly seen echoing the turn just after it. 3 steps land it back
             // on a lit (horizontal) orientation.
             { a: 'rotate', r: 0, c: 4, slow: true },
             { a: 'rotate', r: 0, c: 4, slow: true },
@@ -456,7 +456,7 @@ const Tutorial = (function () {
     const BEATS = { twinTiles: 2, gates: 6 };   // indices into STEPS
     const BEAT_LEAD_IN_MS   = 700;    // eye lands on the board before it moves
     const BEAT_STEP_MS      = 900;    // ordinary demo action
-    const BEAT_SLOW_STEP_MS = 1300;   // an action flagged `slow` (the twin unison)
+    const BEAT_SLOW_STEP_MS = 1300;   // an action flagged `slow` (the twin echo)
     const BEAT_HOLD_MS      = 1800;   // sit on the finished state
     const BEAT_LOOP_GAP_MS  = 900;    // rewound, before it goes again
     let beat = null;

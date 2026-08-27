@@ -140,7 +140,7 @@ const Tooltip = (function () {
         // existing translations doing useful work.
         if (hasTwins) {
             showOnce('twinTiles', tr('tooltip.twinTiles',
-                'Colored tiles rotate in unison with other tiles of the same color.'),
+                'Colored tiles are echo tiles: rotate one and every other tile of the same color follows, one after another.'),
                 null, null, 'twinTiles');
         }
         if (hasGates) {

@@ -9,20 +9,37 @@ Read `NOTES.md` (in this folder) at the start of every session. It's the running
 `PROJECT_NAME` is defined in `config.js` (currently `'Circuitousness'`). Change it
 there to rename the project — every other file references it.
 
-## Terminology — "ganged" in player copy, `twin` in code (deliberate split)
-(Renamed 2026-08-15, user call.) The lockstep-rotation mechanic is called
-**"ganged"** in every player-facing string — the electronics term for
-controls mechanically coupled so operating one operates all, chosen because
-groups grew past two members and "twins" stopped fitting. Each locale uses
-its natural coupled/linked-motion term (es/pt acopladas, fr couplées,
-de/nl gekoppelt, it accoppiate, pl sprzężone, ru сцепленные, tr bağlı,
-ar مترابطة, hi जुड़ी, ja 連動, ko 연동, zh 联动).
+## Terminology — "Echo" in player copy, `twin` in code (deliberate split)
+(Renamed "twins" → "ganged" 2026-08-15, then **"ganged" → "Echo" 2026-08-27**,
+both user calls. "Ganged" is the electronics term for controls mechanically
+coupled so operating one operates all — exactly right for an EE, opaque to
+everyone else, and "gang" carries a negative connotation besides.) The
+lockstep-rotation mechanic is called **"Echo"** in every player-facing string:
+**echo tiles**, an **echo group**. Each locale uses its own word for an echo
+(es/pt/it eco, fr écho, de/nl Echo, pl echo, ru эхо, tr yankı, ar صدى,
+hi प्रतिध्वनि, ja エコー, ko 에코, zh 回声).
+
+The name drove the ANIMATION (same call): a group no longer twists in unison.
+The touched tile spins first and each ring partner starts the instant the one
+before it lands, so the turn travels around the group like an echo. See
+`render.js` `animateRotationAt` / `ECHO_MAX_TOTAL_MS`. Copy must no longer say
+the group rotates "in unison" / "together" — GATES still do, and that contrast
+is now a real one.
+
+The CLICK SFX follows the sequence too — one per tile, not one per input.
+`animateRotationAt` takes an `opts.onStep` callback (render owns the tempo, so
+render is what knows when each partner moves) and game.js passes `ECHO_CLICK`
+from the three sites that already click on step 0: live rotate, hint, live
+undo. Replay rotations and the tutorial demo pass nothing and stay silent, as
+they always were — do not make this unconditional inside render.
 
 **Code and data keep `twin`** — `_twin` is a wire format baked into every
 stored snapshot and server-side recording, and identifiers
 (`assignTwins`, `TWIN_COVERAGE`, i18n KEY names like `tooltip.twinTiles`,
-element ids like `pg2TwinMin`/`meTwins`) follow it. Do not rename those;
-do not let "twin" back into player-facing copy.
+element ids like `pg2TwinMin`/`meTwins`) follow it. The mosaic LAYOUT field
+`ganged` (and its `g<pct>` save-code segment) likewise stays — stored data, not
+copy. Do not rename those; do not let "twin" or "ganged" back into
+player-facing copy.
 Recorded per universal rule b, which was softened 2026-08-07 to make gamepad
 optional. Circuitousness ships keyboard and touch only, and that is a decision,
 not an unfinished task: the game is grid-cursor navigation against a clock, so a

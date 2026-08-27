@@ -137,7 +137,7 @@ const MosaicEditor = (function () {
 
     // ── The design as a layout ───────────────────────────────────────────
 
-    // The Ganged % input as a 0..1 fraction, or undefined when the input
+    // The Echo % input as a 0..1 fraction, or undefined when the input
     // is absent/blank — makeLayout then applies the baseline default.
     // It is part of the LAYOUT (2026-08-15): it feeds the difficulty
     // score, so it saves, exports and loads with the design.
@@ -712,7 +712,7 @@ const MosaicEditor = (function () {
             work.textContent = 'size ' + pct(d.sizeScore) + ' × ' + MosaicLibrary.W_SIZE +
                                '  +  coverage ' + pct(d.coverScore) + '→' + pct(d.coverEffect) +
                                ' (complexity ' + pct(d.complexity) + ') × ' + MosaicLibrary.W_COVER +
-                               '  −  ganged ' + pct(d.gangedEffective) + ' → ' + reliefPts + ' pts';
+                               '  −  echo ' + pct(d.gangedEffective) + ' → ' + reliefPts + ' pts';
             els.score.appendChild(big);
             els.score.appendChild(num);
             els.score.appendChild(work);
@@ -726,7 +726,7 @@ const MosaicEditor = (function () {
             els.warn.classList.toggle('bad', check.errors.length > 0);
         }
 
-        // Ganged % FLOOR (the every-piece mandate): the build gangs every
+        // Echo % FLOOR (the every-piece mandate): the build echoes every
         // multi-cell piece regardless, so values below the pieces' unit
         // share aren't selectable — the slider's min tracks the layout
         // live and the value is bumped up onto the floor when a new
@@ -741,7 +741,7 @@ const MosaicEditor = (function () {
         syncSliderReadouts();
     }
 
-    // The sliders' value readouts (rows / cols / ganged % / test paths).
+    // The sliders' value readouts (rows / cols / echo % / test paths).
     // Called from every path that can move a slider — live 'input' ticks,
     // loadLayout and setDims writing values back, and renderStats' floor
     // bump.
@@ -795,7 +795,7 @@ const MosaicEditor = (function () {
         const paths = els.paths ? (parseInt(els.paths.value, 10) || 1) : 1;
 
         try {
-            // Ganged % rides inside the layout (currentLayout reads the
+            // Echo % rides inside the layout (currentLayout reads the
             // input); the gate count is NOT ours to pass — playDesign
             // derives it from the grid size, the same curve live play
             // uses (user call 2026-08-15).
@@ -829,7 +829,7 @@ const MosaicEditor = (function () {
                 const stats = Maze.mosaicStats ? Maze.mosaicStats() : null;
                 Logger.info('[mosaic-editor] built in ' + Math.round(res.mazeMs) + 'ms' +
                             (stats ? ' — ' + stats.pieces + ' pieces, ' + stats.dissolved + ' dissolved' : '') +
-                            (res.twins ? ' — ganged ' + res.twins.groups + ' rings' : '') +
+                            (res.twins ? ' — echo ' + res.twins.groups + ' rings' : '') +
                             ' — gates ' + res.gatesPlaced +
                             (res.minMoves != null ? ' — ' + res.minMoves + ' moves' : ''));
             }
@@ -902,7 +902,7 @@ const MosaicEditor = (function () {
             els.cols.addEventListener('change', onDim);
             els.cols.addEventListener('input', syncSliderReadouts);
         }
-        // Ganged % feeds the difficulty score (as relief — see
+        // Echo % feeds the difficulty score (as relief — see
         // mosaic-library.js), so the readout re-ranks live as the
         // designer drags the slider. renderStats also re-syncs the value
         // readouts, covering its own floor-bump of the slider.

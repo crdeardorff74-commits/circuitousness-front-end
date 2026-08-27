@@ -5720,7 +5720,7 @@ html.dbgHidden #mosaicEditor.visible { display: flex; }
     font-size: 0.78rem;
     opacity: 0.85;
 }
-/* Rows / Cols / Ganged % are SLIDERS (user call 2026-08-15 — the number
+/* Rows / Cols / Echo % are SLIDERS (user call 2026-08-15 — the number
    spinners were fiddly). Each carries a .meSliderVal readout; the fixed
    min-width + tabular digits stop the label row jittering as the value's
    digit count changes mid-drag. */

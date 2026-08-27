@@ -5424,7 +5424,7 @@ const Maze = (() => {
     // So multi-cell pieces are all mandatory members, and the coverage
     // knob only controls how many SINGLES join beyond them — which gives
     // the knob a floor of mandatory/(mandatory+singles). The editor
-    // surfaces the same floor on its Ganged % input, and the difficulty
+    // surfaces the same floor on its Echo % input, and the difficulty
     // relief is computed on the floored value (mosaic-library.js).
     // Coverage 0 stays a true OFF switch — the twin-free escape the test
     // rounds and any future gang-free context rely on; the mandate
