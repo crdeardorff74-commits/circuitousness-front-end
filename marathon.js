@@ -97,6 +97,11 @@ const Marathon = (() => {
     let sessionToken   = null;     // server-issued cheat-proof timing token (from /api/game/start)
     let level          = 0;        // current puzzle index, 1-based
     let solvedCount    = 0;
+    // Has THIS PAGE LOAD already reported the funnel's "finished"
+    // milestone from a Zen solve? Deliberately module-scoped and never
+    // reset by startGame/resetRunState/resumeRun — the server flag it
+    // drives is per VISIT, so the unit here is the page load, not the run.
+    let zenFinishReported = false;
     // Hints used across the whole marathon run — submitted with the score
     // and used as the primary tiebreaker on the leaderboard (fewer hints
     // wins before total_ms is even considered). Reset to 0 in startGame,
@@ -2281,17 +2286,31 @@ const Marathon = (() => {
             }
         }
 
-        // Practice never reaches gameOver() (it's untimed and ends only on
-        // Quit), so the engagement funnel's "finished" milestone — which
-        // Marathon fires from gameOver() — would otherwise never fire for the
-        // now-default Practice mode, leaving Practice play as "started, never
-        // finished". Fire it on the FIRST Practice solve so the visit is
-        // marked finished. We only care that the visitor finished *a* puzzle,
-        // not how many — and the server's /finished flag is a sticky per-visit
-        // boolean anyway — so gating on solvedCount === 1 records exactly the
-        // signal we want without re-PATCHing on every subsequent solve.
-        if (isPractice && solvedCount === 1 &&
+        // Practice never reaches gameOver() (it's untimed, and the only
+        // caller of gameOver() is the Surge timer hitting zero), so the
+        // engagement funnel's "finished" milestone — which Marathon fires
+        // from gameOver() — would otherwise never fire for Zen at all,
+        // leaving every Zen visit as "started, never finished". Fire it on
+        // the first Zen solve of THIS PAGE LOAD. We only care that the
+        // visitor finished *a* puzzle, not how many — and the server's
+        // /finished flag is a sticky per-visit boolean anyway — so one
+        // report per visit is the whole signal, without re-PATCHing on
+        // every subsequent solve.
+        //
+        // ⚠ This used to gate on `solvedCount === 1`, which looks
+        // equivalent and is not. solvedCount is a RUN total and resumeRun
+        // restores it from the save, so the 0→1 transition happens once in
+        // the life of a run and never again. Any player who banked a solve
+        // and then kept coming back to the same saved run reported
+        // "started, never finished" on every later visit no matter how much
+        // they actually solved — a silent, permanent undercount of exactly
+        // the returning players the funnel exists to find. Found 2026-09-02
+        // while reading a real player's visit rows. Keep the unit of this
+        // flag the PAGE LOAD; anything derived from run state reintroduces
+        // the bug.
+        if (isPractice && !zenFinishReported &&
             typeof Tracking !== 'undefined' && Tracking.recordFinish) {
+            zenFinishReported = true;
             Tracking.recordFinish();
         }
 
@@ -2799,7 +2818,7 @@ const Marathon = (() => {
         // User may have navigated away while the fetch was in flight.
         if (state !== STATE.GAME_OVER) return;
 
-        const rank = computeRank(board, solvedCount, totalSolveTime);
+        const rank = computeRank(board, solvedCount, hintsUsed, totalSolveTime);
         if (rank <= MARATHON.LEADERBOARD_TOP_N) {
             gameOverRank.textContent = I18n.t('marathon.newBest', { r: rank });
             gameOverRank.hidden = false;
@@ -3045,12 +3064,22 @@ const Marathon = (() => {
         return id;
     }
 
-    // Where would (solved, totalMs) land if added to `board`? 1-based rank.
-    function computeRank(board, solved, totalMs) {
+    // Where would (solved, hints, totalMs) land if added to `board`?
+    // 1-based rank. Must mirror the server's ordering exactly — solved DESC,
+    // hints ASC, totalMs ASC — which is also what the local-board sort in
+    // saveScore uses. (This used to compare solved + totalMs only, ignoring
+    // hints, so a run that was faster but hintier than an equal-solved rival
+    // got promised a better rank at game over than the server then assigned:
+    // predicted #2, landed #3.) Legacy cached entries from before the hints
+    // column existed have no hintsUsed; treat them as 0, the same default the
+    // server applies to legacy rows.
+    function computeRank(board, solved, hints, totalMs) {
         let r = 1;
         for (const e of board) {
+            const eh = (typeof e.hintsUsed === 'number') ? e.hintsUsed : 0;
             if (e.solved > solved) r++;
-            else if (e.solved === solved && e.totalMs < totalMs) r++;
+            else if (e.solved === solved && eh < hints) r++;
+            else if (e.solved === solved && eh === hints && e.totalMs < totalMs) r++;
         }
         return r;
     }
