@@ -392,14 +392,10 @@ const Marathon = (() => {
         // is resumable. pagehide is the reliable mobile signal; the
         // visibilitychange fallback covers browsers that skip pagehide on
         // process kill. Both are no-ops unless a run is in progress.
-        // ORDER MATTERS: stopBeat FIRST. A tooltip demo may have the
-        // player's board on loan; handing it back before we checkpoint is
-        // what makes the save capture their game and not the demo.
-        // (saveRunState's own Tutorial.isBusy guard is the belt to this
-        // brace — without the stop it would skip the save entirely.)
+        // The tooltip-beat handover this needs lives in checkpointForExit
+        // — see the comment there for why the order is load-bearing.
         function onPageHidden() {
-            if (typeof Tutorial !== 'undefined' && Tutorial.stopBeat) Tutorial.stopBeat();
-            saveRunState();
+            checkpointForExit();
             reportStallOnHide();
         }
         window.addEventListener('pagehide', onPageHidden);
@@ -1219,11 +1215,90 @@ const Marathon = (() => {
         } catch (e) { return null; }
     }
     function clearRunSave(mode) {
+        // Kill any queued per-move checkpoint first — a timer that fired
+        // after this removal would resurrect the save we just deleted.
+        // (Same ordering potd.js clearResume documents.)
+        cancelScheduledRunSave();
         try { localStorage.removeItem(runSaveKey(mode)); } catch (e) {}
         refreshContinueCards();
     }
 
+    // ── Per-move checkpointing ──
+    //
+    // The event-driven checkpoints above each depend on their moment
+    // actually arriving intact. When one is skipped — a tooltip demo beat
+    // holding the board at quit time, a crash or OOM kill that fires
+    // neither pagehide nor visibilitychange, a build whose onPuzzleReady
+    // never ran — NOTHING is written and the run silently resumes from
+    // the PREVIOUS checkpoint. That failure is invisible at the moment it
+    // happens and misleading when it surfaces: the player comes back to
+    // either their own board with every rotation undone (the puzzle-ready
+    // checkpoint) or, from a boundary checkpoint, a freshly generated
+    // DIFFERENT puzzle wearing the same puzzle number. Field-reported on
+    // a 16-puzzle Surge run, 2026-09-02.
+    //
+    // So every committed board action also checkpoints, which makes the
+    // save independent of any single exit path firing. Same design PotD
+    // has carried since 2026-08-02 (potd.js scheduleAttemptSave), and the
+    // throttling rationale there applies verbatim: at most one write per
+    // MOVE_SAVE_MIN_INTERVAL_MS, and ALWAYS via a timer, never
+    // synchronously inside the move handler — undo() and resetPuzzle()
+    // append their move with the board mid-restore, so a same-tick save
+    // would snapshot a stale grid. Worst case a kill loses ~1.5s of play.
+    const MOVE_SAVE_MIN_INTERVAL_MS = 1500;
+    let moveSaveTimer = null;
+    let lastRunSaveMs = 0;
+
+    function cancelScheduledRunSave() {
+        if (moveSaveTimer !== null) {
+            clearTimeout(moveSaveTimer);
+            moveSaveTimer = null;
+        }
+    }
+
+    // Called from game.js's appendMove on every committed live action
+    // (rotate / gate / lock / hint / reset / undo / board penalties).
+    // ⚠ The puzzleLive guard is not just an optimization: with it false we
+    // cannot tell a live board from a build window, and saveRunState would
+    // write a BOUNDARY save — overwriting a good mid-puzzle checkpoint
+    // with one that regenerates the puzzle on resume. Skipping is the safe
+    // reading. It also no-ops during PotD (which shows the HUD without
+    // going through startGame, so marathon's state stays MENU) and during
+    // replays (appendMove returns before reaching us).
+    function scheduleRunSave() {
+        if (moveSaveTimer !== null) return;          // write already queued
+        if (state !== STATE.PLAYING || !puzzleLive) return;
+        armRunSaveTimer(Math.max(
+            0, MOVE_SAVE_MIN_INTERVAL_MS - (Date.now() - lastRunSaveMs)));
+    }
+
+    function armRunSaveTimer(wait) {
+        moveSaveTimer = setTimeout(() => {
+            moveSaveTimer = null;
+            // The run moved on while we waited (quit, solved, timed out).
+            // Whatever ended it has already checkpointed or cleared the
+            // save; writing now would only re-describe a run that is no
+            // longer the live one.
+            if (state !== STATE.PLAYING || !puzzleLive) return;
+            // A tooltip demo beat has the board on loan, so saveRunState
+            // would skip (see its Tutorial guard) — and a beat LOOPS until
+            // the player dismisses the card, which can be a long time.
+            // Come back for it rather than dropping the checkpoint on the
+            // floor. The board is inert while a beat runs, so nothing new
+            // accumulates meanwhile and this is one pending timer, not a
+            // spin: every re-arm waits a full interval.
+            if (typeof Tutorial !== 'undefined' && Tutorial.isBusy && Tutorial.isBusy()) {
+                armRunSaveTimer(MOVE_SAVE_MIN_INTERVAL_MS);
+                return;
+            }
+            saveRunState();
+        }, wait);
+    }
+
     function saveRunState() {
+        // A write now satisfies whatever the pending timer was going to
+        // do, and re-arms the throttle window from this moment.
+        cancelScheduledRunSave();
         if (state !== STATE.PLAYING) return;
         // ⚠ The Tutorial (modal, or an inline tooltip demo beat) borrows
         // the singleton Maze and installs its hand-authored board there.
@@ -1298,7 +1373,27 @@ const Marathon = (() => {
                 localStorage.setItem(runSaveKey(save.mode), JSON.stringify(save));
             } catch (e2) { /* storage truly unavailable — no resume */ }
         }
+        lastRunSaveMs = Date.now();
         refreshContinueCards();
+    }
+
+    // Both EXIT paths (the Pause/Quit button, and pagehide / tab-hide)
+    // checkpoint through here rather than calling saveRunState directly.
+    //
+    // ORDER MATTERS: stopBeat FIRST. A tooltip demo beat may have the
+    // player's board on loan — Tutorial installs its hand-authored board
+    // in the singleton Maze — and handing it back before we checkpoint is
+    // what makes the save capture their game and not the demo.
+    // saveRunState's own Tutorial.isBusy guard is the belt to this brace,
+    // and note what it actually does: it does not save the demo, it skips
+    // the save ENTIRELY. Without the stop, pressing Pause during a beat
+    // wrote nothing at all and the run resumed from its previous
+    // checkpoint. pagehide did this handover from the start and quitToMenu
+    // did not; sharing one helper is what keeps a third exit path from
+    // inheriting the same gap.
+    function checkpointForExit() {
+        if (typeof Tutorial !== 'undefined' && Tutorial.stopBeat) Tutorial.stopBeat();
+        saveRunState();
     }
 
     // Resume a saved run. Boundary saves re-enter through startNextPuzzle
@@ -2523,7 +2618,7 @@ const Marathon = (() => {
         // menu offers Continue. (No-op unless a run is actually in
         // progress; the auto-start run and zero-progress runs are
         // filtered inside saveRunState.)
-        saveRunState();
+        checkpointForExit();
         clearTransition();
         if (callbacks.quit) callbacks.quit();
         // Kill any sustained SFX loops (currently just 'glitch_overlap', but
@@ -3888,6 +3983,11 @@ const Marathon = (() => {
              // as a first-timer. See the function's comment.
              isFirstVisit,
              notifyPuzzleInteraction,
+             // Per-move run checkpoint — game.js appendMove calls this on
+             // every committed live action, so the saved run no longer
+             // depends on any single exit event firing. See the
+             // per-move-checkpointing block.
+             onMoveRecorded: scheduleRunSave,
              showPotdLeaderboard,
              // Reusable iOS-standalone keyboard helpers — exposed so PotD's
              // solve-modal name entry can share the same on-screen keyboard

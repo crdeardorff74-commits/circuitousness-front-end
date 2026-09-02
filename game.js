@@ -765,6 +765,13 @@
             if (typeof Potd !== 'undefined' && Potd.onMoveRecorded) {
                 Potd.onMoveRecorded();
             }
+            // Same for a Surge/Zen run (marathon.js scheduleRunSave), and
+            // hooked here for the same reason: undo appends directly, and
+            // a resumed board that ignored undos would come back out of
+            // sync with its own recording. No-op outside marathon play.
+            if (typeof Marathon !== 'undefined' && Marathon.onMoveRecorded) {
+                Marathon.onMoveRecorded();
+            }
             return true;
         }
         function recordMove(move) {
@@ -1517,8 +1524,10 @@
                 // the live Maze (no way to undo that — the newer call will
                 // re-init on top), but we MUST skip the rest of the cleanup
                 // (Gates, Render.refit, lastWon update) so we don't stomp
-                // the newer call's state when its turn comes.
-                if (mySeq !== newPuzzleSeq) return;
+                // the newer call's state when its turn comes. false tells
+                // the caller this build never landed — see the return at
+                // the tail.
+                if (mySeq !== newPuzzleSeq) return false;
                 buildingBanner.classList.remove('visible');
             } else {
                 // Cache miss. Two sub-cases:
@@ -1564,7 +1573,7 @@
                 // puzzle's data. The cached snapshot stays in preGenCache
                 // intact (no .delete) so it serves a future request for
                 // that exact size as a cache hit.
-                if (mySeq !== newPuzzleSeq) return;
+                if (mySeq !== newPuzzleSeq) return false;
                 buildingBanner.classList.remove('visible');
                 Maze.loadSnapshot(preGenCache.get(wantKey));
                 preGenCache.delete(wantKey);
@@ -1708,6 +1717,11 @@
             // respective conditions don't apply, so call order = priority.
             fillPreGenQueue();
             ensureStartersBuilt();
+            // Reached only when this call's build actually landed on the
+            // live board. The supersession returns above answer false, so
+            // callers with per-puzzle bookkeeping to do can tell the two
+            // apart — see the Marathon.onPuzzleReady call site.
+            return true;
         }
 
         async function setPathCount(n) {
@@ -1841,6 +1855,7 @@
                 // Set the requested mode/dims on Maze + Game state, invalidate
                 // the pre-gen cache (config has changed), then build & display.
                 // Calls Marathon.onPuzzleReady() once the puzzle is on-screen
+                // AND this build was the one that landed (see the gate below)
                 // so the per-puzzle clock anchors to "player can see it" — not
                 // "we asked the worker to build."
                 startPuzzle: async function (opts) {
@@ -1911,8 +1926,18 @@
                             preGenSize = null;
                         }
                     }
-                    await newPuzzle(opts.rows, opts.cols);
-                    Marathon.onPuzzleReady();
+                    // Gate on the build actually being APPLIED. newPuzzle
+                    // answers false when a newer call superseded this one
+                    // mid-build: the board on screen then belongs to that
+                    // newer call, which fires its own onPuzzleReady when it
+                    // lands. Calling it here anyway anchored the puzzle
+                    // clock, flipped puzzleLive and checkpointed the run
+                    // against a board that was still being built — and
+                    // puzzleLive is exactly what saveRunState reads to tell
+                    // a mid-puzzle save from a boundary one, so getting it
+                    // wrong is what turns a resume into a different puzzle.
+                    const applied = await newPuzzle(opts.rows, opts.cols);
+                    if (applied !== false) Marathon.onPuzzleReady();
                 },
                 // Cancel any in-flight visual state when the player abandons
                 // a game or time expires — leaves the engine in a sane idle.
