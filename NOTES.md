@@ -2,6 +2,16 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-09-02 — Release v1.76: the HINT button did nothing on ~1 in 5 small boards
+
+- **A real gameplay bug, found by chasing a "flaky" test.** `potd-replay-rotation-test.js` solves boards by calling `Maze.hint()` in a loop and had been failing ~1 run in 6. It was not the test: `hint()` was genuinely returning **null on solvable boards**, and game.js guards its whole handler on `if (pick)` — so the button produced no message, no sound, and no rotation. (One mercy: it also never reached `Marathon.onHintUsed()`, so nobody was charged a hint or docked leaderboard rank for it.)
+- **Cause:** `hint()`'s `tileEligible` vetoed a twin group when any partner returned true from `tileShouldSkip` — which is true not only for a partner at its EXACT solution but for one merely PORT-EQUIVALENT to it (a straight at offset 2, a cross at any rotation). So an **ELBOW twinned with an offset-2 STRAIGHT** was permanently unhintable, and once that group was the last thing standing, all three passes ran out of candidates.
+- **The group was always winnable** — that is the point. Twin path members sit at ONE shared offset from solution (manufactured by the twin builder, preserved by every group rotation), so the delta that fixes the elbow lands the straight exactly ON its solution. The veto was pure loss. Guard now tests exact rotation, so it fires only if that shared-offset invariant is broken — the safety net it was written to be.
+- ⚠ **Quad mode was never affected** and needs no matching change: `quadAnyTileCorrect` short-circuits on `quadScramble[qr][qc] !== 0`, so it already only reports "correct" for a quad at its exact solution.
+- Verified 0 stuck across 204 boards / 10 configurations (4x6→12x12, 1–4 paths, quad both ways; 4x6 was 12/60 before), `potd-replay-rotation-test.js` 0 failures in 20 runs, and twin/gates/multipath/mosaic/verify-opt all passing.
+- New suite `../tests/twin-hint-reachability.test.js` pins the contract "pressing HINT repeatedly always finishes the board", plus "every hint is forward progress" — the old guard's LEGITIMATE half was preventing a hint from knocking a twin partner off solution, so that property is asserted directly rather than argued away. Its mutation section restores the old guard and confirms boards still strand (11–15%), sized at 150 trials so the anti-flake test cannot itself flake.
+- **Worth internalising:** a suite that builds real randomized boards and fails intermittently is not automatically flaky. This one was reporting a live defect for as long as it had been dismissed as noise.
+
 ## 2026-09-02 — Release v1.75: Zen could never report "finished" on a resumed run
 
 - **Found by reading a real player's visit rows, not by reading code.** Zen never reaches `gameOver()` — the only caller is the Surge timer hitting zero — so its one path to the funnel's finished milestone was the first-solve hook in `onSolve`, gated on `solvedCount === 1`. But `solvedCount` is a RUN total and `resumeRun` restores it from the save, so the 0→1 transition happens **once in the life of a run and never again**. Any player who banked a solve and then kept returning to that saved run reported "started, never finished" on every later visit no matter how much they solved.

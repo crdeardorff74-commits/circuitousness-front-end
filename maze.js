@@ -5031,12 +5031,38 @@ const Maze = (() => {
             if (locked.has(r + ',' + c)) return false;
             if (tileShouldSkip(r, c)) return false;
             // Twin groups rotate in lockstep — hinting one member rotates
-            // every other by the same delta. If any member is already at
-            // its solution rotation, hinting THIS tile would knock that
-            // member off solution AND lock it (locked.add), leaving the
-            // puzzle unwinnable. Skip the whole group.
+            // every other by the same delta. If a partner is already at its
+            // solution rotation, hinting THIS tile would knock that member
+            // off solution AND lock it (locked.add), leaving the puzzle
+            // unwinnable. Skip the whole group.
+            //
+            // ⚠ The test is EXACT rotation, deliberately NOT tileShouldSkip.
+            // It used to be tileShouldSkip, which also reports true for a
+            // partner merely PORT-EQUIVALENT to its solution — a straight at
+            // offset 2, or a cross at any offset. Those partners are not at
+            // risk: a group's path members all sit at ONE shared offset from
+            // solution (manufactured by the twin builder, and preserved by
+            // every group rotation since a rotation moves them equally), so
+            // the delta that fixes this tile lands a port-equivalent straight
+            // exactly ON its solution rather than knocking it off. Vetoing on
+            // port-equivalence instead made an ELBOW twinned with an offset-2
+            // STRAIGHT permanently unhintable — and when that group was the
+            // last thing between the player and the win, every pass ran out of
+            // candidates and hint() returned null: the HINT button doing
+            // nothing on a solvable board, on ~20% of small single-path boards.
+            // (Found 2026-09-02 through the hint-driven solver in
+            // tests/potd-replay-rotation-test.js, which had been failing ~1 run
+            // in 6 for this reason; tests/twin-hint-reachability.test.js now
+            // covers it directly.)
+            //
+            // Under that shared-offset invariant a partner at its exact
+            // solution implies delta 0 — i.e. this tile is already correct too
+            // and never reaches here — so the guard now fires only if the
+            // invariant is ever broken, which is the safety net it was always
+            // meant to be.
             for (const [tr, tc] of twinPartnerCells(r, c)) {
-                if (tileShouldSkip(tr, tc)) return false;
+                const p = grid[tr] && grid[tr][tc];
+                if (p && p._solution !== undefined && p.rotation === p._solution) return false;
             }
             return true;
         }
