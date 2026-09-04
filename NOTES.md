@@ -2,6 +2,13 @@
 
 Newest entries on top. See universal rule 9 in `../../CLAUDE.md` for what belongs here.
 
+## 2026-09-04 — Release v1.78: ASPCA reference removed (ad-policy false-affiliation risk)
+
+- **Driver: naming a national nonprofit and pointing users at its donation page reads to an automated ad classifier as "affiliated with another brand/organization when you're not"** — a literal instance of the prohibited pattern, and unlike ad copy it lived *inside the game*. Ranked the second-likeliest contributor to the suspension after the Tetris references. There was never a logo, an affiliation claim, or any money routed through us; the links went to the ASPCA's own public pages.
+- **Both references gone, link included — not just the name.** (1) the share-popup `share.donate` string, rewritten in **all 15 languages** as plain text with no anchor at all; (2) Circuitousness-only: the credits-roll line at the `data-credit-link="aspca"` anchor, now unlinked prose. Generic replacement wording throughout: "consider donating to an animal welfare charity" — names nobody.
+- ⚠ **The donate-click tracking is now DEAD CODE, deliberately left in place.** `share.js`'s capture-phase handler still matches `.share-donate a` structurally and `Tracking.recordDonateClick` still exists, but no such anchor is left, so it can never fire. Kept because the `donate_clicked` column and the admin "ASPCA Donations" tile hold real historical counts — deleting the tracker would strand them. Rip it out only if the tile goes too.
+- The `share.donate` string is now plain text, so nothing depends on `data-i18n` vs `data-i18n-html` for it any more — but the attribute was left as-is rather than churned.
+
 ## 2026-09-02 — Release v1.77: a paused Surge run could come back on a DIFFERENT puzzle
 
 - **Player-reported (Ryan, mid-puzzle-16 Surge run): paused, resumed, and the board was back to scratch — "and I'm not sure it was even the same puzzle".** It was not. A resume from a **boundary** checkpoint GENERATES a fresh board and hands it the same puzzle number, so "reset" and "different puzzle" are the same failure wearing two faces. The other face is the puzzle-ready checkpoint: your own board with every rotation undone.
