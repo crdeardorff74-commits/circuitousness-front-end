@@ -117,33 +117,65 @@ const Tracking = (function () {
     // every later visit to a dead campaign. Stripping also keeps the tags
     // out of any URL the player shares.
     //
-    // Only the utm_* keys are removed — ?track, ?dev and ?nointro belong to
+    // Only the utm_* keys and the click ids below are removed — ?track, ?dev and ?nointro belong to
     // other modules and are preserved. Attribution is therefore FIRST-TOUCH
     // PER LANDING, not per browser: the ad click's own visit row carries the
     // campaign, and the player's later organic returns correctly do not.
     const CAMPAIGN_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign',
                              'utm_content', 'utm_term'];
+    // Google Ads auto-tagging click ids (added 2026-09-04 for OFFLINE
+    // CONVERSION IMPORT, the alternative to putting a Google conversion
+    // tag on the page - which privacy.html's "no third-party advertising
+    // cookies" promise forbids). Auto-tagging appends exactly ONE of
+    // these to the landing URL: `gclid` normally, `wbraid` / `gbraid` on
+    // iOS traffic where Google withholds the gclid. They are separate
+    // columns in Google's own import CSV, so WHICH one arrived has to be
+    // stored alongside the value or the upload cannot be built.
+    //
+    // Unlike utm_*, a click id is not descriptive: it identifies ONE ad
+    // click, and it is the join key an uploaded conversion matches on.
+    const CLICK_ID_PARAMS = ['gclid', 'wbraid', 'gbraid'];
     const campaign = (function () {
-        const none = { source: null, medium: null, name: null, content: null };
+        const none = { source: null, medium: null, name: null, content: null,
+                       clickId: null, clickIdType: null };
         if (typeof location === 'undefined') return none;
         let params;
         try { params = new URLSearchParams(location.search || ''); } catch (e) { return none; }
-        function take(key) {
+        function take(key, cap) {
             const v = params.get(key);
             if (!v) return null;
             // Sliced to the column width the API stores; a longer value is
             // a mistake or a probe, not a campaign name.
-            return v.trim().slice(0, 100) || null;
+            return v.trim().slice(0, cap || 100) || null;
         }
         const out = {
             source:  take('utm_source'),
             medium:  take('utm_medium'),
             name:    take('utm_campaign'),
             content: take('utm_content'),
+            clickId: null,
+            clickIdType: null,
         };
-        if (!out.source && !out.medium && !out.name && !out.content) return none;
+        // First match wins; auto-tagging only ever sends one, and a URL
+        // carrying two is hand-assembled or a probe.
+        for (let i = 0; i < CLICK_ID_PARAMS.length; i++) {
+            const v = take(CLICK_ID_PARAMS[i], 200);
+            if (v) { out.clickId = v; out.clickIdType = CLICK_ID_PARAMS[i]; break; }
+        }
+        if (!out.source && !out.medium && !out.name && !out.content
+                && !out.clickId) return none;
         try {
-            CAMPAIGN_PARAMS.forEach(function (k) { params.delete(k); });
+            // Click ids are stripped for the SAME reason utm_* are, and it
+            // matters MORE here: a bookmarked or shared landing URL still
+            // carrying ?gclid= would re-capture that id on every later
+            // visit, and each of those visits would then upload ANOTHER
+            // conversion keyed to one long-dead ad click. Stripping is what
+            // keeps the offline import one-conversion-per-click.
+            // WARNING: if a Google tag (gtag.js) is ever added to the page,
+            // it reads the click id from the URL at load, so it MUST run
+            // before this line or auto-tagging silently stops working.
+            CAMPAIGN_PARAMS.concat(CLICK_ID_PARAMS)
+                .forEach(function (k) { params.delete(k); });
             const q = params.toString();
             history.replaceState(null, '',
                 location.pathname + (q ? '?' + q : '') + (location.hash || ''));
@@ -404,6 +436,13 @@ const Tracking = (function () {
             campaignMedium:  campaign.medium,
             campaignName:    campaign.name,
             campaignContent: campaign.content,
+            // Google Ads click id, sent as a pair: the value plus which
+            // param carried it (gclid / wbraid / gbraid). Both or neither
+            // - a value whose type is unknown cannot be put in the right
+            // column of an offline-conversion upload, so the server drops
+            // an unpaired one rather than storing an unusable id.
+            clickId:         campaign.clickId,
+            clickIdType:     campaign.clickIdType,
         };
         // Impression record, fired now and NOT gated on the visit POST
         // answering: a load that never interacts is exactly what that
@@ -426,6 +465,13 @@ const Tracking = (function () {
                 campaignMedium:  payload.campaignMedium,
                 campaignName:    payload.campaignName,
                 campaignContent: payload.campaignContent,
+                // The click id belongs on the impression row for the same
+                // reason: a paid click that bounces before touching a tile
+                // never becomes a visit row, and Google will still have
+                // charged for it. Without this the bounced half of a buy
+                // is unattributable.
+                clickId:         payload.clickId,
+                clickIdType:     payload.clickIdType,
             });
         }
         // keepalive so the row is created (and stamped with clientUuid)
