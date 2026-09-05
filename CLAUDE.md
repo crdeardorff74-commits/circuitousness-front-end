@@ -74,8 +74,32 @@ infinite refresh loop):
 - `PAGE_VERSION` in `index.html`
 
 Use `/release` or `/rel` from inside this folder — that command bumps both
-versions and updates `NOTES.md`. It does **not** zip; it prints the zip command
-below for you to run yourself (Claude doesn't zip — the antivirus flags it).
+versions, updates `NOTES.md`, and commits + pushes to GitHub. It does **not**
+zip (Claude doesn't zip — the antivirus flags it; the user's BAT file does it).
+
+## Git / deploy
+This folder IS a git repo (set up 2026-09-05; before that the user uploaded files
+through the GitHub web UI by hand — that's what the "Add files via upload" commits
+are). Remote: `crdeardorff74-commits/circuitousness-front-end`, branch `main`.
+
+⚠ **Netlify auto-deploys this repo, so pushing publishes the live game.** `/rel`
+pushes, which means a release now goes live on its own. The zip for itch and
+CrazyGames is still separate and still manual.
+
+Three local settings this repo depends on — none of them survive a fresh clone,
+so re-apply them if one is ever made:
+- `core.autocrlf false` — the 372 pre-existing commits were web uploads, and
+  letting git renormalize line endings would turn one release into a whole-repo diff.
+- `git update-index --skip-worktree cover-art.html title-o-tuner.html` — both live
+  in the project PARENT locally but exist in the repo root. Without this, every
+  commit would stage their deletion and remove them from the live site.
+  `.gitignore` cannot do this; it does not apply to already-tracked files.
+- `.gitignore` covers the deploy zip, `.claude/`, `images/` (local scratch art,
+  referenced by nothing shipped) and `nul`.
+
+⚠ The repo is NOT the same file set as the zip: it keeps `CLAUDE.md` and `NOTES.md`
+(the zip excludes them) and carries `cover-art.html` / `title-o-tuner.html`, which
+the zip doesn't. Don't "reconcile" the two.
 
 ## Deployment Zip
 The zip is named `<PROJECT_NAME>.zip` (so currently `Circuitousness.zip`) and excludes

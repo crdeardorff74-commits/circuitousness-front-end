@@ -2003,7 +2003,14 @@ const Marathon = (() => {
                 // teachGate asks for one that genuinely blocks the route
                 // (a decorative gate teaches nothing — see gates-test.js).
                 gateTarget: practice ? practice.gates : null,
-                teachGate:  practice ? !!practice.teachGate : false
+                teachGate:  practice ? !!practice.teachGate : false,
+                // teachEcho is teachGate's counterpart for the ECHO board:
+                // it asks for a group that genuinely HAS to be twisted. A
+                // group that opens already at its solution teaches nothing
+                // - the demo fires and the mechanic is never exercised
+                // (18.3% of builds before this existed; see
+                // Maze.requireTwinTwist).
+                teachEcho:  practice ? !!practice.teachEcho : false
             });
         }
         // Timer starts when puzzle is actually on-screen (onPuzzleReady).

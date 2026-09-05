@@ -4808,6 +4808,234 @@ const Maze = (() => {
     // Exception (caller relies on this): a tile lit with the WRONG path
     // index returns false here — so it stays eligible. Hint locking it red
     // tells the player "this rotation is right; the issue is the routing".
+    // ---- "is this mechanic actually unavoidable?" -------------------------
+    // Sitting on the designed route is NOT the same as being mandatory. A
+    // board usually admits routes the generator did not design, so a gate
+    // planted across the designed path, or an echo group twisted off its
+    // solution, can still be side-stepped entirely. Measured on the
+    // practice boards before this existed: 10.5% of one-gate 4x3 boards
+    // and 16.5% of echo 4x4 boards could be finished without ever touching
+    // the mechanic they exist to teach.
+    //
+    // These boards are tiny (12-16 cells), so the honest test is just to
+    // search: is there ANY simple entry-to-exit route the player could
+    // complete under the given restriction? Every tile rotates freely, so
+    // a cell can carry any through-pair its TYPE allows - a straight the
+    // two opposite pairs, an elbow the four corners, a cross anything -
+    // except cells listed in `frozen`, which must carry the pair they are
+    // showing right now.
+    //
+    // opts.frozen  — Set of "r,c" that may not be rotated (an echo group)
+    // opts.blocked — (r1,c1,r2,c2) => bool, edges the route may not cross
+    //                (gates at their current delta)
+    // Returns true when a solve exists under those restrictions, i.e. the
+    // mechanic is DODGEABLE and the teaching board has not done its job.
+    //
+    // Exhaustive DFS with no depth cap: correct by construction on the
+    // scripted practice boards, and never called on anything larger.
+    function solvableUnder(opts) {
+        if (!grid || !entry || !exit || quadMode || mosaicMode) return true;
+        const frozen  = (opts && opts.frozen) || null;
+        const blocked = (opts && opts.blocked) || null;
+        const DR = [-1, 0, 1, 0], DC = [0, 1, 0, -1];   // N, E, S, W
+        function pairOK(type, a, b) {
+            if (a === b) return false;
+            const opposite = ((a + 2) & 3) === b;
+            if (type === T_STRAIGHT) return opposite;
+            if (type === T_ELBOW)    return !opposite;
+            return true;
+        }
+        // The pair a tile is SHOWING at its current rotation.
+        function pairShown(t, a, b) {
+            if (t.type === T_CROSS) return true;
+            const ports = (t.type === T_STRAIGHT)
+                ? [t.rotation, (t.rotation + 2) & 3]
+                : [t.rotation, (t.rotation + 1) & 3];
+            return ports.indexOf(a) >= 0 && ports.indexOf(b) >= 0 && pairOK(t.type, a, b);
+        }
+        function canCarry(r, c, a, b) {
+            const t = grid[r][c];
+            return (frozen && frozen.has(r + ',' + c)) ? pairShown(t, a, b) : pairOK(t.type, a, b);
+        }
+        const onPath = new Set();
+        function dfs(r, c, inPort) {
+            if (r === exit.row && c === exit.col && canCarry(r, c, inPort, exit.port)) return true;
+            const key = r + ',' + c;
+            onPath.add(key);
+            for (let d = 0; d < 4; d++) {
+                if (d === inPort) continue;                  // never leave the way we came
+                const nr = r + DR[d], nc = c + DC[d];
+                if (nr < 0 || nc < 0 || nr >= ROWS || nc >= COLS) continue;
+                if (onPath.has(nr + ',' + nc)) continue;
+                if (!canCarry(r, c, inPort, d)) continue;
+                if (blocked && blocked(r, c, nr, nc)) continue;
+                if (dfs(nr, nc, (d + 2) & 3)) { onPath.delete(key); return true; }
+            }
+            onPath.delete(key);
+            return false;
+        }
+        return dfs(entry.row, entry.col, entry.port);
+    }
+
+    // Public — the ECHO teaching board's FULL guarantee: not just a group
+    // that has to be turned, but one that cannot be walked around.
+    //
+    // requireTwinTwist alone can only choose the group's TURN, and the
+    // remaining dodges are boards where a route avoids the group's cells
+    // entirely — no turn fixes those (measured: 16.5% before, 14.5% after,
+    // i.e. almost the whole residue). What DOES fix them is moving the
+    // group, so this re-rolls the assignment itself: assignTwins picks a
+    // fresh random anchor and partner, the standard end-of-build scramble
+    // runs again behind it (ensureMinScramble + breakPreWonPaths, so the
+    // board still can't ship pre-won or pre-joined), and the acceptance
+    // test decides whether to keep it.
+    //
+    // ⚠ Only for the scripted practice board, which is 4x4 with a single
+    // pair. It re-runs generation tail-work on a live board, and
+    // solvableUnder is an exhaustive search — neither is something to
+    // point at a full-size puzzle.
+    //
+    // Best-effort by design, like everything else in this family: returns
+    // true if the board ended up with an unavoidable group, false if it
+    // ran out of tries (in which case the board still has a group that
+    // must be TURNED, just one that a determined alternate route could
+    // sidestep — strictly better than not trying).
+    function makeEchoMandatory(maxTries) {
+        requireTwinTwist();
+        if (!echoIsDodgeable()) return true;
+        const tries = (typeof maxTries === 'number') ? maxTries : 12;
+        for (let i = 0; i < tries; i++) {
+            assignTwins();
+            finalizeStartScramble();
+            requireTwinTwist();
+            if (!echoIsDodgeable()) return true;
+        }
+        return false;
+    }
+
+    // Public — can the board be finished WITHOUT rotating any echo tile?
+    // True means the echo lesson is dodgeable on this board.
+    function echoIsDodgeable() {
+        const frozen = new Set();
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                if (grid[r] && grid[r][c] && grid[r][c]._twin) frozen.add(r + ',' + c);
+            }
+        }
+        if (frozen.size === 0) return true;   // nothing to teach with
+        return solvableUnder({ frozen: frozen });
+    }
+
+    // Public — the ECHO teaching board's guarantee, and the exact
+    // counterpart of Gates' `requireBlocking` (gates.js): make sure the
+    // player cannot finish this board without twisting an echo group.
+    //
+    // WHY IT IS NEEDED. A group's shared offset-from-solution is just
+    // wherever its anchor's rotation landed after scrambling; nothing
+    // aims at the group. ensureMinScramble only guarantees a FRACTION of
+    // path tiles are off-solution, and the group may not be among them.
+    // Measured over 400 builds of the practice echo board before this
+    // existed: 18.3% opened with the group already at its solution, so
+    // roughly one newcomer in six watched the echo demo and then solved
+    // the board without ever touching an echo tile - the mechanic
+    // introduced and immediately never exercised. That is precisely the
+    // wasted lesson requireBlocking was written to prevent for gates.
+    //
+    // WHY AN ODD DELTA. Every path member of a group sits at ONE shared
+    // offset (assignTwins manufactures that and everything downstream
+    // preserves it), so the whole group is at solution exactly when the
+    // anchor is. An odd turn moves every tile type off its solution: an
+    // elbow's four rotations are all distinct, and a straight is
+    // 2-symmetric so only +2 would leave it equivalent. One odd delta is
+    // therefore correct for a mixed group without having to search.
+    //
+    // Called from game.js AFTER the build lands - main-thread and
+    // worker-built puzzles alike, the same insertion point gates use -
+    // and before gates are placed, so the recompute there covers this
+    // too. Endpoint cells are never group members in singular mode, so
+    // dragging a group can't undock a terminal.
+    //
+    // Returns the number of groups it had to fix (0 = every group was
+    // already off-solution, which is the common case).
+    function requireTwinTwist() {
+        if (!grid || quadMode || mosaicMode) return 0;
+        const seen = new Set();
+        let fixed = 0;
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                const t = grid[r] && grid[r][c];
+                if (!t || !t._twin) continue;
+                const key = r + ',' + c;
+                if (seen.has(key)) continue;
+                // The whole ring, so each group is considered once.
+                const ring = [[r, c]].concat(twinPartnerCells(r, c));
+                for (const [pr, pc] of ring) seen.add(pr + ',' + pc);
+                // Path members only: a filler has no solution to be off.
+                const pathMembers = ring.filter(([pr, pc]) =>
+                    grid[pr][pc]._solution !== undefined);
+                if (pathMembers.length === 0) continue;   // shouldn't happen (anchors are path tiles)
+                const needsTwist = pathMembers.some(([pr, pc]) =>
+                    !rotationsHaveSamePorts(grid[pr][pc].type,
+                                            grid[pr][pc].rotation,
+                                            grid[pr][pc]._solution));
+                // Nothing to do when the group already has to be turned AND
+                // there is no way around it — leave a good board alone.
+                //
+                // ⚠ The dodgeable half of that condition is load-bearing,
+                // not belt-and-braces. A group can need turning and STILL be
+                // walked around, and this is the one place a cheap fix
+                // exists: a different turn may block the alternate route
+                // without moving anything. Skipping on needsTwist alone
+                // (which this did briefly) throws that away.
+                if (needsTwist && !echoIsDodgeable()) continue;
+                // Choose the delta by RESULT, not at random. Any odd turn
+                // moves the group off its solution, but off-solution is
+                // only half the job: the board may still admit a route
+                // that avoids the group entirely, and then the lesson is
+                // dodgeable anyway (16.5% of echo boards, measured). Try
+                // the turns in random order and keep the first that leaves
+                // the board unsolvable with the group frozen.
+                //
+                // 2 is included even though it leaves a STRAIGHT
+                // port-equivalent: a group whose path member is an elbow
+                // is genuinely moved by it, and the needsTwist re-check
+                // below is what keeps a no-op from being accepted.
+                const candidates = shuffle([1, 2, 3]);
+                let applied = 0;
+                for (const delta of candidates) {
+                    for (const [pr, pc] of ring) {
+                        grid[pr][pc].rotation = (grid[pr][pc].rotation - applied + delta) & 3;
+                    }
+                    applied = delta;
+                    const movedOff = pathMembers.some(([pr, pc]) =>
+                        !rotationsHaveSamePorts(grid[pr][pc].type,
+                                                grid[pr][pc].rotation,
+                                                grid[pr][pc]._solution));
+                    if (movedOff && !echoIsDodgeable()) break;
+                }
+                // Whatever the loop settled on, the group must at minimum
+                // be OFF its solution — that part is always achievable, and
+                // an odd turn is what achieves it. Unavoidability is
+                // best-effort (a route that skips the group entirely cannot
+                // be fixed by rotating it), same contract as gates'
+                // requireBlocking.
+                const stillOn = !pathMembers.some(([pr, pc]) =>
+                    !rotationsHaveSamePorts(grid[pr][pc].type,
+                                            grid[pr][pc].rotation,
+                                            grid[pr][pc]._solution));
+                if (stillOn) {
+                    const odd = (Math.random() < 0.5) ? 1 : 3;
+                    for (const [pr, pc] of ring) {
+                        grid[pr][pc].rotation = (grid[pr][pc].rotation - applied + odd) & 3;
+                    }
+                }
+                fixed++;
+            }
+        }
+        if (fixed > 0) updateHighlighted();
+        return fixed;
+    }
+
     function rotationsHaveSamePorts(type, a, b) {
         if (type === T_CROSS) return true;          // 4-symmetric
         if (type === T_STRAIGHT) return ((a ^ b) & 1) === 0; // 2-symmetric: rotations differing by 2 are equivalent
@@ -5568,6 +5796,10 @@ const Maze = (() => {
         setMosaicMode,
         setMosaicLayout,  // AUTHORED layout to build on (null = random packer) — set per job, see its comment
         setTwinCoverageScale,  // per-run twin ramp (0..1 × TWIN_COVERAGE) — set before init; see its comment
+        requireTwinTwist,      // ECHO teaching board: guarantee a twist is needed — see its comment
+        solvableUnder,         // is a solve possible under a restriction? — teaching-board acceptance test
+        echoIsDodgeable,       // can this board be finished without touching an echo tile?
+        makeEchoMandatory,     // ECHO teaching board: re-roll until the group can't be avoided
         setTwinCoverageTarget, // ABSOLUTE coverage override (0..1, null = off) — the experimental PotD generator's knob
         setTwinGroupSizeRange, // MIXED group sizes (min, max; null/invalid = off) — same generator, see its comment
         rotateBoard,   // whole-board 90° penalty rotation — see its comment; Gates.rotateBoard must run alongside

@@ -117,9 +117,11 @@
         // set at L3, full at L12+); quit resets to 1 so PotD/debug builds
         // outside a run keep full coverage.
         let twinScale       = 1;
-        // Per-puzzle gate overrides from Marathon's startPuzzle opts
-        // ({ gateTarget, teachGate }) — currently only the first session's
-        // practice puzzles set them. CONSUMED by newPuzzle (read then
+        // Per-puzzle SCRIPT from Marathon's startPuzzle opts
+        // ({ gateTarget, teachGate, teachEcho }) — currently only the first
+        // session's practice puzzles set them. (Still named gateOpts: it
+        // was gate-only until teachEcho joined it, and the name is load
+        // -bearing in enough places that renaming it buys nothing.) CONSUMED by newPuzzle (read then
         // nulled) so a direct newPuzzle() call, which debug mode makes,
         // can never inherit a previous puzzle's script.
         let gateOpts        = null;
@@ -1591,6 +1593,22 @@
             // are physical (sub-tile) dims so the existing interior-vertex
             // iteration just works. Maze.solutionEdges handles the quad
             // un-scramble internally so safe-direction picks are correct.
+            // ECHO teaching board: guarantee the group actually has to be
+            // twisted. Placed HERE, beside the gate work, for the same
+            // reason and with the same coverage - it runs after the build
+            // lands, so it reaches worker-built and main-thread-built
+            // puzzles alike, and it runs BEFORE gates so the recompute
+            // below covers both edits. Scripted boards only; every other
+            // puzzle in the game is allowed to open with its groups
+            // already correct. See Maze.requireTwinTwist.
+            if (gateOpts && gateOpts.teachEcho) {
+                // Prefer the full guarantee (a group that can't be walked
+                // around); fall back to the turn-only one on a stale cached
+                // maze.js that predates it.
+                if (Maze.makeEchoMandatory)      Maze.makeEchoMandatory();
+                else if (Maze.requireTwinTwist)  Maze.requireTwinTwist();
+            }
+
             // Recompute the walk so any newly-blocked edge is reflected in
             // highlighted before refresh()/draw runs.
             if (typeof Gates !== 'undefined') {
@@ -1698,6 +1716,27 @@
                         && runLevel === firstGatedLevel));
                 Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), target, stride,
                                   altEdges, teachingBoard);
+                // TEACHING BOARD, second pass: requireBlocking only puts the
+                // gate ACROSS the designed route, which is not the same as
+                // making it unavoidable — a board usually admits routes the
+                // generator never designed, and 10.5% of one-gate practice
+                // boards could be finished without touching the gate at all.
+                // assignGates re-rolls its placement and delta every call and
+                // is cheap (no rebuild), so just ask again until the board is
+                // genuinely unsolvable while the gate stays put.
+                //
+                // Bounded and best-effort, exactly like requireBlocking
+                // itself: a board where every candidate vertex leaves a
+                // dodge keeps its last placement rather than failing. At the
+                // measured rate 12 tries leaves roughly one board in 10^12.
+                if (teachingBoard && Maze.solvableUnder) {
+                    const gateBlocked = (r1, c1, r2, c2) => Gates.edgeBlocked(r1, c1, r2, c2);
+                    for (let tries = 0; tries < 12
+                            && Maze.solvableUnder({ blocked: gateBlocked }); tries++) {
+                        Gates.assignGates(Maze.ROWS, Maze.COLS, Maze.solutionEdges(), target,
+                                          stride, altEdges, true);
+                    }
+                }
                 if (Maze.recompute) Maze.recompute();
             }
             // Consume the script — see the gateOpts declaration.

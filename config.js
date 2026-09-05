@@ -571,8 +571,16 @@ const MARATHON = {
     // board that introduced a mechanic. Spreading them is the whole
     // point; do not merge these into two.
     //   1. the basic twist-to-connect loop, nothing else
-    //   2. + twin tiles      (fires the animated twin demo)
-    //   3. + gates           (fires the animated gate demo)
+    //   2. + gates           (fires the animated gate demo)
+    //   3. + echo tiles      (fires the animated echo demo)
+    //
+    // ORDER REVERSED and mechanics UNMIXED, 2026-09-05 (user call, after
+    // playing it with a fresh cache). Board 3 used to carry twinScale 0.1
+    // AND two gates, so the board that was meant to introduce gates also
+    // had echo tiles on it, and board 2 introduced echo tiles while the
+    // sequence still called board 3 the gate lesson. Each board now holds
+    // exactly ONE mechanic and nothing else - which is what the
+    // one-thing-per-board rule above was always supposed to mean.
     //
     // TWO gates on board 3, not one (user call 2026-08-21, and the
     // game-wide floor in game.js's target formula matches): all gates
@@ -590,11 +598,31 @@ const MARATHON = {
     // random placements actually obstruct; see gates-test.js).
     //
     // Sizes stay small and grow by one step so the sequence feels like
-    // progress without ever being the difficulty.
+    // progress without ever being the difficulty. Board 1 is 3x3 (user
+    // call 2026-09-05) - the smallest board that is still a puzzle, for
+    // the one board whose only job is "twisting connects things".
+    //
+    // ⚠ THE PRACTICE BOARDS ARE EXEMPT FROM THE GAME-WIDE NEVER-EXACTLY-
+    // ONE-GATE RULE (user call 2026-09-05). That rule exists because a
+    // lone gate on a GENERATED board is trivial — one twist parks it clear
+    // of the route and nothing else moves — but board 2 is scripted, and
+    // its gate is verified to be the only way through before it ships (see
+    // below). One unavoidable gate teaches "gates rotate, and you have to
+    // rotate them" perfectly well, and a 4x3 cannot hold two anyway.
+    //
+    // BOTH teaching boards are checked by SOLVING them, not by inspecting
+    // them. Sitting across the designed route is not the same as being
+    // mandatory: a board usually admits routes the generator never
+    // designed, so the mechanic can be side-stepped entirely. Measured
+    // before that check existed — 10.5% of one-gate boards and 16.5% of
+    // echo boards could be finished without ever touching the mechanic
+    // they exist to teach. game.js re-rolls the gate until the board is
+    // unsolvable with it in place, and Maze.requireTwinTwist picks the
+    // echo group's turn the same way (Maze.solvableUnder is the test).
     FIRST_RUN_PRACTICE: [
-        { rows: 4, cols: 4, twinScale: 0,   gates: 0, teachGate: false },
-        { rows: 4, cols: 5, twinScale: 0.1, gates: 0, teachGate: false },
-        { rows: 5, cols: 5, twinScale: 0.1, gates: 2, teachGate: true  },
+        { rows: 3, cols: 3, twinScale: 0,   gates: 0, teachGate: false, teachEcho: false },
+        { rows: 4, cols: 3, twinScale: 0,   gates: 1, teachGate: true,  teachEcho: false },
+        { rows: 4, cols: 4, twinScale: 0.1, gates: 0, teachGate: false, teachEcho: true  },
     ],
 
     // Aspect cap on grid growth: neither logical dimension may grow to

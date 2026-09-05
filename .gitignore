@@ -1,0 +1,18 @@
+# Local-only files that must never reach the deploy repo.
+# Netlify auto-deploys this repo, so anything committed here goes live.
+
+# The deploy zip is built by the user's BAT file from these same files —
+# committing it would ship a 676K binary copy of the repo, inside the repo.
+Circuitousness.zip
+*.zip
+
+# Claude Code's per-project settings.
+.claude/
+
+# Local scratch art (tile-size samples). Referenced by nothing shipped —
+# index.html, the JS and the manifest all pull real images from the shared
+# host at images.official-intelligence.art instead.
+images/
+
+# Windows shell artifact that turns up in this folder occasionally.
+nul

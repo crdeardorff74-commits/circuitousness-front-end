@@ -132,8 +132,17 @@ const Tutorial = (function () {
 
         // Off-path filler in rows 4–5 (cols 1–5). Two carry the twin partners;
         // varied shapes so the board reads as a real 6×7 = 42 puzzle.
-        grid[4][1] = twin(filler(ELBOW, 0), '0,4', COLOR_P1);   // pair 1 partner
-        grid[4][2] = filler(STRAIGHT, 1);
+        // PAIR 1 is a group of THREE (user call 2026-09-05; it was a pair
+        // until then). Two tiles demonstrate that a partner follows, but
+        // they cannot show the thing that actually makes echo groups feel
+        // like a mechanic: the turn travelling OUTWARD, each member
+        // starting as the one before it passes halfway (render.js
+        // ECHO_OVERLAP). With two, that reads as a single delayed twin.
+        // Both partners are elbows so every step of the wave is visible -
+        // a straight looks identical every 180 degrees, which would make
+        // the third member appear to sit still on half its turns.
+        grid[4][1] = twin(filler(ELBOW, 0), '4,2', COLOR_P1);   // pair 1 partner A
+        grid[4][2] = twin(filler(ELBOW, 1), '0,4', COLOR_P1);   // pair 1 partner B
         grid[4][3] = filler(ELBOW, 2);
         grid[4][4] = filler(STRAIGHT, 0);
         grid[4][5] = filler(ELBOW, 0);
@@ -143,7 +152,9 @@ const Tutorial = (function () {
         grid[5][4] = filler(STRAIGHT, 0);
         grid[5][5] = filler(ELBOW, 2);
 
-        // Wire the on-grid twin back-references.
+        // Wire the on-grid twin back-references. Groups are RINGS - each
+        // member points at the NEXT, and the last closes back to the
+        // first - so pair 1 runs 0,4 -> 4,1 -> 4,2 -> 0,4.
         twin(grid[0][4], '4,1', COLOR_P1);
         twin(grid[1][5], '5,1', COLOR_P2);
         twin(grid[2][2], '2,5', COLOR_P3);
