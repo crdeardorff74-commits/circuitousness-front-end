@@ -879,12 +879,18 @@
                  player who doesn't want a clock now has somewhere to go
                  that isn't the back button. Styled deliberately quieter
                  than the Start button so the default reads at a glance.
-                 Labels reuse the mode-picker's own keys, already
-                 translated in all 15 languages; only the lead-in line is
-                 new. -->
+                 PotD reuses the mode-picker's own key, already translated
+                 in all 15 languages. ZEN DOES NOT: it has its own key
+                 (marathon.pitchZen, 2026-09-05 user call) so the label can
+                 say "(no clock)" HERE without changing the mode picker,
+                 which shares mode.practice.name. The distinction is worth
+                 stating on this screen in particular — it is the whole
+                 reason a player would pick Zen over the Surge button right
+                 above it. Each locale's value is its own Zen name plus a
+                 translated "no clock", not the English tacked on. -->
             <p id="firstRunPitchAlt" data-i18n="marathon.pitchAlt">Rather start somewhere else?</p>
             <div id="firstRunPitchAltRow">
-                <button id="firstRunPitchZenBtn" type="button" data-i18n="mode.practice.name">🧘 Zen</button>
+                <button id="firstRunPitchZenBtn" type="button" data-i18n="marathon.pitchZen">🧘 Zen (no clock)</button>
                 <button id="firstRunPitchPotdBtn" type="button" data-i18n="mode.potd.name">📅 Puzzle of the Day</button>
             </div>
         </div>
@@ -1566,7 +1572,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '1.81';</script>
+    <script>var PAGE_VERSION = '1.82';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +

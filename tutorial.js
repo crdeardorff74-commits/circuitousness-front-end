@@ -491,13 +491,28 @@ const Tutorial = (function () {
     // Apply every action of steps [0, upto) with no animation — this is
     // how the beat reaches its starting state without making the player
     // watch six steps of setup.
+    //
+    // ⚠ LOCKS ARE DELIBERATELY SKIPPED (2026-09-05, user-reported). The
+    // full walkthrough teaches locking in step 2, so fast-forwarding into
+    // the ECHO beat (step 3) used to arrive with tile (0,0) wearing a lock
+    // ring — a leftover from a lesson the card isn't giving, sitting on the
+    // board while the caption talks about echo tiles. Nothing in either
+    // beat needs a lock: the demo rotates tiles the actions name, and a
+    // lock only ever refuses a rotation.
+    //
+    // Both `lock` AND `unlock` are skipped, and that pairing is the point.
+    // Skipping only `lock` would leave step 6's `unlock` to toggle a lock
+    // ON — togglePlayerLock is a toggle, not a setter — so the gate beat
+    // would arrive with a lock the tutorial had explicitly removed.
+    //
+    // fastForward is called ONLY from playBeat (twice, both inside it), so
+    // this does not touch the modal walkthrough, which plays every step in
+    // order and does teach locking.
     function fastForward(upto) {
         for (let i = 0; i < upto && i < STEPS.length; i++) {
             for (const act of STEPS[i].actions) {
                 if (act.a === 'rotate') {
                     Maze.rotate(act.r, act.c, false);
-                } else if (act.a === 'lock' || act.a === 'unlock') {
-                    Maze.togglePlayerLock(act.r, act.c);
                 } else if (act.a === 'gate' && typeof Gates !== 'undefined') {
                     Gates.rotate(false);
                 }
