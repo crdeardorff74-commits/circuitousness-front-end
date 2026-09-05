@@ -830,6 +830,22 @@ const Marathon = (() => {
         if (!Array.isArray(list) || practiceStep > list.length) return null;
         return list[practiceStep - 1];
     }
+    // Practice dims follow the SCREEN, not the table. A non-square practice
+    // board is stored as a shape (3x4) and its long side is pointed along
+    // the viewport's long axis: wide on landscape, tall on portrait. Same
+    // principle the growth ramp already uses (see the growthSequence
+    // orientation block) and for the same reason — the long side belongs on
+    // the axis the screen actually has, or cells shrink for nothing.
+    //
+    // Square boards fall through untouched, so boards 1 and 3 are unaffected.
+    // Sampled per BUILD, so rotating the device mid-practice orients the next
+    // board rather than re-laying the one on screen.
+    function orientDims(rows, cols) {
+        const lo = Math.min(rows, cols), hi = Math.max(rows, cols);
+        const portrait = (typeof window !== 'undefined')
+            && window.innerHeight > window.innerWidth;
+        return portrait ? { rows: hi, cols: lo } : { rows: lo, cols: hi };
+    }
     function practiceCount() {
         const list = MARATHON.FIRST_RUN_PRACTICE;
         return Array.isArray(list) ? list.length : 0;
@@ -1914,7 +1930,7 @@ const Marathon = (() => {
         const cfg       = levelConfig(level);
         const paths     = practice ? 1 : cfg.pathCount;
         const logical   = practice
-            ? { rows: practice.rows, cols: practice.cols }
+            ? orientDims(practice.rows, practice.cols)
             : dimsForLevel(level, cfg);
         const quad      = practice ? false : cfg.quadMode;
         const physRows  = quad ? logical.rows * 2 : logical.rows;

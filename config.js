@@ -602,6 +602,15 @@ const MARATHON = {
     // call 2026-09-05) - the smallest board that is still a puzzle, for
     // the one board whose only job is "twisting connects things".
     //
+    // ⚠ `rows`/`cols` here describe a SHAPE, not a fixed orientation.
+    // marathon.js `orientDims` points a non-square board's long side along
+    // the viewport's long axis - WIDE on landscape, TALL on portrait - the
+    // same rule the growth ramp follows, and for the same reason: the long
+    // side belongs on the axis the screen actually has. So board 2 below is
+    // "4 long, 3 short", which plays as 3 rows x 4 cols on a desktop and
+    // 4 rows x 3 cols on a phone held upright. Square boards are unaffected.
+    // (User call 2026-09-05, after board 2 shipped taller than it was wide.)
+    //
     // ⚠ THE PRACTICE BOARDS ARE EXEMPT FROM THE GAME-WIDE NEVER-EXACTLY-
     // ONE-GATE RULE (user call 2026-09-05). That rule exists because a
     // lone gate on a GENERATED board is trivial — one twist parks it clear
