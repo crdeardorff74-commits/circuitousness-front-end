@@ -17,11 +17,15 @@ const PROJECT_NAME = 'Circuitousness';
 const PROJECT_SLUG = 'circuitousness';
 
 // ── Google Ads conversion tag (added 2026-09-06) ─────────────────────
-// Paste both values from the Google Ads UI: Goals → Conversions → the
-// "Puzzle Solved" action → "Tag setup" → "Install the tag yourself".
-// The snippet there reads `AW-XXXXXXXXX` and `send_to: 'AW-XXXXXXXXX/
-// <label>'`; the id goes in the first constant, the part after the slash
-// in the second.
+// The two values come from DIFFERENT screens, which is the part that
+// wastes time. The ID is on the tag-install screen. The LABEL is on the
+// conversion ACTION: Goals → Conversions → Summary → "Puzzle Solved" →
+// Tag setup → "Use Google Tag Manager", which prints "Conversion label"
+// as a named field. (We do not use Tag Manager; that tab is just the one
+// view that shows the label as a value instead of burying it in a
+// snippet.) ⚠ The Recommendations-page "Install tag yourself" shortcut
+// is DEAD until Ads has verified the tag on the site, which is a
+// chicken-and-egg worth remembering rather than re-deriving.
 //
 // ⚠ WHILE `GOOGLE_ADS_ID` IS EMPTY, ads.js IS A TOTAL NO-OP — no script
 // element, no cookie, no request. That is deliberate: /rel pushes
@@ -29,20 +33,17 @@ const PROJECT_SLUG = 'circuitousness';
 // Ads account is configured. Nothing else needs changing to switch the
 // tag on or off.
 //
-// ⚠ CURRENT STATE (2026-09-06): id set, LABEL STILL EMPTY. That is a
-// valid half-configured state, not an oversight — the tag loads (which
-// is what clears the campaign's "missing a Google tag" diagnostic) but
-// `Ads.conversion()` sends NOTHING, so the bidder still has no signal to
-// optimize on. The label comes from the conversion ACTION, a separate
-// screen from the tag-install one the id was copied off. Until it is
-// pasted here, the job is only half done.
+// ⚠ BOTH ARE OPAQUE STRINGS AND A WRONG CHARACTER FAILS SILENTLY — the
+// event sends, Google matches nothing, and the campaign is indistinguish-
+// able from an ad that does not work. The label in particular mixes `I`
+// and `l`. Copy these; never retype them.
 //
 // ⚠ The SAME id is hardcoded a second time in the umbrella site's
 // `official-intelligence-web/js/ads.js` — a separate deploy with no
 // shared config. Change one, change both, or the ad's landing page and
 // its conversion page will report to different properties.
 const GOOGLE_ADS_ID = 'AW-17791773957';
-const GOOGLE_ADS_SOLVE_LABEL = '';
+const GOOGLE_ADS_SOLVE_LABEL = 'OgLWCIfl6e8cEIXa46NC';
 
 // Background image pool. 54 files in the GitHub release, named
 // level1.jpg .. level54.jpg. render.js draws one at random per puzzle
