@@ -124,9 +124,12 @@ const Tracking = (function () {
     const CAMPAIGN_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign',
                              'utm_content', 'utm_term'];
     // Google Ads auto-tagging click ids (added 2026-09-04 for OFFLINE
-    // CONVERSION IMPORT, the alternative to putting a Google conversion
-    // tag on the page - which privacy.html's "no third-party advertising
-    // cookies" promise forbids). Auto-tagging appends exactly ONE of
+    // CONVERSION IMPORT — which was chosen over a Google tag, and then
+    // reversed on 2026-09-06 when the campaign's own diagnostics demanded
+    // one and the export half had never been built; see ads.js. These are
+    // kept regardless: they cost nothing and remain the only way to
+    // reconcile our numbers against Google's, or to back-fill by upload
+    // if the tag is ever blocked). Auto-tagging appends exactly ONE of
     // these to the landing URL: `gclid` normally, `wbraid` / `gbraid` on
     // iOS traffic where Google withholds the gclid. They are separate
     // columns in Google's own import CSV, so WHICH one arrived has to be
@@ -164,22 +167,34 @@ const Tracking = (function () {
         }
         if (!out.source && !out.medium && !out.name && !out.content
                 && !out.clickId) return none;
-        try {
-            // Click ids are stripped for the SAME reason utm_* are, and it
-            // matters MORE here: a bookmarked or shared landing URL still
-            // carrying ?gclid= would re-capture that id on every later
-            // visit, and each of those visits would then upload ANOTHER
-            // conversion keyed to one long-dead ad click. Stripping is what
-            // keeps the offline import one-conversion-per-click.
-            // WARNING: if a Google tag (gtag.js) is ever added to the page,
-            // it reads the click id from the URL at load, so it MUST run
-            // before this line or auto-tagging silently stops working.
-            CAMPAIGN_PARAMS.concat(CLICK_ID_PARAMS)
-                .forEach(function (k) { params.delete(k); });
-            const q = params.toString();
-            history.replaceState(null, '',
-                location.pathname + (q ? '?' + q : '') + (location.hash || ''));
-        } catch (e) { /* no replaceState (file://, sandbox) — capture still stands */ }
+        // Click ids are stripped for the SAME reason utm_* are, and it
+        // matters MORE here: a bookmarked or shared landing URL still
+        // carrying ?gclid= would re-capture that id on every later visit,
+        // and each of those visits would then report ANOTHER conversion
+        // keyed to one long-dead ad click. Stripping is what keeps
+        // attribution one-conversion-per-click.
+        function strip() {
+            try {
+                CAMPAIGN_PARAMS.concat(CLICK_ID_PARAMS)
+                    .forEach(function (k) { params.delete(k); });
+                const q = params.toString();
+                history.replaceState(null, '',
+                    location.pathname + (q ? '?' + q : '') + (location.hash || ''));
+            } catch (e) { /* no replaceState (file://, sandbox) — capture still stands */ }
+        }
+        // ⚠ THE STRIP IS DEFERRED BEHIND gtag.js, AND IT FAILS SILENTLY IF
+        // THAT IS UNDONE. A Google tag was added on 2026-09-06 (ads.js),
+        // and gtag.js reads the click id out of the address bar when it
+        // executes. It loads async, so "in the head" is not early enough
+        // on a slow connection — it would routinely run AFTER this strip
+        // and attribute nothing, with no error anywhere and nothing
+        // visible from inside the game. Ads.whenReady() fires once
+        // gtag.js has settled (loaded, failed, or timed out at 4s), or
+        // immediately when the tag is inactive, so the strip still always
+        // happens on this same load. Capture above is unaffected: it is
+        // synchronous and already done by the time this runs.
+        if (typeof Ads !== 'undefined' && Ads.whenReady) Ads.whenReady(strip);
+        else strip();
         return out;
     })();
 
@@ -553,6 +568,17 @@ const Tracking = (function () {
     // a per-visit counter so the admin page can report how often
     // alternates happen in the wild.
     function recordSolve(musicOn, sfxOn, alternate) {
+        // Google Ads conversion, on the FIRST solve of the load only
+        // (ads.js dedupes by name). This call site is the conversion
+        // definition: "a solved puzzle" is the cheapest signal that
+        // separates a player from a bounce, and at this budget it is also
+        // frequent enough for the bidder to learn from — a finished RUN
+        // would be truer and far too rare. Practice solves count, on
+        // purpose: an auto-started first board is still a person who
+        // stayed. ads.js is inert unless the tag is configured and all
+        // its gates pass, so this is a no-op on CrazyGames, itch.io, in
+        // the installed app, and in the EEA/UK/CH.
+        if (typeof Ads !== 'undefined' && Ads.conversion) Ads.conversion('solve');
         const payload = { music: !!musicOn, sfx: !!sfxOn, alternate: !!alternate };
         const qid = _queueAdd('solved', payload);
         withVisit(function (id) {

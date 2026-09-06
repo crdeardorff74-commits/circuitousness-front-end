@@ -16,6 +16,34 @@
 const PROJECT_NAME = 'Circuitousness';
 const PROJECT_SLUG = 'circuitousness';
 
+// ── Google Ads conversion tag (added 2026-09-06) ─────────────────────
+// Paste both values from the Google Ads UI: Goals → Conversions → the
+// "Puzzle Solved" action → "Tag setup" → "Install the tag yourself".
+// The snippet there reads `AW-XXXXXXXXX` and `send_to: 'AW-XXXXXXXXX/
+// <label>'`; the id goes in the first constant, the part after the slash
+// in the second.
+//
+// ⚠ WHILE `GOOGLE_ADS_ID` IS EMPTY, ads.js IS A TOTAL NO-OP — no script
+// element, no cookie, no request. That is deliberate: /rel pushes
+// straight to production, so this file has to be safe to ship before the
+// Ads account is configured. Nothing else needs changing to switch the
+// tag on or off.
+//
+// ⚠ CURRENT STATE (2026-09-06): id set, LABEL STILL EMPTY. That is a
+// valid half-configured state, not an oversight — the tag loads (which
+// is what clears the campaign's "missing a Google tag" diagnostic) but
+// `Ads.conversion()` sends NOTHING, so the bidder still has no signal to
+// optimize on. The label comes from the conversion ACTION, a separate
+// screen from the tag-install one the id was copied off. Until it is
+// pasted here, the job is only half done.
+//
+// ⚠ The SAME id is hardcoded a second time in the umbrella site's
+// `official-intelligence-web/js/ads.js` — a separate deploy with no
+// shared config. Change one, change both, or the ad's landing page and
+// its conversion page will report to different properties.
+const GOOGLE_ADS_ID = 'AW-17791773957';
+const GOOGLE_ADS_SOLVE_LABEL = '';
+
 // Background image pool. 54 files in the GitHub release, named
 // level1.jpg .. level54.jpg. render.js draws one at random per puzzle
 // via a shuffle bag (no repeats until all 54 have been shown, plus a

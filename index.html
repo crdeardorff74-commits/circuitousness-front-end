@@ -170,6 +170,20 @@
          load would re-declare its consts and throw. -->
     <script>(function(){var dev=location.hostname==='localhost'||location.hostname==='127.0.0.1';document.write('<script src="config.js'+(dev?'?t='+Date.now():'')+'"><\/script>');})();</script>
 
+    <!-- Google Ads conversion tag loader. Loaded HERE, in the head and
+         immediately after config.js (which it reads GOOGLE_ADS_ID and
+         PROJECT_SLUG from), for one reason: gtag.js reads the ad click id
+         out of the address bar when it executes, and tracking.js strips
+         that id on load. Starting the async fetch this early is half the
+         fix; the other half is that tracking.js's strip now waits on
+         Ads.whenReady(). See the header comment in ads.js.
+         Inert unless GOOGLE_ADS_ID is set — and never loads on
+         CrazyGames, itch.io, localhost, in an installed PWA / the Play
+         TWA, or for EEA/UK/CH visitors.
+         Do not move this into the ordered loader at the bottom of the
+         body: by the time that runs, the strip has already happened. -->
+    <script>(function(){var dev=location.hostname==='localhost'||location.hostname==='127.0.0.1';document.write('<script src="ads.js'+(dev?'?t='+Date.now():'')+'"><\/script>');})();</script>
+
     <!-- Intro decision, made BEFORE FIRST PAINT.
          Two root classes, both read back by intro.js (never re-derived
          there, so DOM and CSS can never disagree — a mismatch would mean
@@ -1572,7 +1586,7 @@
     </div>
 
     <!-- PAGE_VERSION must match APP_VERSION in sw.js — mismatch causes a refresh loop -->
-    <script>var PAGE_VERSION = '1.82';</script>
+    <script>var PAGE_VERSION = '1.83';</script>
     <!-- Ordered script loader. On localhost ONLY we append a cache-bust query so
          iterative JS edits show up without a hard-reload (mirrors the SW's
          localhost cache bypass in sw.js). In production the srcs stay plain +
