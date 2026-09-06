@@ -1942,6 +1942,53 @@ const Maze = (() => {
     // produced by the pre-generation worker (separate Maze instance) into
     // the main-thread Maze. ROWS/COLS are updated so cellAt/iteration
     // functions stay consistent with the loaded grid's dimensions.
+    // Structural validation of a snapshot BEFORE it is adopted.
+    //
+    // Added 2026-09-06 after a player-reported resume that rendered a board
+    // with NO tiles — only the lit paths, the circuit outline and one gate
+    // were painted, over the bare page background. That picture is what an
+    // intact `litKeys` over a grid of unusable tiles looks like: the two
+    // passes that walk EVERY cell (walls, and un-lit groove rims) drew
+    // nothing, while the passes keyed off lit lanes drew normally.
+    //
+    // ⚠ The failure is silent by construction, which is why this exists.
+    // `loadSnapshot` does `grid = s.grid` — it adopts whatever JSON.parse
+    // returned, with no reconstruction — and `drawWalls` dispatches on
+    // `tile.type` with a bare `else` for elbow, so a tile with no `type`
+    // renders as an elbow at rotation `undefined`: a degenerate polygon.
+    // Nothing throws, so the frame completes and the player is left with an
+    // unplayable board and no error anywhere.
+    //
+    // Returns null when the snapshot is usable, else a SHORT reason string
+    // (kept short deliberately — it travels to analytics as a flag name).
+    // Cheap enough to run on every resume: one pass over the grid doing
+    // typeof checks, on a board of at most a few hundred cells.
+    function validateSnapshot(s) {
+        if (!s || typeof s !== 'object')          return 'no_snapshot';
+        const rows = s.rows, cols = s.cols;
+        if (!Number.isInteger(rows) || rows <= 0) return 'bad_rows';
+        if (!Number.isInteger(cols) || cols <= 0) return 'bad_cols';
+        if (!Array.isArray(s.grid))               return 'no_grid';
+        // drawCore bails outright on a dims/grid mismatch, so this one
+        // would blank the whole board rather than half of it — caught here
+        // so the player gets a fresh puzzle instead of an empty canvas.
+        if (s.grid.length !== rows)               return 'rows_mismatch';
+        for (let r = 0; r < rows; r++) {
+            const row = s.grid[r];
+            if (!Array.isArray(row) || row.length !== cols) return 'cols_mismatch';
+            for (let c = 0; c < cols; c++) {
+                const t = row[c];
+                if (!t || typeof t !== 'object')  return 'null_tile';
+                if (t.type !== T_STRAIGHT && t.type !== T_ELBOW && t.type !== T_CROSS) {
+                    return 'bad_type';
+                }
+                if (!Number.isInteger(t.rotation)) return 'bad_rotation';
+            }
+        }
+        if (!s.entry || !s.exit)                  return 'no_terminals';
+        return null;
+    }
+
     function loadSnapshot(s) {
         ROWS = s.rows;
         COLS = s.cols;
@@ -5806,7 +5853,7 @@ const Maze = (() => {
         flipBoard,     // whole-board mirror penalty (variant 2) — Gates.flipBoard must run alongside
         alternateRouteEdges,  // leftover-alternate edges for targeted gate placement (null in quad mode)
         solvedViaAlternate,   // achieved-vs-designed route comparator for the alternate-solve telemetry
-        snapshotState, loadSnapshot, clear,
+        snapshotState, loadSnapshot, validateSnapshot, clear,
         getConnections,
         hasShortcutWithin,
         solutionEdges,

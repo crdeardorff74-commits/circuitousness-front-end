@@ -1463,7 +1463,29 @@ const Marathon = (() => {
             if (Tracking.firstRunOutsideStart) Tracking.firstRunOutsideStart();
         }
 
-        if (save.boundary || !save.maze) {
+        // Validate the saved board BEFORE adopting it (2026-09-06).
+        // Driver: a player resumed a run and got a board with NO TILES —
+        // lit paths, circuit outline and one gate painted over the bare
+        // page background, nothing else. `Maze.loadSnapshot` adopts
+        // `s.grid` verbatim from JSON.parse, and `drawWalls` renders a
+        // tile with no `type` as a degenerate elbow without throwing, so
+        // an unusable grid produces an unplayable board and NO error.
+        //
+        // ⚠ Validate the DATA, don't repair the live Maze: this runs
+        // before loadSnapshot, so a bad save can never be installed at
+        // all. Falling through to startNextPuzzle costs the player the
+        // in-progress puzzle but keeps the RUN — its level, score and
+        // clock all live in fields validated above — which beats both a
+        // ghost board and dumping them back to the menu.
+        const mazeFault = (save.maze && typeof Maze !== 'undefined' && Maze.validateSnapshot)
+            ? Maze.validateSnapshot(save.maze)
+            : null;
+        if (mazeFault && typeof Analytics !== 'undefined' && Analytics.flag) {
+            // One-shot per session and it names the reason, so a recurrence
+            // arrives with a cause attached instead of a screenshot.
+            Analytics.flag('resume_bad_maze_' + mazeFault);
+        }
+        if (save.boundary || !save.maze || mazeFault) {
             // Between puzzles: startNextPuzzle owns level++, the fresh time
             // grant, HUD, state flip, and the build.
             startNextPuzzle();

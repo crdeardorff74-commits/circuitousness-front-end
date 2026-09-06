@@ -439,6 +439,31 @@ const Potd = (() => {
             if (!raw) return null;
             const data = JSON.parse(raw);
             if (!data || data.v !== 1 || !data.maze) return null;
+            // Structural check on the board BEFORE anyone can adopt it
+            // (2026-09-06). Marathon's resume shipped a grid of unusable
+            // tiles and rendered a board with NO TILES — see
+            // Maze.validateSnapshot and that day's NOTES entry. PotD reads
+            // its saves from the same localStorage and hands them to the
+            // same loadSnapshot, so it had the same exposure.
+            //
+            // Returning null is exactly the right degradation and needs no
+            // caller change: the single call site does `if (saved)` and
+            // otherwise falls through to the normal fresh-start pipeline,
+            // which is what an expired save already does.
+            //
+            // ⚠ Deliberately NOT destructive. Clearing the entry here would
+            // make a *read* delete player data, and `hasResume` is only an
+            // existence probe — so a corrupt save leaves its menu indicator
+            // showing until the slot is played. That is pre-existing
+            // behaviour for the `v !== 1` case directly above, not new.
+            const fault = (typeof Maze !== 'undefined' && Maze.validateSnapshot)
+                ? Maze.validateSnapshot(data.maze) : null;
+            if (fault) {
+                if (typeof Analytics !== 'undefined' && Analytics.flag) {
+                    Analytics.flag('potd_resume_bad_maze_' + fault);
+                }
+                return null;
+            }
             return data;
         } catch (e) { return null; }
     }
@@ -1399,7 +1424,21 @@ const Potd = (() => {
             bailToMenu();
             return;
         }
-        if (!snapshot) {
+        // ⚠ Validate BEFORE `setSlotState(slot, date, 'started')` below —
+        // by then the attempt is recorded server-side and client-side, and
+        // bailing costs the player the slot. Here, bailToMenu is clean.
+        //
+        // This snapshot arrives from the server (or a local generation on a
+        // cache miss), and recordings made on the 2026-07-29 buggy build
+        // live on the leaderboard server FOREVER — see loadSnapshot's twin
+        // sanitizer, which exists for that same corpus. Adopting a bad grid
+        // here produces the no-tiles board reported 2026-09-06.
+        const snapFault = snapshot && typeof Maze !== 'undefined' && Maze.validateSnapshot
+            ? Maze.validateSnapshot(snapshot.maze) : null;
+        if (snapFault && typeof Analytics !== 'undefined' && Analytics.flag) {
+            Analytics.flag('potd_puzzle_bad_maze_' + snapFault);
+        }
+        if (!snapshot || snapFault) {
             bailToMenu();
             return;
         }

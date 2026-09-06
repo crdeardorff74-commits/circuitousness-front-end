@@ -1173,13 +1173,32 @@ const Render = (() => {
 
     // Dispatch on tile type/rotation. T_STRAIGHT rotation 0/2 = vertical lane,
     // 1/3 = horizontal. T_ELBOW uses rotation directly (canonical N→E).
+    // ⚠ The `else` here used to be a bare "// T_ELBOW", and that made a
+    // whole class of data fault INVISIBLE: a tile with no `type` (a
+    // corrupted or partially-restored snapshot) fell into it and drew as an
+    // elbow at rotation `undefined`, which lays down a degenerate polygon.
+    // Nothing throws, the frame completes, and the player is left staring
+    // at a board with no tiles on it — exactly the 2026-09-06 resume report.
+    // The elbow branch is now explicit, `rotation` is coerced so a missing
+    // one can't poison the geometry, and anything else is COUNTED rather
+    // than drawn. See Maze.validateSnapshot, which stops such a grid from
+    // being adopted in the first place; this is the backstop for whatever
+    // reaches the renderer by another road (replays, PotD, undo).
+    let badTileDraws = 0;
+    function badTileDrawCount() { return badTileDraws; }
     function drawWalls(px, py, tile, palette, r, c) {
         if (tile.type === Maze.T_CROSS) {
             drawCrossWalls(px, py, palette, r, c);
         } else if (tile.type === Maze.T_STRAIGHT) {
             drawStraightWalls(px, py, (tile.rotation & 1) === 0, palette, r, c);
-        } else { // T_ELBOW
-            drawElbowWalls(px, py, tile.rotation, palette, r, c);
+        } else if (tile.type === Maze.T_ELBOW) {
+            drawElbowWalls(px, py, tile.rotation | 0, palette, r, c);
+        } else {
+            badTileDraws++;
+            if (typeof Analytics !== 'undefined' && Analytics.flag) {
+                Analytics.flag('render_bad_tile_type');
+            }
+            return;   // nothing sane to draw; the corner patches would lie
         }
         drawMosaicCornerPatches(px, py, palette, r, c);
     }
@@ -3639,6 +3658,7 @@ const Render = (() => {
              resize,  // music.js re-layouts when the Now Playing chip toggles (bottom reserve)
              setTileColor, setPathColor, setPathOpacity,
              setPathWidth, setBevelThickness, setTileFaceAlpha, setFaceTexture,
+             badTileDrawCount,  // diagnostics: tiles drawWalls refused to draw (see its comment)
              setLitGreenBase, setLitGreenLo, setLitGreenHi,
              setLitBlueBase, setLitBlueLo, setLitBlueHi,
              setLitPinkBase, setLitPinkLo, setLitPinkHi,
